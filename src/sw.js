@@ -3,7 +3,7 @@
 const VERSION = "__VERSION__";
 const CACHE = "bonsai-" + VERSION;
 const SHELL = [
-  "./", "index.html", "app.js", "styles.css", "manifest.webmanifest",
+  "./", "index.html", "app.js", "ui.js", "store.js", "styles.css", "manifest.webmanifest",
   "icons/icon-192.png", "icons/icon-512.png", "icons/maskable-512.png",
   "icons/apple-touch-icon.png", "icons/favicon-32.png",
 ];

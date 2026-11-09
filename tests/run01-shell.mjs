@@ -27,7 +27,7 @@ try {
     await page.waitForTimeout(500);
     if (loads !== 1) fail(`${name}: first visit reloaded the page (${loads} loads)`);
     if ((await page.textContent("#ver")).trim() !== version) fail(`${name}: version shown isn't ${version}`);
-    if (!(await page.isVisible("text=Your forest is empty"))) fail(`${name}: empty state missing`);
+    if (!(await page.isVisible("text=Start with a zone"))) fail(`${name}: empty state missing`);
     if (errors.length) fail(`${name}: page errors: ${errors.join("; ")}`);
     const manifest = await page.evaluate(async () => (await fetch("manifest.webmanifest")).json());
     if (manifest.display !== "standalone" || !manifest.icons.some((i) => i.sizes === "512x512")) fail("manifest incomplete");
@@ -39,7 +39,7 @@ try {
       await page.waitForFunction(() => !!navigator.serviceWorker.controller);
       await ctx.setOffline(true);
       await page.reload();
-      if (!(await page.isVisible("text=Your forest is empty"))) fail("doesn't load offline");
+      if (!(await page.isVisible("text=Start with a zone"))) fail("doesn't load offline");
       await ctx.setOffline(false);
     }
     await ctx.close();

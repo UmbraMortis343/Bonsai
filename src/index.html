@@ -22,27 +22,20 @@
   <button class="btn primary" id="updateBtn">Update</button>
 </div>
 
-<main class="forest">
-  <section class="empty">
-    <svg viewBox="0 0 120 90" width="120" height="90" aria-hidden="true">
-      <ellipse cx="60" cy="84" rx="50" ry="5" class="ground"/>
-      <path d="M38 64h44l-6 18H44z" class="pot"/>
-      <path d="M60 64c-2-8 1-12 4-16s0-10-4-16" class="trunk"/>
-      <ellipse cx="60" cy="26" rx="22" ry="11" class="leaf"/>
-      <ellipse cx="42" cy="42" rx="14" ry="7" class="leaf2"/>
-      <ellipse cx="78" cy="38" rx="14" ry="7" class="leaf2"/>
-    </svg>
-    <h1>Your forest is empty</h1>
-    <p>Zones hold your subjects and trees hold your topics. Planting comes in the next releases.</p>
-  </section>
-</main>
+<main id="view" class="view"></main>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
 <footer class="foot">
   <span>Version <b id="ver">__VERSION__</b></span>
   <button class="link" id="checkBtn">Check for updates</button>
   <a class="link" href="https://github.com/UmbraMortis343/Bonsai/releases" target="_blank" rel="noopener">What's new</a>
   <span id="checkMsg" aria-live="polite"></span>
+  <span class="sep"></span>
+  <button class="link" id="exportBtn">Export backup</button>
+  <button class="link" id="importBtn">Restore backup</button>
+  <input type="file" id="importFile" accept="application/json,.json" hidden>
 </footer>
 <script src="app.js"></script>
+<script type="module" src="ui.js"></script>
 </body>
 </html>
