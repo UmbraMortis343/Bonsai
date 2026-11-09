@@ -1,0 +1,58 @@
+name: Release
+
+# Publishes Bonsai to GitHub Pages when the version in package.json changes.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.v.outputs.changed }}
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - id: v
+        run: |
+          now=$(node -p "require('./package.json').version")
+          before=$(git show HEAD~1:package.json 2>/dev/null | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(JSON.parse(s).version)}catch{console.log('none')}})" || echo none)
+          echo "version=$now" >> "$GITHUB_OUTPUT"
+          if [ "$now" != "$before" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"; echo "Releasing $now (was $before)"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"; echo "Version unchanged ($now), nothing to release"
+          fi
+
+  deploy:
+    needs: check
+    if: needs.check.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/build.mjs dist
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+      - id: deployment
+        uses: actions/deploy-pages@v4
+      - run: echo "Bonsai ${{ needs.check.outputs.version }} is live at ${{ steps.deployment.outputs.page_url }}"

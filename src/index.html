@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Bonsai</title>
+<meta name="description" content="Grow a forest of linked notes.">
+<meta name="theme-color" content="#1c3a2a">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="bar">
+  <div class="brand"><img src="icons/icon-192.png" alt="" width="28" height="28"><span>Bonsai</span></div>
+  <button class="btn ghost" id="installBtn" hidden>Install app</button>
+</header>
+
+<div class="update" id="updateBar" role="status" hidden>
+  <span id="updateText">A new version is ready.</span>
+  <button class="btn primary" id="updateBtn">Update</button>
+</div>
+
+<main class="forest">
+  <section class="empty">
+    <svg viewBox="0 0 120 90" width="120" height="90" aria-hidden="true">
+      <ellipse cx="60" cy="84" rx="50" ry="5" class="ground"/>
+      <path d="M38 64h44l-6 18H44z" class="pot"/>
+      <path d="M60 64c-2-8 1-12 4-16s0-10-4-16" class="trunk"/>
+      <ellipse cx="60" cy="26" rx="22" ry="11" class="leaf"/>
+      <ellipse cx="42" cy="42" rx="14" ry="7" class="leaf2"/>
+      <ellipse cx="78" cy="38" rx="14" ry="7" class="leaf2"/>
+    </svg>
+    <h1>Your forest is empty</h1>
+    <p>Zones hold your subjects and trees hold your topics. Planting comes in the next releases.</p>
+  </section>
+</main>
+
+<footer class="foot">
+  <span>Version <b id="ver">__VERSION__</b></span>
+  <button class="link" id="checkBtn">Check for updates</button>
+  <span id="checkMsg" aria-live="polite"></span>
+</footer>
+<script src="app.js"></script>
+</body>
+</html>
