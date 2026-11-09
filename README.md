@@ -10,9 +10,17 @@ Open the app's GitHub Pages address in Chrome or Edge, then choose **Install app
 
 ## Release
 
-Bump `version` in `package.json` and push to `main`. The Release workflow builds `src/` into `dist/` and publishes it to GitHub Pages. Pushes that don't change the version don't release.
+1. Bump `version` in `package.json` (minor for features, patch for fixes and tweaks).
+2. Add a `## x.y.z — YYYY-MM-DD` entry at the top of `CHANGELOG.md`.
+3. Push to `main`.
+
+The Release workflow builds `src/` into `dist/`, publishes it to GitHub Pages, then tags the commit `vx.y.z` and creates a GitHub release with that version's changelog notes. A version that's already tagged doesn't release again.
 
 One-time setting: repo **Settings → Pages → Source: GitHub Actions**.
+
+## Licence
+
+MIT. Free for anyone to use, change and share. See `LICENSE`.
 
 ## Develop
 
