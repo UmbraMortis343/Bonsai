@@ -37,8 +37,8 @@ if (await page.$("#nodeBodyView script")) t.fail("notes allowed raw HTML");
 const saved = await state(page, () => { const n = bonsai.S.byId.get(bonsai.S.sel); return [n.note, n.body.startsWith("**V = IR**")]; });
 t.eq(saved, ["Limits current", true], "note saved");
 
-await page.click('.sw[title="Plum"]');
-await page.waitForFunction(() => bonsai.S.byId.get(bonsai.S.sel)?.color === "#8a6bb0");
+await page.click('.sw[title="Violet"]');
+await page.waitForFunction(() => bonsai.S.byId.get(bonsai.S.sel)?.color === "#8b5cf6");
 
 await key("Escape");
 await key("l"); await page.waitForSelector("#pickInput"); await page.keyboard.type("Coul"); await page.waitForSelector(".res"); await key("Enter");

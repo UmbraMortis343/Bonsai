@@ -2,6 +2,15 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.3.1 — 2026-11-10
+
+A cleaner look.
+
+- Ideas are smooth spheres, branches and roots are thin lines, and the floor is a faint grid.
+- With no colours set, each main branch of a tree gets its own colour. Colours you pick still win and pass down.
+- Labels are plain text. Zones are outlined with a thin ring.
+- Neutral light and dark themes. Overdue ideas fade; the glow on new ideas is gone.
+
 ## 0.3.0 — 2026-11-10
 
 Bonsai in 3D.

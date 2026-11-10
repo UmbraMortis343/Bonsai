@@ -2,13 +2,13 @@
 import * as store from "./store.js";
 import * as srs from "./srs.js";
 import { Stage, THREE } from "./stage.js";
-import { Flora, disc } from "./flora.js";
+import { Flora, grid, ring } from "./flora.js";
 import { layoutTree, layoutForest } from "./layout.js";
 import { md } from "./md.js";
 import { $, el, put, toast, dialog, menu, overlayOpen, closeTop, closeAll } from "./dom.js";
 
-const PALETTE = [["Leaf", "#58a07a"], ["Moss", "#2f6b4f"], ["Sky", "#4a8fb5"], ["Plum", "#8a6bb0"], ["Rose", "#c26a7a"], ["Amber", "#c98a2b"], ["Clay", "#b0603c"], ["Stone", "#7d8a83"]];
-const SWATCHES = [["None", ""], ...PALETTE];
+const PALETTE = [["Blue", "#3b82f6"], ["Violet", "#8b5cf6"], ["Pink", "#ec4899"], ["Red", "#ef4444"], ["Orange", "#f97316"], ["Amber", "#f59e0b"], ["Green", "#22c55e"], ["Teal", "#14b8a6"], ["Cyan", "#06b6d4"]];
+const SWATCHES = [["Auto", ""], ...PALETTE];
 const ICON = {
   back: "M15 5l-7 7 7 7", close: "M6 6l12 12M18 6L6 18", plus: "M12 5v14M5 12h14", more: "M5 12h.01M12 12h.01M19 12h.01",
   search: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4", inbox: "M4 13l3-8h10l3 8v6H4zM4 13h5a3 3 0 0 0 6 0h5", play: "M8 5l11 7-11 7z", pause: "M8 5v14M16 5v14",
@@ -25,9 +25,11 @@ const S = {
 };
 let stage, T, labelEls = new Map(), decor = [], selMesh, playTimer = 0;
 
-const theme = () => matchMedia("(prefers-color-scheme: dark)").matches
-  ? { sky: "#0f1713", ground: "#16211b", grove: "#1f3027", bark: "#8f6b4b", link: "#f0b45a", light: "#cfe3d6", accent: "#7cc3a0", leaf: "#6fb893" }
-  : { sky: "#e9f0e8", ground: "#dbe6d8", grove: "#c9dbc7", bark: "#7a5434", link: "#c9801a", light: "#ffffff", accent: "#2f6b4f", leaf: "#58a07a" };
+// Scene colours come from the stylesheet, so light and dark stay in step.
+function theme() {
+  const css = getComputedStyle(document.documentElement), v = (k) => css.getPropertyValue(k).trim();
+  return { sky: v("--bg"), grid: v("--grid"), limb: v("--limb"), link: v("--sap"), ring: v("--ring"), root: v("--trunk"), ink: v("--ink") };
+}
 const byOrder = (a, b) => a.order - b.order || a.createdAt.localeCompare(b.createdAt);
 const kidsOf = (id) => S.kids.get(id) || [];
 const treeOf = (id) => S.trees.find((t) => t.id === id);
@@ -71,10 +73,16 @@ function shownNodes(tree) {
 }
 function looksFor(tree, nodes) {
   const m = new Map(), now = Date.now(), memo = new Map();
+  // An idea takes its own colour, else its parent's. With no colours set, the
+  // trunk is neutral and each main branch gets its own colour.
+  const main = kidsOf(tree.rootId);
   const colorOf = (n) => {
-    if (!n) return tree.color || T.leaf;
+    if (!n || n.id === tree.rootId) return n?.color || tree.color || T.root;
     if (n.color) return n.color;
-    if (!memo.has(n.id)) memo.set(n.id, colorOf(S.byId.get(n.parentId)));
+    if (!memo.has(n.id)) {
+      const parent = S.byId.get(n.parentId);
+      memo.set(n.id, parent && parent.id === tree.rootId && !parent.color && !tree.color ? PALETTE[Math.max(0, main.indexOf(n)) % PALETTE.length][1] : colorOf(parent));
+    }
     return memo.get(n.id);
   };
   for (const n of nodes) m.set(n.id, { color: colorOf(n), status: srs.status(n, kidsOf(n.id).length, now) });
@@ -100,7 +108,7 @@ function buildTree(animate) {
   clearScene();
   const flora = (S.flora = new Flora([{ tree, nodes, layout: lay, offset: [0, 0], looks: looksFor(tree, nodes), passes: passesOf(tree.id) }], links, T));
   stage.world.add(flora.group); stage.pickables = [flora.nodeMesh];
-  addDecor(disc(Math.max(60, lay.footprint * 8), T.ground)); addDecor(disc(lay.footprint * 1.2, T.grove, 0.01));
+  addDecor(grid(Math.max(40, lay.footprint * 6), T.grid));
   const labels = nodes.map((n) => {
     const e = el("div", { class: "lbl node" + (n.id === tree.rootId ? " trunk" : ""), dataset: { kind: "node", id: n.id }, text: n.title });
     labelEls.set(n.id, e);
@@ -146,11 +154,11 @@ function buildForest() {
   for (const g of groups) for (const t of g.trees) lays.set(t.id, layoutTree(S.byTree.get(t.id) || [], t.rootId));
   const fl = layoutForest(groups.map((g) => ({ id: g.z.id, trees: g.trees.map((t) => ({ id: t.id, footprint: lays.get(t.id).footprint })) })));
   S.forest = { fl, lays };
-  const items = [], shown = new Set(), labels = [], ground = new THREE.Color(T.ground);
+  const items = [], shown = new Set(), labels = [];
   for (const g of groups) {
     const zp = fl.zones.get(g.z.id);
-    const d = addDecor(disc(zp.r, g.z.color ? new THREE.Color(g.z.color).lerp(ground, 0.7) : T.grove, 0.02)); d.position.x = zp.x; d.position.z = zp.z;
-    labels.push({ el: el("div", { class: "lbl zone", dataset: { kind: "zone", id: g.z.id }, text: g.z.name }), pos: new THREE.Vector3(zp.x, 0.05, zp.z + zp.r * 0.84), kind: "zone", id: g.z.id, anchor: "translate(-50%,-50%)" });
+    const d = addDecor(ring(zp.r, g.z.color || T.ring)); d.position.x = zp.x; d.position.z = zp.z;
+    labels.push({ el: el("div", { class: "lbl zone", dataset: { kind: "zone", id: g.z.id }, text: g.z.name }), pos: new THREE.Vector3(zp.x, 0.05, zp.z + zp.r), kind: "zone", id: g.z.id, anchor: "translate(-50%,4px)" });
     for (const t of g.trees) {
       const p = fl.trees.get(t.id), lay = lays.get(t.id), nodes = shownNodes(t);
       for (const n of nodes) shown.add(n.id);
@@ -159,7 +167,7 @@ function buildForest() {
       labels.push({ el: e, pos: new THREE.Vector3(p.x, lay.height + 0.75, p.z), kind: "tree", id: t.id });
     }
   }
-  const g = addDecor(disc(fl.radius * 3 + 80, T.ground)); g.position.x = fl.center.x; g.position.z = fl.center.z;
+  const g = addDecor(grid(fl.radius * 3 + 60, T.grid)); g.position.x = Math.round(fl.center.x / 2) * 2; g.position.z = Math.round(fl.center.z / 2) * 2;
   const links = S.links.filter((l) => shown.has(l.fromId) && shown.has(l.toId)).map((l) => ({ id: l.id, a: l.fromId, b: l.toId, label: l.label }));
   const flora = (S.flora = new Flora(items, links, T));
   stage.world.add(flora.group); stage.pickables = [flora.nodeMesh];
@@ -180,10 +188,10 @@ function markSel() {
   placeSel(); stage.invalidate();
 }
 function placeSel() {
-  if (!selMesh) { selMesh = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 2), new THREE.MeshBasicMaterial({ color: T.accent, side: THREE.BackSide })); stage.scene.add(selMesh); }
+  if (!selMesh) { selMesh = new THREE.Mesh(new THREE.SphereGeometry(1, 28, 18), new THREE.MeshBasicMaterial({ color: T.ink, side: THREE.BackSide })); stage.scene.add(selMesh); }
   const p = S.view === "tree" && S.sel && S.flora?.pos.get(S.sel);
   selMesh.visible = !!p;
-  if (p) { selMesh.position.copy(p); selMesh.scale.setScalar(S.flora.radii.get(S.sel) * 1.28 + 0.03); }
+  if (p) { selMesh.position.copy(p); selMesh.scale.setScalar(S.flora.radii.get(S.sel) * 1.16 + 0.03); }
 }
 function labelOpacity(L, dist) {
   if (S.view === "forest") return L.kind === "zone" ? 1 : THREE.MathUtils.clamp(3.2 - dist / Math.max(30, stage.radius), 0, 1);
@@ -778,7 +786,7 @@ async function init() {
     if (hit?.kind === "node" && S.view === "tree") showHover(hit.id, e.clientX, e.clientY); else hideHover();
   };
   stage.container.addEventListener("pointerdown", hideHover);
-  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { T = theme(); stage.setTheme(T); selMesh?.material.color.set(T.accent); rebuild(); });
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { T = theme(); stage.setTheme(T); selMesh?.material.color.set(T.ink); rebuild(); });
   window.addEventListener("hashchange", go);
   window.addEventListener("keydown", onKey);
   $("#importFile").addEventListener("change", (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) importBackup(f); });

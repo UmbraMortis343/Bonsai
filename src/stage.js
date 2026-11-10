@@ -16,8 +16,8 @@ export class Stage {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(46, 1, 0.1, 2000);
-    this.hemi = new THREE.HemisphereLight(0xffffff, 0x445544, 1.15);
-    this.sun = new THREE.DirectionalLight(0xffffff, 1.5);
+    this.hemi = new THREE.HemisphereLight(0xffffff, 0x64748b, 1.9);
+    this.sun = new THREE.DirectionalLight(0xffffff, 1.6);
     this.sun.position.set(6, 12, 5);
     this.scene.add(this.hemi, this.sun);
     this.world = new THREE.Group(); this.scene.add(this.world);
@@ -35,8 +35,7 @@ export class Stage {
 
   setTheme(t) {
     this.scene.background = new THREE.Color(t.sky);
-    this.scene.fog = new THREE.Fog(t.sky, 60, 420);
-    this.hemi.color.set(t.light); this.hemi.groundColor.set(t.ground);
+    this.scene.fog = new THREE.Fog(t.sky, 70, 460);
     this.invalidate();
   }
 
