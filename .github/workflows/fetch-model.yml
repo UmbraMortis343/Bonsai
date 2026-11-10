@@ -1,0 +1,35 @@
+name: Fetch embedding model
+
+# Downloads the small on-device embedding model into src/models so Bonsai can
+# serve it from its own address. Run by hand, or when this file changes.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [.github/workflows/fetch-model.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download all-MiniLM-L6-v2 (quantized ONNX)
+        run: |
+          set -euo pipefail
+          base=https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/main
+          dir=src/models/Xenova/all-MiniLM-L6-v2
+          mkdir -p "$dir/onnx"
+          for f in config.json tokenizer.json tokenizer_config.json special_tokens_map.json; do curl -fsSL "$base/$f" -o "$dir/$f"; done
+          curl -fsSL "$base/onnx/model_quantized.onnx" -o "$dir/onnx/model_quantized.onnx"
+          printf 'all-MiniLM-L6-v2 by sentence-transformers, ONNX export by Xenova. Apache License 2.0.\nSource: https://huggingface.co/Xenova/all-MiniLM-L6-v2\n' > "$dir/NOTICE.txt"
+          ls -la "$dir" "$dir/onnx"; sha256sum "$dir/onnx/model_quantized.onnx"
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/models
+          git diff --cached --quiet || git commit -m "Add the on-device embedding model (all-MiniLM-L6-v2, Apache 2.0)"
+          git push
