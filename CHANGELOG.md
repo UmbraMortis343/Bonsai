@@ -2,6 +2,24 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.3.0 — 2026-11-10
+
+Bonsai in 3D.
+
+- **3D forest:** zones are groves, every tree is drawn at its real shape. Click a tree to fly in.
+- **3D trees:** the trunk is the core idea and ideas branch off it. Drag to orbit, scroll or pinch to zoom, right-drag or two fingers to pan, W A S D Q E to fly. Branches re-settle as the tree grows.
+- **Keyboard:** Tab adds a branch, Enter a sibling, arrows move between ideas, plus keys for rename, delete, notes, link, graft, colour, search and more. Press ? for the list.
+- **Notes:** a short note on hover (first tap on a phone) and full Markdown notes in a side panel (bottom sheet on a phone).
+- **Colours:** per idea, inherited by its branches. Zones and trees can be coloured too.
+- **Cross-links** between any two ideas, in any trees, with an optional label.
+- **Grafting:** move a branch, or a whole tree, onto any idea. Merge a zone into one tree, and split grafted trees back out.
+- **Review:** spaced repetition with Again, Hard, Good, Easy. Passed reviews grow the tree's roots; new ideas glow and overdue ones fade.
+- **Patches and stitching:** short reflections attached to the ideas they mention, stitched into the trunk's notes.
+- **Timeline:** replay how a tree or the forest grew.
+- **Search** across everything, and an **inbox** for quick thoughts to file later.
+- Zones and trees: rename, recolour, move, archive, delete. Deleting an idea can be undone.
+- Removed the outline view and the explanatory text.
+
 ## 0.2.0 — 2026-11-10
 
 Your forest is saved on your device, and you can start planting.

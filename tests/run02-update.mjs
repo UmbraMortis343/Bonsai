@@ -16,29 +16,25 @@ const fail = (m) => { console.error("FAIL run02:", m); process.exitCode = 1; };
 try {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 800 } });
   const page = await ctx.newPage();
+  const ver = () => page.evaluate(() => bonsaiShell.version);
   await page.goto(URL);
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.reload();
   await page.waitForFunction(() => !!navigator.serviceWorker.controller);
-  if ((await page.textContent("#ver")).trim() !== A) fail("didn't start on version A");
+  if ((await ver()) !== A) fail("didn't start on version A");
   if (await page.isVisible("#updateBar")) fail("update bar showing with no update");
-
-  // Up to date check
-  await page.click("#checkBtn");
-  await page.waitForFunction(() => /latest version/.test(document.getElementById("checkMsg").textContent), null, { timeout: 8000 })
-    .catch(() => fail("'latest version' message missing"));
+  if ((await page.evaluate(() => bonsaiShell.check())) !== "latest") fail("check doesn't report latest");
 
   // Release B
   dir = "tests/.out/b";
-  await page.click("#checkBtn");
+  await page.evaluate(() => bonsaiShell.check());
   await page.waitForSelector("#updateBar:not([hidden])", { timeout: 10000 }).catch(() => fail("update bar never appeared"));
   const label = (await page.textContent("#updateBtn")).trim();
   if (label !== `Update to ${B}`) fail(`button says "${label}"`);
   await page.screenshot({ path: "tests/shots/update-ready.png" });
 
   await Promise.all([page.waitForEvent("load"), page.click("#updateBtn")]);
-  await page.waitForFunction((v) => document.getElementById("ver").textContent.trim() === v, B, { timeout: 10000 })
-    .catch(() => fail("still on the old version after Update"));
+  await page.waitForFunction((v) => window.bonsaiShell?.version === v, B, { timeout: 10000 }).catch(() => fail("still on the old version after Update"));
   if (await page.isVisible("#updateBar")) fail("update bar still showing after updating");
   await ctx.close();
 } finally {

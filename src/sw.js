@@ -2,11 +2,7 @@
 // the person taps Update, then takes over and the page reloads.
 const VERSION = "__VERSION__";
 const CACHE = "bonsai-" + VERSION;
-const SHELL = [
-  "./", "index.html", "app.js", "ui.js", "store.js", "styles.css", "manifest.webmanifest",
-  "icons/icon-192.png", "icons/icon-512.png", "icons/maskable-512.png",
-  "icons/apple-touch-icon.png", "icons/favicon-32.png",
-];
+const SHELL = __FILES__;
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: "reload" })))));

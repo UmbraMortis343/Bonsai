@@ -12,30 +12,25 @@
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<header class="bar">
-  <div class="brand"><img src="icons/icon-192.png" alt="" width="28" height="28"><span>Bonsai</span></div>
-  <button class="btn ghost" id="installBtn" hidden>Install app</button>
-</header>
-
 <div class="update" id="updateBar" role="status" hidden>
-  <span id="updateText">A new version is ready.</span>
+  <span id="updateText"></span>
   <button class="btn primary" id="updateBtn">Update</button>
 </div>
-
-<main id="view" class="view"></main>
-<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
-
-<footer class="foot">
-  <span>Version <b id="ver">__VERSION__</b></span>
-  <button class="link" id="checkBtn">Check for updates</button>
-  <a class="link" href="https://github.com/UmbraMortis343/Bonsai/releases" target="_blank" rel="noopener">What's new</a>
-  <span id="checkMsg" aria-live="polite"></span>
-  <span class="sep"></span>
-  <button class="link" id="exportBtn">Export backup</button>
-  <button class="link" id="importBtn">Restore backup</button>
+<div id="app">
+  <div class="stage" id="stage"><canvas id="gl" aria-label="Forest"></canvas><div class="labels"></div></div>
+  <header class="top" id="top"></header>
+  <div class="picker" id="picker" hidden></div>
+  <div class="empty" id="empty" hidden></div>
+  <aside class="panel" id="panel" aria-label="Details" hidden></aside>
+  <div class="review" id="review" hidden></div>
+  <div class="timeline" id="timeline" hidden></div>
+  <div class="actions" id="actions" hidden></div>
+  <div class="hover" id="hover" hidden></div>
+  <div id="overlay"></div>
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
   <input type="file" id="importFile" accept="application/json,.json" hidden>
-</footer>
+</div>
 <script src="app.js"></script>
-<script type="module" src="ui.js"></script>
+<script type="module" src="main.js"></script>
 </body>
 </html>

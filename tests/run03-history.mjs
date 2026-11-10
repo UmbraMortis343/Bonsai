@@ -15,5 +15,5 @@ for (let i = 1; i < versions.length; i++) {
   const newer = a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
   if (newer <= 0) fail(`CHANGELOG out of order: ${versions[i - 1]} before ${versions[i]}`);
 }
-if (!readFileSync("src/index.html", "utf8").includes("github.com/UmbraMortis343/Bonsai/releases")) fail("no What's new link");
+if (!readFileSync("src/main.js", "utf8").includes("github.com/UmbraMortis343/Bonsai/releases")) fail("no What's new link");
 if (!process.exitCode) console.log("PASS run03 history");

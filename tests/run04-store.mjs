@@ -51,9 +51,41 @@ try {
     out.linkSurvivesMove = (await s.linksFor(fb.id)).length === 1;
 
     // Deleting a branch deletes everything under it and its links.
-    out.deletedCount = await s.deleteNode(res.id);
+    const snap = await s.deleteNode(res.id);
+    out.deletedCount = snap.nodes.length; out.deletedLinks = snap.links.length;
     out.linksGone = (await s.allLinks()).length === 0;
     out.basicLeft = (await s.treeNodes(basic.id)).length;
+    // Undo puts the branch and its links back.
+    await s.restoreRows(snap);
+    out.restored = (await s.treeNodes(basic.id)).length + "/" + (await s.allLinks()).length;
+    await s.deleteNode(res.id);
+
+    // Whole-tree graft, split back out, and merging a zone.
+    const t3 = await s.createTree({ zoneId: elec.id, name: "Filters", core: "RC filter" });
+    await s.addNode(t3.rootId, { title: "Low-pass" });
+    await s.addPatch({ treeId: t3.id, text: "Filters shape signals", nodeIds: [t3.rootId] });
+    out.graftedTree = await s.graftTree(t3.id, trunk);
+    out.treesAfterGraft = (await s.listTrees(elec.id)).length;
+    const grafted = (await s.treeNodes(basic.id)).find((n) => n.title === "RC filter");
+    out.wasTree = grafted.wasTree?.name; out.patchMoved = (await s.listPatches(basic.id)).length;
+    const back = await s.splitToTree(grafted.id);
+    out.splitName = back.name; out.splitSize = (await s.treeNodes(back.id)).length;
+    out.splitRoot = (await s.getNode(grafted.id)).parentId === null && !(await s.getNode(grafted.id)).wasTree;
+    out.merged = await s.mergeZone(elec.id, basic.id);
+    out.treesAfterMerge = (await s.listTrees(elec.id)).length;
+    for (const n of (await s.treeNodes(basic.id)).filter((x) => x.wasTree)) await s.splitToTree(n.id);
+    out.treesAfterSplit = (await s.listTrees(elec.id)).length;
+    for (const tr of await s.listTrees(elec.id)) if (tr.name === "Filters") await s.deleteTree(tr.id);
+    out.patchesAfterTreeDelete = (await s.listPatches()).length;
+
+    // Reviews update the schedule; the inbox holds quick thoughts.
+    const rv = await s.reviewNode(trunk, "good");
+    out.review = [rv.srs.passes, rv.srs.interval, !!rv.reviewedAt];
+    const again = await s.reviewNode(trunk, "again");
+    out.again = [again.srs.passes, again.srs.lapses];
+    const item = await s.addInbox("Look up Kirchhoff");
+    out.inbox = (await s.listInbox()).length; await s.deleteInbox(item.id);
+    out.inboxAfter = (await s.listInbox()).length;
 
     // Validation
     out.emptyTitleBlocked = await s.addNode(trunk, { title: "   " }).then(() => false, () => true);
@@ -74,11 +106,13 @@ try {
   const want = {
     trunkIsCore: true, childOrder: "Series,Parallel", timestamps: true, dupBlocked: true, selfBlocked: true,
     linkLabel: "analogy", trunkProtected: true, cycleBlocked: true, movedCount: 2, graftedInBasic: 2, advLeft: 1,
-    linkSurvivesMove: true, deletedCount: 5, linksGone: true, basicLeft: 1, emptyTitleBlocked: true, backupNodes: 3,
+    linkSurvivesMove: true, deletedCount: 5, deletedLinks: 1, linksGone: true, basicLeft: 1, restored: "6/1",
+    graftedTree: 2, treesAfterGraft: 2, wasTree: "Filters", patchMoved: 1, splitName: "Filters", splitSize: 2, splitRoot: true,
+    merged: 2, treesAfterMerge: 1, treesAfterSplit: 3, patchesAfterTreeDelete: 0, review: [1, 1, true], again: [1, 1], inbox: 1, inboxAfter: 0, emptyTitleBlocked: true, backupNodes: 3,
     afterZoneDelete: JSON.stringify({ zones: 0, trees: 0, nodes: 0, links: 0 }),
     afterImport: JSON.stringify({ zones: 1, trees: 2, nodes: 3, links: 0 }), badImportBlocked: true,
   };
-  for (const [k, v] of Object.entries(want)) if (r[k] !== v) fail(`${k}: got ${JSON.stringify(r[k])}, want ${JSON.stringify(v)}`);
+  for (const [k, v] of Object.entries(want)) if (JSON.stringify(r[k]) !== JSON.stringify(v)) fail(`${k}: got ${JSON.stringify(r[k])}, want ${JSON.stringify(v)}`);
   if (!(r.events > 10)) fail(`growth log has only ${r.events} events`);
 
   // Survives a reload (and the browser restarting would be the same storage).

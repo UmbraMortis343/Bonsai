@@ -7,11 +7,17 @@
 //        The tree's root node (parentId null) is its trunk: the core idea.
 // link  {id, fromId, toId, label, note, createdAt, updatedAt}
 //        A cross-link ("leap") between any two nodes, even in different trees.
+//        srs {due, interval, ease, reps, lapses, passes} is the review schedule.
+//        wasTree {name, color} marks a trunk that was grafted in as a branch.
 // event {id, at, type, ref, data}  Append-only log for the growth timeline.
+// patch {id, treeId, text, nodeIds, createdAt}  A short reflection (Patchwork Text).
+// inbox {id, text, createdAt}  Quick-captured thoughts waiting to be filed.
 
-export const SCHEMA_VERSION = 1;
+import { rate } from "./srs.js";
+
+export const SCHEMA_VERSION = 2;
 const DB_NAME = "bonsai";
-const STORES = ["zones", "trees", "nodes", "links", "events", "meta"];
+const STORES = ["zones", "trees", "nodes", "links", "events", "meta", "patches", "inbox"];
 
 let dbPromise = null;
 
@@ -33,7 +39,11 @@ function open() {
         db.createObjectStore("events", { keyPath: "id" }).createIndex("at", "at");
         db.createObjectStore("meta", { keyPath: "key" });
       }
-      // Future schema changes go here as `if (e.oldVersion < 2) { ... }`.
+      if (e.oldVersion < 2) {
+        db.createObjectStore("patches", { keyPath: "id" }).createIndex("treeId", "treeId");
+        db.createObjectStore("inbox", { keyPath: "id" });
+      }
+      // Future schema changes go here as `if (e.oldVersion < 3) { ... }`.
     };
     req.onsuccess = () => {
       const db = req.result;
@@ -89,6 +99,9 @@ export async function linksFor(nodeId) {
     return [...a, ...b];
   });
 }
+export const allNodes = () => tx(["nodes"], "readonly", (s) => reqP(s.nodes.getAll()));
+export const allZones = () => tx(["zones"], "readonly", (s) => reqP(s.zones.getAll()));
+export const allTrees = () => tx(["trees"], "readonly", (s) => reqP(s.trees.getAll()));
 export const allLinks = () => tx(["links"], "readonly", (s) => reqP(s.links.getAll()));
 export const listEvents = () => tx(["events"], "readonly", (s) => reqP(s.events.index("at").getAll()));
 
@@ -148,11 +161,66 @@ export async function updateTree(id, patch) {
   });
 }
 export async function deleteTree(id) {
-  return tx(["trees", "nodes", "links", "events"], "readwrite", async (s) => {
+  return tx(["trees", "nodes", "links", "events", "patches"], "readwrite", async (s) => {
     const nodes = await reqP(s.nodes.index("treeId").getAll(id));
     await removeNodes(s, nodes.map((n) => n.id));
+    for (const p of await reqP(s.patches.index("treeId").getAll(id))) s.patches.delete(p.id);
     s.trees.delete(id); logEvent(s, "tree.delete", id);
   });
+}
+
+// Grafts a whole tree onto an idea in another tree. Its trunk becomes a branch.
+export async function graftTree(treeId, parentId) {
+  return tx(["trees", "nodes", "patches", "events"], "readwrite", async (s) => {
+    const t = await reqP(s.trees.get(treeId)); const p = await reqP(s.nodes.get(parentId));
+    if (!t || !p) throw new Error("That no longer exists.");
+    if (p.treeId === treeId) throw new Error("A tree can't be grafted onto itself.");
+    const nodes = await reqP(s.nodes.index("treeId").getAll(treeId));
+    const sibs = await reqP(s.nodes.index("parentId").getAll(parentId));
+    const order = sibs.length ? Math.max(...sibs.map((x) => x.order)) + 1 : 1;
+    for (const n of nodes) {
+      const isRoot = n.id === t.rootId || n.parentId === null;
+      s.nodes.put({ ...n, treeId: p.treeId, ...(isRoot ? { parentId, order, wasTree: { name: t.name, color: t.color } } : {}), updatedAt: now() });
+    }
+    for (const pt of await reqP(s.patches.index("treeId").getAll(treeId))) s.patches.put({ ...pt, treeId: p.treeId });
+    s.trees.delete(treeId);
+    logEvent(s, "tree.graft", t.rootId, { name: t.name, onto: parentId, toTree: p.treeId, size: nodes.length });
+    return nodes.length;
+  });
+}
+
+// Turns a branch into its own tree, with that idea as the trunk.
+export async function splitToTree(nodeId, { name, zoneId } = {}) {
+  return tx(["trees", "nodes", "patches", "events"], "readwrite", async (s) => {
+    const n = await reqP(s.nodes.get(nodeId)); if (!n) throw new Error("That idea no longer exists.");
+    if (n.parentId === null) throw new Error("This is already a trunk.");
+    const from = await reqP(s.trees.get(n.treeId));
+    const all = await reqP(s.nodes.index("treeId").getAll(n.treeId));
+    const branch = subtreeIds(all, nodeId);
+    const zone = zoneId || from.zoneId;
+    const sibs = await reqP(s.trees.index("zoneId").getAll(zone));
+    const t = { id: uid(), zoneId: zone, name: clean(name, 80) || n.wasTree?.name || n.title, color: n.wasTree?.color ?? null, rootId: n.id,
+      order: sibs.length ? Math.max(...sibs.map((x) => x.order)) + 1 : 1, archived: false, createdAt: now(), updatedAt: now() };
+    for (const id of branch) {
+      const b = all.find((x) => x.id === id);
+      const next = { ...b, treeId: t.id, updatedAt: now() };
+      if (id === nodeId) { next.parentId = null; next.order = 1; delete next.wasTree; }
+      s.nodes.put(next);
+    }
+    // Patches written only about this branch go with it.
+    const inBranch = new Set(branch);
+    for (const p of await reqP(s.patches.index("treeId").getAll(from.id))) if (p.nodeIds.length && p.nodeIds.every((id) => inBranch.has(id))) s.patches.put({ ...p, treeId: t.id });
+    s.trees.put(t); logEvent(s, "tree.split", t.id, { from: from.id, size: branch.length });
+    return t;
+  });
+}
+
+// Merges every other tree in a zone onto one tree's trunk.
+export async function mergeZone(zoneId, intoTreeId) {
+  const trees = (await listTrees(zoneId)).filter((t) => t.id !== intoTreeId);
+  const into = await getTree(intoTreeId); if (!into) throw new Error("That tree no longer exists.");
+  for (const t of trees) await graftTree(t.id, into.rootId);
+  return trees.length;
 }
 
 // ---------- nodes ----------
@@ -173,7 +241,7 @@ export async function addNode(parentId, fields) {
 export async function updateNode(id, patch) {
   return tx(["nodes", "events"], "readwrite", async (s) => {
     const n = await reqP(s.nodes.get(id)); if (!n) throw new Error("That idea no longer exists.");
-    const p = pick(patch, ["title", "note", "body", "color", "order", "reviewedAt"]);
+    const p = pick(patch, ["title", "note", "body", "color", "order"]);
     if ("title" in p) { p.title = clean(p.title, 140); if (!p.title) throw new Error("Give the idea a title."); }
     if ("note" in p) p.note = clean(p.note, 500);
     if ("body" in p) p.body = String(p.body || "").slice(0, 200000);
@@ -186,12 +254,29 @@ export async function updateNode(id, patch) {
 // The trunk can't be deleted on its own; delete the tree instead.
 export async function deleteNode(id) {
   return tx(["nodes", "links", "events"], "readwrite", async (s) => {
-    const n = await reqP(s.nodes.get(id)); if (!n) return 0;
+    const n = await reqP(s.nodes.get(id)); if (!n) return { nodes: [], links: [] };
     if (n.parentId === null) throw new Error("This is the trunk. Delete the whole tree instead.");
     const all = await reqP(s.nodes.index("treeId").getAll(n.treeId));
     const ids = subtreeIds(all, id);
-    await removeNodes(s, ids);
-    return ids.length;
+    const set = new Set(ids);
+    return { nodes: all.filter((x) => set.has(x.id)), links: await removeNodes(s, ids) };
+  });
+}
+// Puts back what deleteNode returned (undo).
+export async function restoreRows({ nodes = [], links = [] }) {
+  return tx(["nodes", "links", "events"], "readwrite", async (s) => {
+    for (const n of nodes) s.nodes.put(n);
+    for (const l of links) s.links.put(l);
+    if (nodes.length) logEvent(s, "node.restore", nodes[0].id, { count: nodes.length });
+  });
+}
+// Records a review. rating: again | hard | good | easy.
+export async function reviewNode(id, rating) {
+  return tx(["nodes", "events"], "readwrite", async (s) => {
+    const n = await reqP(s.nodes.get(id)); if (!n) throw new Error("That idea no longer exists.");
+    const next = { ...n, srs: rate(n, rating), reviewedAt: now() };
+    s.nodes.put(next); logEvent(s, "node.review", id, { rating });
+    return next;
   });
 }
 // Moves an idea (and its branch) under a new parent, possibly in another tree.
@@ -222,12 +307,13 @@ export function subtreeIds(nodes, rootId) {
   return out;
 }
 async function removeNodes(s, ids) {
-  const set = new Set(ids);
+  const gone = new Map();
   for (const id of ids) {
-    for (const l of [...await reqP(s.links.index("fromId").getAll(id)), ...await reqP(s.links.index("toId").getAll(id))]) s.links.delete(l.id);
+    for (const l of [...await reqP(s.links.index("fromId").getAll(id)), ...await reqP(s.links.index("toId").getAll(id))]) { gone.set(l.id, l); s.links.delete(l.id); }
     s.nodes.delete(id);
   }
-  if (ids.length) logEvent(s, "node.delete", ids[0], { count: set.size });
+  if (ids.length) logEvent(s, "node.delete", ids[0], { count: ids.length });
+  return [...gone.values()];
 }
 
 // ---------- links ----------
@@ -253,6 +339,29 @@ export async function updateLink(id, patch) {
   });
 }
 export const deleteLink = (id) => tx(["links", "events"], "readwrite", (s) => { s.links.delete(id); logEvent(s, "link.delete", id); });
+
+// ---------- patches and inbox ----------
+export async function addPatch({ treeId, text, nodeIds = [] }) {
+  text = String(text || "").trim().slice(0, 4000); if (!text) throw new Error("Write something first.");
+  return tx(["patches", "events"], "readwrite", (s) => {
+    const p = { id: uid(), treeId, text, nodeIds: [...new Set(nodeIds)], createdAt: now() };
+    s.patches.put(p); logEvent(s, "patch.create", p.id, { treeId });
+    return p;
+  });
+}
+export async function listPatches(treeId) {
+  const ps = await tx(["patches"], "readonly", (s) => reqP(treeId ? s.patches.index("treeId").getAll(treeId) : s.patches.getAll()));
+  return ps.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+export const deletePatch = (id) => tx(["patches"], "readwrite", (s) => { s.patches.delete(id); });
+export async function addInbox(text) {
+  text = clean(text, 140); if (!text) throw new Error("Write something first.");
+  return tx(["inbox"], "readwrite", (s) => { const i = { id: uid(), text, createdAt: now() }; s.inbox.put(i); return i; });
+}
+export async function listInbox() {
+  return (await tx(["inbox"], "readonly", (s) => reqP(s.inbox.getAll()))).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+export const deleteInbox = (id) => tx(["inbox"], "readwrite", (s) => { s.inbox.delete(id); });
 
 // ---------- backup ----------
 export async function exportAll() {

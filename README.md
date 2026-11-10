@@ -2,7 +2,9 @@
 
 Grow a forest of linked notes. Zones are subjects, trees are topics, and branches can be grafted between trees.
 
-An installable web app (PWA) for laptop and phone. Notes stay on each device for now; sync comes later.
+An installable 3D web app (PWA) for laptop and phone. Notes stay on each device for now; sync comes later.
+
+Plain JavaScript modules with no build step beyond a file copy. 3D is [Three.js](https://threejs.org) (MIT), vendored in `src/vendor/`.
 
 ## Install
 
