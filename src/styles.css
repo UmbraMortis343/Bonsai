@@ -81,6 +81,12 @@ textarea{resize:vertical;line-height:1.45;display:block}
 .empty{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);width:min(380px,calc(100% - 32px));z-index:4;
   background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;box-shadow:var(--shadow)}
 
+.status{position:absolute;left:50%;top:46%;transform:translate(-50%,-50%);z-index:4;background:var(--card);border:1px solid var(--line);border-radius:99px;padding:7px 16px;font-size:14px;font-variant-numeric:tabular-nums;box-shadow:var(--shadow)}
+.crumb select{width:auto;padding:2px 6px;font-size:13px;border-radius:7px}
+.lbl.group{font-size:13px}
+.sug{display:flex;align-items:center;gap:6px}
+.sug .chips{flex:1;min-width:0;align-items:center}
+.res.sem b::after{content:" ≈";color:var(--muted);font-weight:400}
 .picker{position:absolute;left:50%;top:56px;transform:translateX(-50%);width:min(440px,calc(100% - 16px));z-index:7;display:grid;gap:6px;
   background:var(--card);border:1px solid var(--line);border-radius:13px;padding:8px;box-shadow:var(--shadow)}
 .pick-title{font-size:13px;color:var(--muted);padding:0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

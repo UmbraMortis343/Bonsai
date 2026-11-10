@@ -2,6 +2,15 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.5.0 — 2026-11-10
+
+Ideas placed by meaning.
+
+- **Meaning view (M):** every idea arranged in 3D by what it means, for one zone or for everything. Colour marks the tree or the zone.
+- **Suggested links:** pairs of ideas that are close in meaning but not linked yet. Link or dismiss each one.
+- **Search by meaning:** search also finds ideas that share no words with what you typed.
+- Runs on your device with a small open model (all-MiniLM-L6-v2). One 45 MB download the first time; nothing you write leaves the device.
+
 ## 0.4.0 — 2026-11-10
 
 Two windows: Knowledge and Garden.

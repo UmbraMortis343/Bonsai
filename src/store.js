@@ -12,12 +12,13 @@
 // event {id, at, type, ref, data}  Append-only log for the growth timeline.
 // patch {id, treeId, text, nodeIds, createdAt}  A short reflection (Patchwork Text).
 // inbox {id, text, createdAt}  Quick-captured thoughts waiting to be filed.
+// vector {id, model, hash, v}  An idea's embedding. Recomputable, so not in backups.
 
 import { rate } from "./srs.js";
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 const DB_NAME = "bonsai";
-const STORES = ["zones", "trees", "nodes", "links", "events", "meta", "patches", "inbox"];
+const STORES = ["zones", "trees", "nodes", "links", "events", "meta", "patches", "inbox"];   // what a backup holds
 
 let dbPromise = null;
 
@@ -43,7 +44,8 @@ function open() {
         db.createObjectStore("patches", { keyPath: "id" }).createIndex("treeId", "treeId");
         db.createObjectStore("inbox", { keyPath: "id" });
       }
-      // Future schema changes go here as `if (e.oldVersion < 3) { ... }`.
+      if (e.oldVersion < 3) db.createObjectStore("vectors", { keyPath: "id" });
+      // Future schema changes go here as `if (e.oldVersion < 4) { ... }`.
     };
     req.onsuccess = () => {
       const db = req.result;
@@ -363,6 +365,13 @@ export async function listInbox() {
 }
 export const deleteInbox = (id) => tx(["inbox"], "readwrite", (s) => { s.inbox.delete(id); });
 
+// ---------- vectors and settings ----------
+export const allVectors = () => tx(["vectors"], "readonly", (s) => reqP(s.vectors.getAll()));
+export const putVectors = (rows) => tx(["vectors"], "readwrite", (s) => { for (const r of rows) s.vectors.put(r); });
+export const deleteVectors = (ids) => tx(["vectors"], "readwrite", (s) => { for (const id of ids) s.vectors.delete(id); });
+export const getMeta = async (key) => (await tx(["meta"], "readonly", (s) => reqP(s.meta.get(key))))?.value;
+export const setMeta = (key, value) => tx(["meta"], "readwrite", (s) => { s.meta.put({ key, value }); });
+
 // ---------- backup ----------
 export async function exportAll() {
   const data = await tx(STORES, "readonly", async (s) => {
@@ -376,8 +385,9 @@ export async function exportAll() {
 export async function importAll(backup) {
   if (!backup || backup.app !== "bonsai") throw new Error("That file isn't a Bonsai backup.");
   if (backup.schema > SCHEMA_VERSION) throw new Error("This backup is from a newer Bonsai. Update the app first.");
-  await tx(STORES, "readwrite", async (s) => {
+  await tx([...STORES, "vectors"], "readwrite", async (s) => {
     for (const n of STORES) { await reqP(s[n].clear()); for (const row of backup[n] || []) s[n].put(row); }
+    await reqP(s.vectors.clear());
   });
 }
 export async function counts() {

@@ -27,6 +27,17 @@ self.addEventListener("fetch", (e) => {
   if (url.origin !== location.origin) return;
   // Always ask the network for the version file, so update checks are fresh.
   if (url.pathname.endsWith("/version.json")) return;
+  // The model runtime is big and optional: fetched on first use, then kept across updates.
+  if (url.pathname.includes("/vendor/ai/")) {
+    e.respondWith((async () => {
+      const keep = await caches.open("ai-bonsai-1"), hit = await keep.match(req);
+      if (hit) return hit;
+      const res = await fetch(req);
+      if (res.ok) keep.put(req, res.clone());
+      return res;
+    })());
+    return;
+  }
   e.respondWith((async () => {
     const cache = await caches.open(CACHE);
     const hit = await cache.match(req, { ignoreSearch: true }) ||

@@ -98,6 +98,6 @@ t.eq(await state(page, () => bonsai.S.trees.length), 2, "trees after archive");
 await page.click("#moreBtn"); await page.click('.mi:has-text("Archived")'); await page.click('.mi:has-text("Restore Basic electronics")');
 await page.waitForFunction(() => bonsai.S.trees.length === 3);
 const backup = await state(page, async () => { const b = await bonsai.store.exportAll(); return [b.schema, b.patches.length, b.nodes.length > 10]; });
-t.eq(backup, [2, 2, true], "backup");
+t.eq(backup, [3, 2, true], "backup");
 await page.waitForTimeout(700); await page.screenshot({ path: "tests/shots/forest-laptop.png" });
 await t.end();

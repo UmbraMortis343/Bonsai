@@ -4,6 +4,8 @@ Grow a forest of linked notes. Zones are subjects, trees are topics, and branche
 
 An installable 3D web app (PWA) for laptop and phone. Notes stay on each device for now; sync comes later.
 
+The meaning view runs [all-MiniLM-L6-v2](https://huggingface.co/Xenova/all-MiniLM-L6-v2) (Apache 2.0) in the browser through [Transformers.js](https://github.com/huggingface/transformers.js) (Apache 2.0), arranged with [umap-js](https://github.com/PAIR-code/umap-js) (Apache 2.0). The model lives in `src/models/`, fetched by the "Fetch embedding model" workflow.
+
 Plain JavaScript modules with no build step beyond a file copy. 3D is [Three.js](https://threejs.org) (MIT), vendored in `src/vendor/`.
 
 ## Install

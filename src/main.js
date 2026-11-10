@@ -5,6 +5,8 @@ import { Stage, THREE } from "./stage.js";
 import { Flora, grid, ring, pot } from "./flora.js";
 import { layoutTree, layoutForest } from "./layout.js";
 import { md } from "./md.js";
+import * as ai from "./ai.js";
+import { textFor, hashText } from "./semantic.js";
 import { $, el, put, toast, dialog, menu, overlayOpen, closeTop, closeAll } from "./dom.js";
 
 const PALETTE = [["Blue", "#3b82f6"], ["Violet", "#8b5cf6"], ["Pink", "#ec4899"], ["Red", "#ef4444"], ["Orange", "#f97316"], ["Amber", "#f59e0b"], ["Green", "#22c55e"], ["Teal", "#14b8a6"], ["Cyan", "#06b6d4"]];
@@ -25,7 +27,9 @@ const S = {
   byId: new Map(), kids: new Map(), byTree: new Map(), near: new Set(), lastChild: new Map(),
   tree: null, sel: null, panel: null, pick: null, quick: null, review: null, cutoff: null, stitch: false, editBody: false,
   flora: null, lay: null, forest: null, fsel: null, pendingSel: null,
+  scope: null, mean: null, suggest: null, aiOn: false,
 };
+const ideaView = () => S.view === "tree" || S.view === "meaning";
 let stage, T, labelEls = new Map(), decor = [], selMesh, playTimer = 0;
 
 // Scene colours come from the stylesheet, so light and dark stay in step.
@@ -193,27 +197,127 @@ function buildForest(garden = S.view === "garden") {
   stage.world.add(flora.group); stage.pickables = [flora.nodeMesh];
   stage.setLabels(labels); markSel();
 }
-const rebuild = () => (S.view === "tree" ? buildTree(false) : buildForest());
+const rebuild = () => (S.view === "tree" ? buildTree(false) : S.view === "meaning" ? S.mean && buildMeaning() : buildForest());
+
+// ---------- meaning view ----------
+// Ideas placed by what they mean (an on-device model), for one zone or for
+// everything. Colour marks the tree (in a zone) or the zone (everything).
+const scopeNodes = (zoneId) => { const ok = new Set(S.trees.filter((t) => !zoneId || t.zoneId === zoneId).map((t) => t.id)); return S.nodes.filter((n) => ok.has(n.treeId)); };
+const aiItems = (nodes) => nodes.map((n) => ({ id: n.id, text: textFor(n, S.byId.get(n.parentId), treeOf(n.treeId)) }));
+function setStatus(text) { const e = $("#status"); e.hidden = !text; e.textContent = text || ""; }
+const progressText = (p) => (p.stage === "model" ? `Loading model ${Math.round((100 * p.done) / (p.total || 1))}%` : p.stage === "embed" ? `Reading ${p.done}/${p.total}` : "Arranging");
+async function aiAllowed() {
+  if (S.aiOn) return true;
+  if (!(await dialog({ title: "The meaning view runs a small model on this device. It is a one-time 45 MB download.", ok: "Download" }))) return false;
+  S.aiOn = true; await store.setMeta("ai", true);
+  return true;
+}
+let meanRun = 0;
+const meanCache = new Map();
+async function showMeaning(scope) {
+  const run = ++meanRun, jumpTo = S.pendingSel; S.pendingSel = null;
+  S.view = "meaning"; S.scope = S.zones.some((z) => z.id === scope) ? scope : null;
+  S.tree = null; S.lay = null; S.sel = null; S.panel = null; S.mean = null; S.suggest = null;
+  document.body.dataset.meaning = "";
+  clearScene(); stage.setLabels([]); addDecor(grid(60, T.grid)); placeSel(); renderChrome();
+  if (!(await aiAllowed())) { if (run === meanRun) location.hash = "#/"; return; }
+  const nodes = scopeNodes(S.scope), ids = nodes.map((n) => n.id), items = aiItems(nodes);
+  try {
+    setStatus("Starting");
+    await ai.ensure(items, (p) => run === meanRun && setStatus(progressText(p)));
+    if (run !== meanRun) return;
+    const key = hashText(items.map((it) => it.id + hashText(it.text)).join());
+    if (!meanCache.has(key)) { setStatus("Arranging"); meanCache.set(key, ids.length ? await ai.project(ids, 1, (p) => run === meanRun && setStatus(progressText(p))) : new Float32Array(0)); }
+    if (run !== meanRun) return;
+    const flat = meanCache.get(key);
+    S.mean = { ids, pos: new Map(ids.map((id, i) => [id, [flat[i * 3], flat[i * 3 + 1], flat[i * 3 + 2]]])) };
+    S.sel = jumpTo && S.mean.pos.has(jumpTo) ? jumpTo : null;
+    setStatus(""); buildMeaning();
+    stage.setView({ target: vec(S.lay.center), radius: stage.fitDistance(S.lay.radius), phi: 1.3 });
+    renderChrome(); document.body.dataset.meaning = "ready";
+    ai.forget(new Set(S.nodes.map((n) => n.id))).catch(() => {});
+  } catch (e) { if (run === meanRun) { setStatus(""); toast(e.message || "The model couldn't load"); } }
+}
+function buildMeaning() {
+  clearScene();
+  const M = S.mean, trees = S.trees.filter((t) => !S.scope || t.zoneId === S.scope);
+  const groups = S.scope ? trees.map((t) => ({ id: t.id, name: t.name, color: t.color, trees: [t] }))
+    : S.zones.map((z) => ({ id: z.id, name: z.name, color: z.color, trees: trees.filter((t) => t.zoneId === z.id) }));
+  const items = [], heads = [], shown = new Set(), depth = new Map(), all = [];
+  groups.forEach((g, gi) => {
+    const color = g.color || PALETTE[gi % PALETTE.length][1], sum = [0, 0, 0]; let k = 0, top = 0;
+    for (const t of g.trees) {
+      const every = S.byTree.get(t.id) || [], nodes = every.filter((n) => M.pos.has(n.id)); if (!nodes.length) continue;
+      const real = layoutTree(every, t.rootId);
+      items.push({ tree: t, nodes, layout: { pos: M.pos, size: real.size, rootId: null }, offset: [0, 0], looks: new Map(nodes.map((n) => [n.id, { color, status: "ok" }])), passes: 0 });
+      for (const n of nodes) { const p = M.pos.get(n.id); shown.add(n.id); depth.set(n.id, real.depth.get(n.id) || 0); all.push(p); sum[0] += p[0]; sum[1] += p[1]; sum[2] += p[2]; k++; top = Math.max(top, p[1]); }
+    }
+    if (k) heads.push({ el: el("div", { class: "lbl tree group", dataset: { kind: "group", id: g.id }, text: g.name, style: `color:${color}` }), pos: new THREE.Vector3(sum[0] / k, top + 0.9, sum[2] / k), kind: "group", id: g.id });
+  });
+  const c = [0, 0, 0]; for (const p of all) for (let i = 0; i < 3; i++) c[i] += p[i] / (all.length || 1);
+  S.lay = { center: all.length ? c : [0, 3, 0], radius: Math.max(3, ...all.map((p) => Math.hypot(p[0] - c[0], p[1] - c[1], p[2] - c[2]))) + 1 };
+  const links = S.links.filter((l) => shown.has(l.fromId) && shown.has(l.toId)).map((l) => ({ id: l.id, a: l.fromId, b: l.toId, label: l.label }));
+  const flora = (S.flora = new Flora(items, links, T));
+  stage.world.add(flora.group); stage.pickables = [flora.nodeMesh];
+  addDecor(grid(Math.max(40, S.lay.radius * 5), T.grid));
+  const labels = [...heads];
+  for (const it of items) for (const n of it.nodes) {
+    const e = el("div", { class: "lbl node", dataset: { kind: "node", id: n.id }, text: n.title }); labelEls.set(n.id, e);
+    labels.push({ el: e, pos: flora.pos.get(n.id), kind: "node", id: n.id, depth: depth.get(n.id), r: flora.radii.get(n.id), tidy: true });
+  }
+  for (const l of links) if (l.label) labels.push(linkLabel(l, flora.linkMid.get(l.id)));
+  stage.setLabels(labels);
+  if (S.sel && !flora.pos.has(S.sel)) S.sel = null;
+  markSel();
+}
+const goMeaning = (zoneId) => { location.hash = "#/meaning" + (zoneId ? "/" + encodeURIComponent(zoneId) : ""); };
+async function openSuggest() {
+  const M = S.mean; if (!M) return;
+  S.panel = "suggest"; S.suggest = null; renderPanel();
+  const raw = await ai.pairs(M.ids).catch(() => []);
+  const dismissed = new Set((await store.getMeta("dismissed")) || []), linked = new Set(S.links.map((l) => [l.fromId, l.toId].sort().join("|")));
+  const out = [];
+  for (const [i, j, c] of raw) {
+    const a = S.byId.get(M.ids[i]), b = S.byId.get(M.ids[j]); if (!a || !b) continue;
+    if (a.parentId === b.id || b.parentId === a.id || (a.parentId != null && a.parentId === b.parentId)) continue;
+    const key = [a.id, b.id].sort().join("|"); if (dismissed.has(key) || linked.has(key)) continue;
+    out.push({ a: a.id, b: b.id, c, key, score: c + (a.treeId !== b.treeId ? 0.08 : 0) });
+  }
+  S.suggest = out.sort((x, y) => y.score - x.score).slice(0, 15);
+  if (S.panel === "suggest") renderPanel();
+}
+function suggestPanel() {
+  const rows = (S.suggest || []).filter((x) => S.byId.has(x.a) && S.byId.has(x.b));
+  const chip = (id) => el("button", { class: "chip", text: S.byId.get(id).title, title: pathOf(S.byId.get(id)), onclick: () => select(id, { fly: true }) });
+  return [
+    el("div", { class: "ph" }, el("h2", { text: "Suggested links" }), panelClose()),
+    S.suggest == null ? el("p", { class: "muted", text: "Looking" }) : !rows.length ? el("p", { class: "muted", id: "noSuggest", text: "Nothing close enough" }) : null,
+    rows.map((x) => el("div", { class: "sug" }, el("div", { class: "chips" }, chip(x.a), chip(x.b), el("span", { class: "muted", text: `${Math.round(x.c * 100)}%` })),
+      el("button", { class: "btn", text: "Link", onclick: async () => { if (await safely(() => store.addLink(x.a, x.b))) { S.suggest = S.suggest.filter((y) => y !== x); refresh(); } } }),
+      ib(null, "Dismiss", ICON.close, async () => { await store.setMeta("dismissed", [...((await store.getMeta("dismissed")) || []), x.key]); S.suggest = S.suggest.filter((y) => y !== x); renderPanel(); }))),
+  ];
+}
 
 function markSel() {
   S.near = new Set();
-  const n = S.view === "tree" ? S.byId.get(S.sel) : null;
+  const n = ideaView() ? S.byId.get(S.sel) : null;
   if (n) {
     for (let p = n; p; p = S.byId.get(p.parentId)) S.near.add(p.id);
     for (const c of kidsOf(n.id)) S.near.add(c.id);
     for (const c of kidsOf(n.parentId)) S.near.add(c.id);
   }
-  const on = S.view === "tree" ? S.sel : S.fsel;
+  const on = ideaView() ? S.sel : S.fsel;
   for (const [id, e] of labelEls) e.classList.toggle("sel", id === on);
   placeSel(); stage.invalidate();
 }
 function placeSel() {
   if (!selMesh) { selMesh = new THREE.Mesh(new THREE.SphereGeometry(1, 28, 18), new THREE.MeshBasicMaterial({ color: T.ink, side: THREE.BackSide })); stage.scene.add(selMesh); }
-  const p = S.view === "tree" && S.sel && S.flora?.pos.get(S.sel);
+  const p = ideaView() && S.sel && S.flora?.pos.get(S.sel);
   selMesh.visible = !!p;
   if (p) { selMesh.position.copy(p); selMesh.scale.setScalar(S.flora.radii.get(S.sel) * 1.16 + 0.03); }
 }
 function labelOpacity(L, dist) {
+  if (S.view === "meaning") return L.kind === "group" || L.id === S.sel ? 1 : THREE.MathUtils.clamp(2.3 - dist / (stage.radius * 0.85), 0, 1);
   if (S.view !== "tree") return L.kind === "zone" ? 1 : THREE.MathUtils.clamp(3.2 - dist / Math.max(30, stage.radius), 0, 1);
   if (S.review) return L.id === S.sel ? 1 : 0;
   if (L.kind === "link") return THREE.MathUtils.clamp(2 - dist / (stage.radius * 1.1), 0, 1);
@@ -231,7 +335,10 @@ async function go() {
   S.quick = null; S.review = null; S.cutoff = null; S.stitch = false;
   await load();
   const m = location.hash.match(/^#\/tree\/([^/?]+)/), id = m && decodeURIComponent(m[1]);
-  if (location.hash.startsWith("#/garden")) showGarden();
+  const mm = location.hash.match(/^#\/meaning(?:\/([^/?]+))?/);
+  meanRun++; setStatus(""); document.body.dataset.meaning = "";
+  if (mm) showMeaning(mm[1] && decodeURIComponent(mm[1]));
+  else if (location.hash.startsWith("#/garden")) showGarden();
   else if (id && treeOf(id)) showTree(id);
   else { if (id) history.replaceState(null, "", "#/"); showForest(); }
 }
@@ -276,7 +383,8 @@ function pickPlant(id) {
 }
 async function refresh({ animate = false, panel = true } = {}) {
   await load();
-  if (S.view === "tree") {
+  if (S.view === "meaning") { if (S.mean) buildMeaning(); }
+  else if (S.view === "tree") {
     const t = treeOf(S.tree.id);
     if (!t) { location.hash = "#/"; return; }
     S.tree = t; buildTree(animate);
@@ -299,8 +407,8 @@ async function openTree(id) {
 }
 function fitView() {
   stage.userMoved = false;
-  if (S.view === "tree") stage.flyTo({ target: vec(S.lay.center), radius: stage.fitDistance(S.lay.radius) * 0.88, phi: 1.2 });
-  else stage.flyTo(forestView());
+  if (S.lay) stage.flyTo({ target: vec(S.lay.center), radius: stage.fitDistance(S.lay.radius) * 0.88, phi: 1.2 });
+  else if (S.forest) stage.flyTo(forestView());
 }
 function forestView() {
   const f = S.forest.fl;
@@ -320,7 +428,7 @@ function ensureVisible(id) {
   if (p.x < stage.w * 0.1 || p.x > right - stage.w * 0.08 || p.y < stage.h * 0.16 || p.y > stage.h * 0.86) stage.flyTo({ target: home }, 360);
 }
 function nav(key) {
-  const n = S.byId.get(S.sel); if (!n) return select(S.tree.rootId);
+  const n = S.byId.get(S.sel); if (!n) return S.tree && select(S.tree.rootId);
   let to = null;
   if (key === "ArrowDown") { to = n.parentId; if (to) S.lastChild.set(to, n.id); }
   else if (key === "ArrowUp") { const ks = kidsOf(n.id); to = (ks.find((c) => c.id === S.lastChild.get(n.id)) || ks[0])?.id; }
@@ -349,7 +457,11 @@ function renderTop() {
   const search = ib("searchBtn", "Search", ICON.search, () => find());
   const swap = el("button", { class: "btn pill plain", id: "switchBtn", title: "Shift+Tab", onclick: toggleWindow }, S.view === "garden" ? "Knowledge" : "Garden", S.view !== "garden" && due ? el("span", { class: "thirst", text: String(due) }) : null);
   const brand = el("div", { class: "brand" }, el("img", { src: "icons/icon-192.png", alt: "", width: 26, height: 26 }), el("h1", { text: "Bonsai" }));
-  if (S.view === "tree") {
+  if (S.view === "meaning") {
+    const pick = el("select", { id: "scopeSel", "aria-label": "Show", onchange: (e) => goMeaning(e.target.value) }, el("option", { value: "", text: "Everything", selected: !S.scope }), S.zones.map((z) => el("option", { value: z.id, text: z.name, selected: z.id === S.scope })));
+    put($("#top"), ib("backBtn", "Forest", ICON.back, () => { location.hash = "#/"; }), el("div", { class: "crumb" }, el("h1", { text: "Meaning" }), pick),
+      el("span", { class: "grow" }), S.mean && el("button", { class: "btn pill plain", id: "suggestBtn", text: "Suggest", onclick: openSuggest }), search);
+  } else if (S.view === "tree") {
     const zone = S.zones.find((z) => z.id === S.tree.zoneId);
     put($("#top"), ib("backBtn", "Forest", ICON.back, () => { location.hash = "#/"; }),
       el("div", { class: "crumb" }, el("h1", { text: S.tree.name }), el("span", { text: zone?.name || "" })),
@@ -369,6 +481,7 @@ function renderTop() {
 function appMenu(anchor) {
   const archived = [...S.allZones.filter((z) => z.archived), ...S.allTrees.filter((t) => t.archived)];
   menu(anchor, [
+    S.view === "forest" && { label: "Meaning view", key: "M", run: () => goMeaning() },
     S.view === "forest" && { label: "Timeline", key: "T", run: toggleTimeline },
     archived.length && { label: "Archived", run: () => menu(anchor, archived.map((x) => ({ label: `Restore ${x.name}`, run: async () => { await safely(() => (x.rootId ? store.updateTree : store.updateZone)(x.id, { archived: false })); refresh(); } }))) },
     "-", { label: "Export backup", run: exportBackup }, { label: "Restore backup", run: () => $("#importFile").click() },
@@ -383,7 +496,7 @@ function treeMenu(anchor) {
   const t = S.tree;
   menu(anchor, [
     { label: "Patches", key: "P", run: togglePatches }, { label: "Timeline", key: "T", run: toggleTimeline },
-    { label: "Fit view", key: "0", run: fitView },
+    { label: "Meaning view", key: "M", run: () => { S.pendingSel = S.sel; goMeaning(t.zoneId); } }, { label: "Fit view", key: "0", run: fitView },
     "-", { label: "Rename", run: () => renameThing(t, store.updateTree, "Tree") }, { label: "Colour", run: () => colourThing(t, store.updateTree) },
     S.zones.length > 1 && { label: "Move to zone", run: async () => {
       const v = await dialog({ title: `Move ${t.name}`, fields: [{ name: "zoneId", label: "Zone", type: "select", value: t.zoneId, options: S.zones.map((z) => [z.id, z.name]) }], ok: "Move" });
@@ -402,7 +515,7 @@ function zoneMenu(id, anchor) {
   const z = S.zones.find((x) => x.id === id); if (!z) return;
   const trees = S.trees.filter((t) => t.zoneId === id);
   menu(anchor, [
-    { label: "New tree", run: () => newTree(id) },
+    { label: "New tree", run: () => newTree(id) }, { label: "Meaning view", run: () => goMeaning(id) },
     { label: "Rename", run: () => renameThing(z, store.updateZone, "Zone") }, { label: "Colour", run: () => colourThing(z, store.updateZone) },
     trees.length > 1 && { label: "Merge into one tree", run: async () => {
       const v = await dialog({ title: `Merge ${z.name}`, fields: [{ name: "into", label: "Trunk", type: "select", value: trees[0].id, options: trees.map((t) => [t.id, t.name]) }], ok: "Merge" });
@@ -443,7 +556,7 @@ async function capture() {
 function shortcuts() {
   const rows = [["↑ ↓ ← →", "Child, parent, siblings"], ["Tab", "Add a branch"], ["Enter", "Add a sibling"], ["R", "Rename"], ["Del", "Delete"], ["Space", "Notes"],
     ["L", "Link"], ["G", "Graft"], ["C", "Colour"], ["F", "Fly to idea"], ["0", "Fit view"], ["W A S D  Q E", "Fly"], ["/", "Search"], ["I", "Capture"],
-    ["P", "Patches"], ["T", "Timeline"], ["N  Z", "New tree, new zone"], ["Shift+Tab", "Knowledge or garden"], ["Enter  V", "Garden: water the plant, water everything"], ["Esc", "Back"]];
+    ["P", "Patches"], ["T", "Timeline"], ["M", "Meaning view"], ["N  Z", "New tree, new zone"], ["Shift+Tab", "Knowledge or garden"], ["Enter  V", "Garden: water the plant, water everything"], ["Esc", "Back"]];
   dialog({ title: "Shortcuts", ok: null, cancel: "Close", body: el("table", { class: "keys" }, rows.map(([k, d]) => el("tr", {}, el("td", {}, el("kbd", { text: k })), el("td", { text: d })))) });
 }
 async function exportBackup() {
@@ -485,6 +598,14 @@ function renderActions() {
     a.hidden = false;
     return;
   }
+  const idea = S.view === "meaning" && !S.pick ? S.byId.get(S.sel) : null;
+  if (idea) {
+    put(a, el("div", { class: "plant" }, el("b", { text: idea.title }), el("span", { class: "muted", text: pathOf(idea) })),
+      el("button", { class: "btn", dataset: { act: "open" }, text: "Open", onclick: () => { S.pendingSel = idea.id; goTree(idea.treeId); } }),
+      el("button", { class: "btn", dataset: { act: "note" }, text: "Note", onclick: togglePanel }), el("button", { class: "btn", dataset: { act: "link" }, text: "Link", onclick: linkFrom }));
+    a.hidden = false;
+    return;
+  }
   const n = S.view === "tree" && !S.review && !S.pick && S.cutoff == null ? S.byId.get(S.sel) : null;
   if (!n) { a.hidden = true; a.replaceChildren(); return; }
   const b = (act, text, run) => el("button", { class: "btn", dataset: { act }, text, onclick: run });
@@ -510,7 +631,7 @@ async function commitQuick(value, then) {
   if (then) quick(then);
 }
 function togglePanel() {
-  if (S.view !== "tree") return;
+  if (!ideaView()) return;
   S.panel = S.panel === "node" ? null : S.byId.get(S.sel) ? "node" : S.panel; renderPanel();
 }
 function togglePatches() { if (S.view !== "tree") return; S.panel = S.panel === "patches" ? null : "patches"; S.stitch = false; renderPanel(); }
@@ -559,14 +680,23 @@ function pickNode({ title = "", exclude = new Set(), deep = false }) {
   return new Promise((resolve) => {
     S.pick?.finish(null);
     const box = $("#picker"), live = new Set(S.trees.map((t) => t.id));
-    let results = [], idx = 0;
+    let results = [], idx = 0, semTimer = 0;
     const input = el("input", { id: "pickInput", placeholder: "Search", autocomplete: "off", "aria-label": title || "Search" }), list = el("div", { class: "results" });
     const finish = (id) => { S.pick = null; box.hidden = true; box.replaceChildren(); renderActions(); resolve(id); };
-    const draw = () => put(list, ...results.map((n, i) => el("button", { type: "button", class: "res" + (i === idx ? " on" : ""), onclick: () => finish(n.id) }, el("b", { text: n.title }), el("span", { text: pathOf(n) }))));
+    const sem = new Set();
+    const draw = () => put(list, ...results.map((n, i) => el("button", { type: "button", class: "res" + (i === idx ? " on" : "") + (sem.has(n.id) ? " sem" : ""), onclick: () => finish(n.id) }, el("b", { text: n.title }), el("span", { text: pathOf(n) }))));
     input.addEventListener("input", () => {
       const q = input.value.trim().toLowerCase(), score = (n) => { const t = n.title.toLowerCase(); return t.startsWith(q) ? 0 : t.includes(q) ? 1 : deep && `${n.note || ""} ${n.body || ""}`.toLowerCase().includes(q) ? 2 : 9; };
       results = q ? S.nodes.filter((n) => live.has(n.treeId) && !exclude.has(n.id)).map((n) => [score(n), n]).filter(([s]) => s < 9).sort((a, b) => a[0] - b[0] || a[1].title.localeCompare(b[1].title)).slice(0, 8).map(([, n]) => n) : [];
-      idx = 0; draw();
+      idx = 0; sem.clear(); draw();
+      // With the model on, add ideas that match by meaning.
+      clearTimeout(semTimer);
+      if (deep && S.aiOn && ai.cache.size && q.length > 2) semTimer = setTimeout(async () => {
+        const hits = await ai.search(q, S.nodes.filter((n) => live.has(n.treeId) && !exclude.has(n.id)).map((n) => n.id), 6).catch(() => []);
+        if (S.pick?.finish !== finish || input.value.trim().toLowerCase() !== q) return;
+        for (const [id, c] of hits) if (c > 0.25 && results.length < 8 && !results.some((n) => n.id === id)) { results.push(S.byId.get(id)); sem.add(id); }
+        draw(); box.dataset.sem = q;
+      }, 250);
     });
     input.addEventListener("keydown", (e) => {
       if ((e.key === "ArrowDown" || e.key === "ArrowUp") && results.length) { e.preventDefault(); idx = (idx + (e.key === "ArrowDown" ? 1 : -1) + results.length) % results.length; draw(); }
@@ -579,7 +709,7 @@ function pickNode({ title = "", exclude = new Set(), deep = false }) {
 async function find() { const id = await pickNode({ deep: true }); if (id != null) jump(id); }
 function jump(id) {
   const n = S.byId.get(id); if (!n) return;
-  if (S.view === "tree" && S.tree.id === n.treeId) select(id, { fly: true });
+  if ((S.view === "tree" && S.tree.id === n.treeId) || (S.view === "meaning" && S.mean?.pos.has(id))) select(id, { fly: true });
   else { S.pendingSel = id; goTree(n.treeId); }
 }
 
@@ -587,11 +717,12 @@ function jump(id) {
 function renderPanel() {
   const p = $("#panel");
   S.flush?.(); S.flush = null;
-  if (S.panel === "node" && !(S.view === "tree" && S.byId.get(S.sel))) S.panel = null;
+  if (S.panel === "node" && !(ideaView() && S.byId.get(S.sel))) S.panel = null;
+  if (S.panel === "suggest" && S.view !== "meaning") S.panel = null;
   if (S.panel === "patches" && S.view !== "tree") S.panel = null;
   if (!S.panel) { p.hidden = true; p.replaceChildren(); document.body.dataset.panel = ""; return; }
   p.hidden = false; document.body.dataset.panel = S.panel;
-  put(p, ...(S.panel === "node" ? nodePanel(S.byId.get(S.sel)) : S.panel === "patches" ? patchesPanel() : inboxPanel()).flat().filter(Boolean));
+  put(p, ...(S.panel === "node" ? nodePanel(S.byId.get(S.sel)) : S.panel === "patches" ? patchesPanel() : S.panel === "suggest" ? suggestPanel() : inboxPanel()).flat().filter(Boolean));
 }
 const panelClose = () => ib("panelClose", "Close", ICON.close, () => { S.panel = null; renderPanel(); });
 function nodePanel(n) {
@@ -725,7 +856,7 @@ function timeRange() {
 }
 function stopPlay() { clearInterval(playTimer); playTimer = 0; }
 function toggleTimeline() {
-  if (S.view === "garden") return;
+  if (S.view === "garden" || S.view === "meaning") return;
   stopPlay();
   if (S.cutoff != null) S.cutoff = null;
   else { S.cutoff = Date.now(); S.panel = null; S.quick = null; S.review = null; }
@@ -780,6 +911,7 @@ function onTap(hit, e) {
   if (S.review || S.cutoff != null) return;
   if (S.quick) { S.quick = null; }
   if (!hit) return select(null);
+  if (hit.kind === "group") { const L = stage.labels.find((x) => x.kind === "group" && x.id === hit.id); if (L) stage.flyTo({ target: L.pos, radius: Math.min(stage.radius, stage.fitDistance(S.lay.radius) * 0.5) }); return; }
   if (hit.kind === "link") { const l = S.links.find((x) => x.id === hit.id); if (l) { S.panel = "node"; select(l.fromId); } return; }
   if (e.pointerType === "mouse" || S.sel === hit.id) { S.panel = "node"; select(hit.id); }
   else {
@@ -824,6 +956,7 @@ function onKey(e) {
     return;
   }
   if (S.view === "forest") {
+    if (k === "m") { stop(); return goMeaning(); }
     if (k === "n") { stop(); return newTree(); }
     if (k === "z") { stop(); return newZone(); }
     if (k.startsWith("Arrow")) { stop(); return stepForest(k === "ArrowRight" || k === "ArrowUp" ? 1 : -1); }
@@ -831,6 +964,16 @@ function onKey(e) {
     return;
   }
   const n = S.byId.get(S.sel);
+  if (S.view === "meaning") {
+    if (k === "m") { stop(); location.hash = "#/"; }
+    else if (k === "Enter" && n) { stop(); S.pendingSel = n.id; goTree(n.treeId); }
+    else if (k === " ") { stop(); togglePanel(); }
+    else if (k === "l") { stop(); linkFrom(); }
+    else if (k === "f" && n) stage.flyTo({ target: S.flora.home.get(n.id), radius: Math.min(stage.radius, 8) });
+    else if (k.startsWith("Arrow")) { stop(); nav(k); }
+    return;
+  }
+  if (k === "m") { stop(); S.pendingSel = S.sel; return goMeaning(S.tree.zoneId); }
   if (k === "Tab") { stop(); quick("child"); }
   else if (k === "Enter") { stop(); quick("sibling"); }
   else if (k === "r" || k === "F2") { stop(); if (n) quick("rename"); }
@@ -855,7 +998,7 @@ async function init() {
   stage.labelRank = (L) => (L.id === S.sel ? 0 : S.near.has(L.id) ? 1 + L.depth * 0.01 : 2 + L.depth);
   stage.onHover = (hit, e) => {
     stage.container.style.cursor = hit && !(S.view === "forest" && hit.kind === "link") ? "pointer" : "";
-    if (hit?.kind === "node" && S.view === "tree") showHover(hit.id, e.clientX, e.clientY); else hideHover();
+    if (hit?.kind === "node" && ideaView()) showHover(hit.id, e.clientX, e.clientY); else hideHover();
   };
   stage.container.addEventListener("pointerdown", hideHover);
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { T = theme(); stage.setTheme(T); selMesh?.material.color.set(T.ink); rebuild(); });
@@ -863,6 +1006,8 @@ async function init() {
   window.addEventListener("keydown", (e) => { if (e.key === "Tab" && e.shiftKey && document.activeElement === document.body) e.preventDefault(); onKey(e); });
   $("#importFile").addEventListener("change", (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) importBackup(f); });
   store.requestPersistence();
+  S.aiOn = !!(await store.getMeta("ai").catch(() => false));
+  if (S.aiOn) ai.loadCache().catch(() => {});
   window.bonsai = { S, store, refresh, get stage() { return stage; } };
   await go();
   document.body.dataset.ready = "1";

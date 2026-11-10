@@ -8,7 +8,7 @@ import { join, extname, normalize } from "node:path";
 const TYPES = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8", ".json": "application/json", ".webmanifest": "application/manifest+json",
-  ".png": "image/png", ".svg": "image/svg+xml", ".ico": "image/x-icon",
+  ".mjs": "text/javascript; charset=utf-8", ".wasm": "application/wasm", ".png": "image/png", ".svg": "image/svg+xml", ".ico": "image/x-icon",
 };
 
 export function serve(getDir, port, base = "/Bonsai/") {
@@ -21,8 +21,8 @@ export function serve(getDir, port, base = "/Bonsai/") {
       const dir = getDir();
       const file = normalize(join(dir, p));
       if (!file.startsWith(normalize(dir))) { res.writeHead(403); return res.end(); }
-      await stat(file);
-      res.writeHead(200, { "Content-Type": TYPES[extname(file)] || "application/octet-stream", "Cache-Control": "no-cache" });
+      const info = await stat(file);
+      res.writeHead(200, { "Content-Type": TYPES[extname(file)] || "application/octet-stream", "Content-Length": info.size, "Cache-Control": "no-cache" });
       res.end(await readFile(file));
     } catch {
       res.writeHead(404); res.end("Not found");
