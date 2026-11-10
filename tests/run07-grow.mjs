@@ -7,26 +7,45 @@ const page = await t.page();
 const ids = await seed(page);
 const key = (k) => page.keyboard.press(k);
 
-// Nothing is due on day one; a day later the forest shows what's due.
-if (await page.isVisible("#reviewBtn")) t.fail("review due on the first day");
+// Nothing is thirsty on day one; a few days later the garden shows what is.
+if (await page.isVisible("#switchBtn .thirst")) t.fail("something thirsty on the first day");
 await page.evaluate(async () => {
   const b = await bonsai.store.exportAll(), old = new Date(Date.now() - 3 * 86400000).toISOString();
   b.nodes.forEach((n, i) => { n.createdAt = new Date(Date.parse(old) + (n.parentId === null ? 0 : (i + 1) * 60000)).toISOString(); });
   await bonsai.store.importAll(b); await bonsai.refresh();
 });
-await page.waitForSelector("#reviewBtn");
-await openTree(page, ids.basic);
-const due = await state(page, () => document.querySelector("#reviewBtn").textContent);
-t.eq(due, "Review 3", "due in this tree");   // trunk, Resistors, Capacitors have something to recall
+t.eq(await page.textContent("#switchBtn .thirst"), "5", "thirsty count on the Garden button");   // 3 trunks, Resistors, Capacitors
+await page.keyboard.press("Shift+Tab");
+await page.waitForSelector("#waterAll");
+t.eq(await state(page, () => [bonsai.S.view, location.hash]), ["garden", "#/garden"], "Shift+Tab opens the garden");
+await page.click('.lbl.tree:has-text("Basic electronics")');
+await page.waitForSelector("#waterBtn");
+t.eq(await page.textContent("#waterBtn"), "Water 3", "thirsty in this plant");
 const limbsBefore = await state(page, () => bonsai.S.flora.limbMesh.count);
-await page.click("#reviewBtn"); await page.waitForSelector("#showAnswer");
-t.eq(await state(page, () => document.querySelectorAll(".lbl:not([style*='display: none'])").length), 1, "labels shown during review");
+await page.screenshot({ path: "tests/shots/garden-thirsty.png" });
+await page.click("#waterBtn"); await page.waitForSelector("#showAnswer");
 for (let i = 0; i < 3; i++) { await key(" "); await page.waitForSelector(".rate"); await key("3"); await page.waitForFunction((n) => !bonsai.S.review || bonsai.S.review.i === n, i + 1); }
 await page.waitForSelector("#review", { state: "hidden" });
-t.eq(await state(page, () => bonsai.S.nodes.reduce((a, n) => a + (n.srs?.passes || 0), 0)), 3, "passes");
-if (!((await state(page, () => bonsai.S.flora.limbMesh.count)) > limbsBefore)) t.fail("roots didn't grow after passing reviews");
-if (await page.isVisible("#reviewBtn")) t.fail("still due after reviewing");
-await page.waitForTimeout(500); await page.screenshot({ path: "tests/shots/tree-roots.png" });
+const passes = () => state(page, () => bonsai.S.nodes.reduce((a, n) => a + (n.srs?.passes || 0), 0));
+t.eq(await passes(), 3, "passes after watering");
+if (!((await state(page, () => bonsai.S.flora.limbMesh.count)) > limbsBefore)) t.fail("roots didn't grow after watering");
+t.eq(await page.textContent("#waterBtn"), "Practise", "plant still thirsty after watering");
+
+// "All good" passes a whole plant in one tap, and can be undone.
+await page.click('.lbl.tree:has-text("Op-amps")'); await page.waitForSelector("#allGood");
+await page.click("#allGood"); await page.waitForFunction(() => !document.querySelector("#allGood"));
+t.eq(await passes(), 4, "passes after All good");
+await page.click("#toast .link"); await page.waitForSelector("#allGood");
+t.eq(await passes(), 3, "passes after undo");
+await page.waitForTimeout(500); await page.screenshot({ path: "tests/shots/garden-laptop.png" });
+
+// Back in the knowledge window the trees carry no roots or fading.
+await page.keyboard.press("Shift+Tab");
+await page.waitForSelector("#addBtn");
+t.eq(await state(page, () => bonsai.S.view), "forest", "Shift+Tab returns to knowledge");
+await openTree(page, ids.basic);
+t.eq(await state(page, () => [bonsai.S.flora.limbMesh.count, bonsai.S.flora.ids.length]), [9, 9], "knowledge tree has no roots");
+if (await page.$("#reviewBtn")) t.fail("review button in the knowledge window");
 
 // Patches attach to the ideas they mention; a stitch lands in the trunk's notes.
 await key("p"); await page.fill("#patchText", "Resistors drop voltage in proportion"); await page.click('.stack .btn.primary');

@@ -2,13 +2,16 @@
 import * as store from "./store.js";
 import * as srs from "./srs.js";
 import { Stage, THREE } from "./stage.js";
-import { Flora, grid, ring } from "./flora.js";
+import { Flora, grid, ring, pot } from "./flora.js";
 import { layoutTree, layoutForest } from "./layout.js";
 import { md } from "./md.js";
 import { $, el, put, toast, dialog, menu, overlayOpen, closeTop, closeAll } from "./dom.js";
 
 const PALETTE = [["Blue", "#3b82f6"], ["Violet", "#8b5cf6"], ["Pink", "#ec4899"], ["Red", "#ef4444"], ["Orange", "#f97316"], ["Amber", "#f59e0b"], ["Green", "#22c55e"], ["Teal", "#14b8a6"], ["Cyan", "#06b6d4"]];
 const SWATCHES = [["Auto", ""], ...PALETTE];
+// Garden colours: how well each idea is being kept alive.
+const G = { leaf: "#22c55e", thirsty: "#f59e0b", dry: "#a8a29e", stem: "#65a30d", pot: "#c2714f" };
+const DAY = 86400000;
 const ICON = {
   back: "M15 5l-7 7 7 7", close: "M6 6l12 12M18 6L6 18", plus: "M12 5v14M5 12h14", more: "M5 12h.01M12 12h.01M19 12h.01",
   search: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4", inbox: "M4 13l3-8h10l3 8v6H4zM4 13h5a3 3 0 0 0 6 0h5", play: "M8 5l11 7-11 7z", pause: "M8 5v14M16 5v14",
@@ -71,8 +74,18 @@ function shownNodes(tree) {
   }
   return out;
 }
-function looksFor(tree, nodes) {
+// thirsty: due for review. dry: due more than a day ago.
+function thirst(n, now = Date.now()) {
+  if (!srs.reviewable(n, kidsOf(n.id).length)) return "ok";
+  const due = Date.parse(srs.dueAt(n));
+  return due + DAY <= now ? "dry" : due <= now ? "thirsty" : "ok";
+}
+function looksFor(tree, nodes, garden) {
   const m = new Map(), now = Date.now(), memo = new Map();
+  if (garden) {
+    for (const n of nodes) { const t = thirst(n, now); m.set(n.id, { color: t === "dry" ? G.dry : t === "thirsty" ? G.thirsty : n.id === tree.rootId ? G.stem : G.leaf, status: "ok" }); }
+    return m;
+  }
   // An idea takes its own colour, else its parent's. With no colours set, the
   // trunk is neutral and each main branch gets its own colour.
   const main = kidsOf(tree.rootId);
@@ -85,7 +98,7 @@ function looksFor(tree, nodes) {
     }
     return memo.get(n.id);
   };
-  for (const n of nodes) m.set(n.id, { color: colorOf(n), status: srs.status(n, kidsOf(n.id).length, now) });
+  for (const n of nodes) m.set(n.id, { color: colorOf(n), status: "ok" });
   return m;
 }
 const passesOf = (treeId) => (S.byTree.get(treeId) || []).reduce((a, n) => a + (n.srs?.passes || 0), 0);
@@ -106,7 +119,7 @@ function buildTree(animate) {
   const links = S.links.filter((l) => ids.has(l.fromId) && ids.has(l.toId)).map((l) => ({ id: l.id, a: l.fromId, b: l.toId, label: l.label }));
   const oldPos = animate && S.flora ? new Map([...S.flora.pos].map(([k, v]) => [k, v.clone()])) : null;
   clearScene();
-  const flora = (S.flora = new Flora([{ tree, nodes, layout: lay, offset: [0, 0], looks: looksFor(tree, nodes), passes: passesOf(tree.id) }], links, T));
+  const flora = (S.flora = new Flora([{ tree, nodes, layout: lay, offset: [0, 0], looks: looksFor(tree, nodes), passes: 0 }], links, T));
   stage.world.add(flora.group); stage.pickables = [flora.nodeMesh];
   addDecor(grid(Math.max(40, lay.footprint * 6), T.grid));
   const labels = nodes.map((n) => {
@@ -146,15 +159,17 @@ function treeSpot(id) {
   const p = S.forest?.fl.trees.get(id), lay = S.forest?.lays.get(id);
   return p ? { target: new THREE.Vector3(p.x + lay.center[0], lay.center[1], p.z + lay.center[2]), radius: stage.fitDistance(lay.radius) * 0.88 } : null;
 }
-function buildForest() {
+// Draws every tree on the floor: the knowledge forest, or (garden) the same
+// trees as plants coloured by how thirsty they are, with roots and pots.
+function buildForest(garden = S.view === "garden") {
   clearScene();
-  const cut = S.cutoff, born = (x) => cut == null || Date.parse(x.createdAt) <= cut;
+  const cut = garden ? null : S.cutoff, born = (x) => cut == null || Date.parse(x.createdAt) <= cut;
   const groups = S.zones.filter(born).map((z) => ({ z, trees: S.trees.filter((t) => t.zoneId === z.id && (born(t) || shownNodes(t).length > 1)) }));
   const lays = new Map();
   for (const g of groups) for (const t of g.trees) lays.set(t.id, layoutTree(S.byTree.get(t.id) || [], t.rootId));
   const fl = layoutForest(groups.map((g) => ({ id: g.z.id, trees: g.trees.map((t) => ({ id: t.id, footprint: lays.get(t.id).footprint })) })));
   S.forest = { fl, lays };
-  const items = [], shown = new Set(), labels = [];
+  const items = [], shown = new Set(), labels = [], sags = new Map();
   for (const g of groups) {
     const zp = fl.zones.get(g.z.id);
     const d = addDecor(ring(zp.r, g.z.color || T.ring)); d.position.x = zp.x; d.position.z = zp.z;
@@ -162,14 +177,19 @@ function buildForest() {
     for (const t of g.trees) {
       const p = fl.trees.get(t.id), lay = lays.get(t.id), nodes = shownNodes(t);
       for (const n of nodes) shown.add(n.id);
-      items.push({ tree: t, nodes, layout: lay, offset: [p.x, p.z], looks: looksFor(t, nodes), passes: passesOf(t.id) });
-      const e = el("div", { class: "lbl tree", dataset: { kind: "tree", id: t.id }, text: t.name }); labelEls.set(t.id, e);
-      labels.push({ el: e, pos: new THREE.Vector3(p.x, lay.height + 0.75, p.z), kind: "tree", id: t.id });
+      items.push({ tree: t, nodes, layout: lay, offset: [p.x, p.z], looks: looksFor(t, nodes, garden), passes: garden ? passesOf(t.id) : 0 });
+      const dry = garden ? nodes.filter((n) => thirst(n) !== "ok").length : 0;
+      const e = el("div", { class: "lbl tree", dataset: { kind: "tree", id: t.id } }, t.name, dry ? el("span", { class: "thirst", text: String(dry) }) : null); labelEls.set(t.id, e);
+      // A plant sags as more of it dries out.
+      const sag = garden ? 1 - 0.3 * (dry / Math.max(1, nodes.length)) : 1; sags.set(t.id, sag);
+      labels.push({ el: e, pos: new THREE.Vector3(p.x, lay.height * sag + 0.75, p.z), kind: "tree", id: t.id });
+      if (garden) { const pt = addDecor(pot(G.pot)); pt.position.x = p.x; pt.position.z = p.z; }
     }
   }
   const g = addDecor(grid(fl.radius * 3 + 60, T.grid)); g.position.x = Math.round(fl.center.x / 2) * 2; g.position.z = Math.round(fl.center.z / 2) * 2;
-  const links = S.links.filter((l) => shown.has(l.fromId) && shown.has(l.toId)).map((l) => ({ id: l.id, a: l.fromId, b: l.toId, label: l.label }));
-  const flora = (S.flora = new Flora(items, links, T));
+  const links = garden ? [] : S.links.filter((l) => shown.has(l.fromId) && shown.has(l.toId)).map((l) => ({ id: l.id, a: l.fromId, b: l.toId, label: l.label }));
+  const flora = (S.flora = new Flora(items, links, garden ? { ...T, limb: G.stem } : T));
+  if (garden) { for (const it of items) for (const n of it.nodes) { const v = flora.pos.get(n.id); if (v) v.y *= sags.get(it.tree.id); } flora.apply(); }
   stage.world.add(flora.group); stage.pickables = [flora.nodeMesh];
   stage.setLabels(labels); markSel();
 }
@@ -194,7 +214,7 @@ function placeSel() {
   if (p) { selMesh.position.copy(p); selMesh.scale.setScalar(S.flora.radii.get(S.sel) * 1.16 + 0.03); }
 }
 function labelOpacity(L, dist) {
-  if (S.view === "forest") return L.kind === "zone" ? 1 : THREE.MathUtils.clamp(3.2 - dist / Math.max(30, stage.radius), 0, 1);
+  if (S.view !== "tree") return L.kind === "zone" ? 1 : THREE.MathUtils.clamp(3.2 - dist / Math.max(30, stage.radius), 0, 1);
   if (S.review) return L.id === S.sel ? 1 : 0;
   if (L.kind === "link") return THREE.MathUtils.clamp(2 - dist / (stage.radius * 1.1), 0, 1);
   if (L.id === S.sel || S.near.has(L.id)) return 1;
@@ -211,7 +231,8 @@ async function go() {
   S.quick = null; S.review = null; S.cutoff = null; S.stitch = false;
   await load();
   const m = location.hash.match(/^#\/tree\/([^/?]+)/), id = m && decodeURIComponent(m[1]);
-  if (id && treeOf(id)) showTree(id);
+  if (location.hash.startsWith("#/garden")) showGarden();
+  else if (id && treeOf(id)) showTree(id);
   else { if (id) history.replaceState(null, "", "#/"); showForest(); }
 }
 function showTree(id) {
@@ -233,6 +254,25 @@ function showForest() {
   const at = fromTree && treeSpot(fromTree);
   if (at) { stage.setView({ ...at, phi: 1.2 }); stage.flyTo(over, 650); } else stage.setView({ ...over, theta: 0.6 });
   renderChrome();
+}
+function showGarden() {
+  const from = S.view === "tree" ? S.tree?.id : null;
+  S.view = "garden"; S.tree = null; S.sel = null; S.lay = null; S.panel = null;
+  if (from) S.fsel = from;
+  buildForest(true);
+  const at = from && treeSpot(from);
+  stage.setView(at ? { ...at, radius: at.radius * 1.5, phi: 1.1 } : { ...forestView(), theta: stage.theta });
+  renderChrome();
+}
+// Shift+Tab: swap between the knowledge window and the garden.
+function toggleWindow() {
+  if (S.review || S.pick) return;
+  if (S.view === "garden") location.hash = S.lastKnowledge || "#/";
+  else { S.lastKnowledge = location.hash || "#/"; location.hash = "#/garden"; }
+}
+function pickPlant(id) {
+  S.fsel = treeOf(id) ? id : null; markSel(); renderActions();
+  const at = S.fsel && treeSpot(S.fsel); if (at) stage.flyTo({ ...at, radius: at.radius * 1.5 }, 420);
 }
 async function refresh({ animate = false, panel = true } = {}) {
   await load();
@@ -305,19 +345,23 @@ function showHover(id, x, y) {
 
 // ---------- top bar and menus ----------
 function renderTop() {
-  const due = dueList(S.view === "tree" ? S.tree.id : null).length;
-  const review = due ? el("button", { class: "btn pill", id: "reviewBtn", onclick: () => startReview() }, `Review ${due}`) : null;
+  const due = dueList(null).length;
   const search = ib("searchBtn", "Search", ICON.search, () => find());
+  const swap = el("button", { class: "btn pill plain", id: "switchBtn", title: "Shift+Tab", onclick: toggleWindow }, S.view === "garden" ? "Knowledge" : "Garden", S.view !== "garden" && due ? el("span", { class: "thirst", text: String(due) }) : null);
+  const brand = el("div", { class: "brand" }, el("img", { src: "icons/icon-192.png", alt: "", width: 26, height: 26 }), el("h1", { text: "Bonsai" }));
   if (S.view === "tree") {
     const zone = S.zones.find((z) => z.id === S.tree.zoneId);
     put($("#top"), ib("backBtn", "Forest", ICON.back, () => { location.hash = "#/"; }),
       el("div", { class: "crumb" }, el("h1", { text: S.tree.name }), el("span", { text: zone?.name || "" })),
-      el("span", { class: "grow" }), review, search, ib("moreBtn", "Tree menu", ICON.more, (e) => treeMenu(e.currentTarget)));
+      el("span", { class: "grow" }), swap, search, ib("moreBtn", "Tree menu", ICON.more, (e) => treeMenu(e.currentTarget)));
+  } else if (S.view === "garden") {
+    put($("#top"), brand, el("span", { class: "grow" }),
+      due ? el("button", { class: "btn pill", id: "waterAll", onclick: () => startReview(null) }, `Water ${due}`) : null,
+      swap, ib("moreBtn", "Menu", ICON.more, (e) => appMenu(e.currentTarget)));
   } else {
-    put($("#top"), el("div", { class: "brand" }, el("img", { src: "icons/icon-192.png", alt: "", width: 26, height: 26 }), el("h1", { text: "Bonsai" })),
-      el("span", { class: "grow" }), review,
+    put($("#top"), brand, el("span", { class: "grow" }),
       S.inbox.length ? el("button", { class: "btn pill", id: "inboxBtn", onclick: () => { S.panel = S.panel === "inbox" ? null : "inbox"; renderPanel(); } }, `Inbox ${S.inbox.length}`) : null,
-      search, ib("addBtn", "Add", ICON.plus, (e) => menu(e.currentTarget, [
+      swap, search, ib("addBtn", "Add", ICON.plus, (e) => menu(e.currentTarget, [
         { label: "New tree", key: "N", run: () => newTree() }, { label: "New zone", key: "Z", run: newZone }, { label: "Capture a thought", key: "I", run: capture }])),
       ib("moreBtn", "Menu", ICON.more, (e) => appMenu(e.currentTarget)));
   }
@@ -325,7 +369,7 @@ function renderTop() {
 function appMenu(anchor) {
   const archived = [...S.allZones.filter((z) => z.archived), ...S.allTrees.filter((t) => t.archived)];
   menu(anchor, [
-    { label: "Timeline", key: "T", run: toggleTimeline },
+    S.view === "forest" && { label: "Timeline", key: "T", run: toggleTimeline },
     archived.length && { label: "Archived", run: () => menu(anchor, archived.map((x) => ({ label: `Restore ${x.name}`, run: async () => { await safely(() => (x.rootId ? store.updateTree : store.updateZone)(x.id, { archived: false })); refresh(); } }))) },
     "-", { label: "Export backup", run: exportBackup }, { label: "Restore backup", run: () => $("#importFile").click() },
     "-", { label: "Shortcuts", key: "?", run: shortcuts },
@@ -339,7 +383,7 @@ function treeMenu(anchor) {
   const t = S.tree;
   menu(anchor, [
     { label: "Patches", key: "P", run: togglePatches }, { label: "Timeline", key: "T", run: toggleTimeline },
-    { label: "Review", key: "V", run: () => startReview() }, { label: "Fit view", key: "0", run: fitView },
+    { label: "Fit view", key: "0", run: fitView },
     "-", { label: "Rename", run: () => renameThing(t, store.updateTree, "Tree") }, { label: "Colour", run: () => colourThing(t, store.updateTree) },
     S.zones.length > 1 && { label: "Move to zone", run: async () => {
       const v = await dialog({ title: `Move ${t.name}`, fields: [{ name: "zoneId", label: "Zone", type: "select", value: t.zoneId, options: S.zones.map((z) => [z.id, z.name]) }], ok: "Move" });
@@ -399,7 +443,7 @@ async function capture() {
 function shortcuts() {
   const rows = [["↑ ↓ ← →", "Child, parent, siblings"], ["Tab", "Add a branch"], ["Enter", "Add a sibling"], ["R", "Rename"], ["Del", "Delete"], ["Space", "Notes"],
     ["L", "Link"], ["G", "Graft"], ["C", "Colour"], ["F", "Fly to idea"], ["0", "Fit view"], ["W A S D  Q E", "Fly"], ["/", "Search"], ["I", "Capture"],
-    ["P", "Patches"], ["T", "Timeline"], ["V", "Review"], ["N  Z", "New tree, new zone"], ["Esc", "Back"]];
+    ["P", "Patches"], ["T", "Timeline"], ["N  Z", "New tree, new zone"], ["Shift+Tab", "Knowledge or garden"], ["Enter  V", "Garden: water the plant, water everything"], ["Esc", "Back"]];
   dialog({ title: "Shortcuts", ok: null, cancel: "Close", body: el("table", { class: "keys" }, rows.map(([k, d]) => el("tr", {}, el("td", {}, el("kbd", { text: k })), el("td", { text: d })))) });
 }
 async function exportBackup() {
@@ -429,6 +473,16 @@ function renderActions() {
     put(a, el("form", { class: "quick", onsubmit: (e) => { e.preventDefault(); commitQuick(input.value); } }, input, el("button", { class: "btn primary", text: rename ? "Save" : "Add" }),
       ib("quickCancel", "Cancel", ICON.close, (e) => { e.preventDefault(); S.quick = null; renderActions(); })));
     a.hidden = false; input.focus(); input.select();
+    return;
+  }
+  const plant = S.view === "garden" && !S.review ? treeOf(S.fsel) : null;
+  if (plant) {
+    const nodes = S.byTree.get(plant.id) || [], dry = nodes.filter((x) => thirst(x) !== "ok");
+    put(a, el("div", { class: "plant" }, el("b", { text: plant.name }), el("span", { class: "muted", text: `${nodes.length} idea${nodes.length === 1 ? "" : "s"}${dry.length ? ` · ${dry.length} thirsty` : ""}` })),
+      el("button", { class: "btn primary", id: "waterBtn", onclick: () => startReview(plant.id) }, dry.length ? `Water ${dry.length}` : "Practise"),
+      dry.length ? el("button", { class: "btn", id: "allGood", text: "All good", onclick: () => passAll(dry.map((x) => x.id)) }) : null,
+      el("button", { class: "btn", id: "openTree", text: "Open", onclick: () => goTree(plant.id) }));
+    a.hidden = false;
     return;
   }
   const n = S.view === "tree" && !S.review && !S.pick && S.cutoff == null ? S.byId.get(S.sel) : null;
@@ -559,14 +613,12 @@ function nodePanel(n) {
   drawBody();
   const links = S.links.filter((l) => l.fromId === n.id || l.toId === n.id);
   const patches = S.patches.filter((p) => p.nodeIds.includes(n.id));
-  const kids = kidsOf(n.id).length;
   return [
     el("div", { class: "ph" }, el("input", { id: "nodeTitle", class: "title", value: n.title, maxLength: 140, "aria-label": "Title",
       onchange: (e) => (e.target.value.trim() ? save({ title: e.target.value }) : (e.target.value = n.title)) }), panelClose()),
     el("input", { id: "nodeNote", class: "short", value: n.note || "", maxLength: 500, placeholder: "Short note", "aria-label": "Short note", onchange: (e) => save({ note: e.target.value }) }),
     bodyBox,
     el("div", { class: "swatches" }, SWATCHES.map(([name, hex]) => el("button", { class: "sw" + ((n.color || "") === hex ? " on" : "") + (hex ? "" : " none"), title: name, "aria-label": name, style: hex ? `background:${hex}` : "", onclick: () => save({ color: hex || null }, true) }))),
-    srs.reviewable(n, kids) && el("div", { class: "meta", text: `${srs.dueLabel(n)}${n.srs?.passes ? ` · ${n.srs.passes} passed` : ""}` }),
     links.length && el("section", {}, el("h3", { text: "Links" }), links.map((l) => {
       const other = S.byId.get(l.fromId === n.id ? l.toId : l.fromId); if (!other) return null;
       return el("div", { class: "linkrow" }, el("button", { class: "chip", text: other.title, title: pathOf(other), onclick: () => jump(other.id) }),
@@ -615,20 +667,28 @@ function inboxPanel() {
 }
 
 // ---------- review ----------
-function startReview() {
-  const treeId = S.view === "tree" ? S.tree.id : null;
+// Watering is review. treeId: one plant; null: everything that's thirsty.
+function startReview(treeId) {
   let q = dueList(treeId);
   if (!q.length && treeId) q = (S.byTree.get(treeId) || []).filter((n) => srs.reviewable(n, kidsOf(n.id).length));
-  if (!q.length) return toast("Nothing to review");
+  if (!q.length) return toast("Nothing to water");
   S.review = { ids: q.map((n) => n.id), i: 0, shown: false, n: 0 }; S.panel = null; S.quick = null;
-  if (S.cutoff != null) { stopPlay(); S.cutoff = null; rebuild(); }
   stepReview();
 }
 function stepReview() {
   const r = S.review, n = r && S.byId.get(r.ids[r.i]);
   if (!n) return endReview();
-  if (S.view === "tree") select(n.id, { fly: true });
+  if (S.view === "garden") { rebuild(); if (S.fsel !== n.treeId) pickPlant(n.treeId); }
   renderChrome();
+}
+// "All good": pass every listed idea in one go. Can be undone.
+async function passAll(ids) {
+  const before = ids.map((id) => S.byId.get(id)).filter(Boolean);
+  if (!before.length) return;
+  for (const n of before) await safely(() => store.reviewNode(n.id, "good"));
+  if (S.review) { S.review.n = 0; S.review = null; }
+  await refresh(); renderReview();
+  toast(`Watered ${before.length}`, { label: "Undo", run: async () => { await safely(() => store.restoreRows({ nodes: before })); refresh(); } });
 }
 function renderReview() {
   const box = $("#review"), r = S.review, n = r && S.byId.get(r.ids[r.i]);
@@ -636,7 +696,7 @@ function renderReview() {
   const parent = S.byId.get(n.parentId), kids = kidsOf(n.id);
   box.hidden = false;
   put(box, 
-    el("div", { class: "row" }, el("span", { class: "muted grow", text: [pathOf(n), parent?.title].filter(Boolean).join(" › ") }), el("span", { class: "muted", text: `${r.i + 1}/${r.ids.length}` }), ib("reviewClose", "Stop", ICON.close, endReview)),
+    el("div", { class: "row" }, el("span", { class: "muted grow", text: [pathOf(n), parent?.title].filter(Boolean).join(" › ") }), el("span", { class: "muted", text: `${r.i + 1}/${r.ids.length}` }), el("button", { class: "link", id: "reviewAllGood", text: "All good", onclick: () => passAll(r.ids.slice(r.i)) }), ib("reviewClose", "Stop", ICON.close, endReview)),
     el("h2", { text: n.title }),
     ...(r.shown ? [
       n.note && el("p", { class: "rv-note", text: n.note }), n.body && el("div", { class: "md", html: md(n.body) }),
@@ -654,7 +714,7 @@ async function rateNow(rating) {
 async function endReview() {
   const n = S.review?.n; S.review = null;
   await refresh({ animate: true }); renderReview();
-  if (n) toast(`Reviewed ${n}`);
+  if (n) toast(`Watered ${n}`);
 }
 
 // ---------- timeline ----------
@@ -665,6 +725,7 @@ function timeRange() {
 }
 function stopPlay() { clearInterval(playTimer); playTimer = 0; }
 function toggleTimeline() {
+  if (S.view === "garden") return;
   stopPlay();
   if (S.cutoff != null) S.cutoff = null;
   else { S.cutoff = Date.now(); S.panel = null; S.quick = null; S.review = null; }
@@ -705,6 +766,10 @@ function renderEmpty() {
 function onTap(hit, e) {
   hideHover();
   if (S.pick) { if (hit?.kind === "node" && !S.pick.exclude.has(hit.id)) S.pick.finish(hit.id); return; }
+  if (S.view === "garden") {
+    if (S.review) return;
+    return pickPlant(!hit ? null : hit.kind === "tree" ? hit.id : hit.kind === "node" ? S.byId.get(hit.id)?.treeId : null);
+  }
   if (S.view === "forest") {
     if (!hit) return;
     if (hit.kind === "zone") return zoneMenu(hit.id, { left: e.clientX, right: e.clientX, top: e.clientY, bottom: e.clientY });
@@ -731,7 +796,8 @@ function back() {
   if (S.review) return endReview();
   if (S.cutoff != null) return toggleTimeline();
   if (S.panel) { S.panel = null; return renderPanel(); }
-  if (S.view === "tree") location.hash = "#/";
+  if (S.view === "garden" && S.fsel) return pickPlant(null);
+  if (S.view !== "forest") location.hash = S.view === "garden" ? S.lastKnowledge || "#/" : "#/";
 }
 function onKey(e) {
   if (e.key === "Escape") { e.preventDefault(); return back(); }
@@ -744,13 +810,19 @@ function onKey(e) {
     return;
   }
   if (S.pick) return;
+  if (k === "Tab" && e.shiftKey) { stop(); return toggleWindow(); }
   if (k === "/") { stop(); return find(); }
   if (k === "?") { stop(); return shortcuts(); }
   if (k === "i") { stop(); return capture(); }
   if (k === "t") { stop(); return toggleTimeline(); }
-  if (k === "v") { stop(); return startReview(); }
   if (k === "0") { stop(); return fitView(); }
   if (S.cutoff != null) return;
+  if (S.view === "garden") {
+    if (k === "v") { stop(); return startReview(null); }
+    if (k.startsWith("Arrow")) { stop(); stepForest(k === "ArrowRight" || k === "ArrowUp" ? 1 : -1); return renderActions(); }
+    if (k === "Enter" && treeOf(S.fsel)) { stop(); return startReview(S.fsel); }
+    return;
+  }
   if (S.view === "forest") {
     if (k === "n") { stop(); return newTree(); }
     if (k === "z") { stop(); return newZone(); }
@@ -788,7 +860,7 @@ async function init() {
   stage.container.addEventListener("pointerdown", hideHover);
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { T = theme(); stage.setTheme(T); selMesh?.material.color.set(T.ink); rebuild(); });
   window.addEventListener("hashchange", go);
-  window.addEventListener("keydown", onKey);
+  window.addEventListener("keydown", (e) => { if (e.key === "Tab" && e.shiftKey && document.activeElement === document.body) e.preventDefault(); onKey(e); });
   $("#importFile").addEventListener("change", (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) importBackup(f); });
   store.requestPersistence();
   window.bonsai = { S, store, refresh, get stage() { return stage; } };

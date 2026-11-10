@@ -18,17 +18,19 @@ async function copyDir(from, to) {
   for (const e of await readdir(from, { withFileTypes: true })) {
     const a = join(from, e.name), b = join(to, e.name);
     if (e.isDirectory()) await copyDir(a, b);
-    else if (TEXT.has(extname(e.name)) && !a.includes("vendor")) {
+    else if (TEXT.has(extname(e.name)) && !/vendor|models/.test(a)) {
       await writeFile(b, (await readFile(a, "utf8")).replaceAll("__VERSION__", version));
     } else await copyFile(a, b);
   }
 }
 await copyDir(join(root, "src"), out);
 // The service worker caches every file in the build for offline use.
+// Big, optional files (the embedding model and its runtime) are fetched only when used.
+const LAZY = ["models/", "vendor/ai/"];
 async function listFiles(dir, base = "") {
   const out = [];
   for (const e of await readdir(dir, { withFileTypes: true })) {
-    if (e.isDirectory()) out.push(...await listFiles(join(dir, e.name), base + e.name + "/"));
+    if (e.isDirectory()) { if (!LAZY.includes(base + e.name + "/")) out.push(...await listFiles(join(dir, e.name), base + e.name + "/")); }
     else if (!["sw.js", "index.html"].includes(base + e.name) && !e.name.endsWith(".txt")) out.push(base + e.name);
   }
   return out;

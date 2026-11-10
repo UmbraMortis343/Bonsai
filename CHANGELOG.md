@@ -2,6 +2,15 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.4.0 — 2026-11-10
+
+Two windows: Knowledge and Garden.
+
+- **Knowledge** is only your ideas: no roots, no fading, no review prompts.
+- **Garden** shows each tree as a potted plant. Ideas due for review turn amber, then grey, and the plant sags; passed reviews grow its roots.
+- **Watering** a plant reviews its thirsty ideas: recall, Show, then Again, Hard, Good or Easy. **All good** passes the whole plant in one tap, with undo.
+- Switch windows with the button in the top bar or Shift+Tab. The Garden button shows how many ideas are thirsty.
+
 ## 0.3.1 — 2026-11-10
 
 A cleaner look.

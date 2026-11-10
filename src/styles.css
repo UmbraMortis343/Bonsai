@@ -41,6 +41,11 @@ kbd{font:600 11px/1 var(--font);border:1px solid var(--line);border-bottom-width
 .btn.primary kbd{background:transparent;color:inherit;border-color:currentColor;opacity:.75}
 .btn.danger-fill{background:var(--danger);border-color:var(--danger);color:var(--card);font-weight:600}
 .btn.pill{border-radius:99px;padding:5px 12px;font-size:13px;font-weight:600;border-color:var(--sap);color:var(--sap)}
+.btn.pill.plain{border-color:var(--line);color:var(--ink)}
+.thirst{display:inline-grid;place-items:center;min-width:17px;height:17px;padding:0 5px;margin-left:6px;border-radius:99px;background:var(--sap);color:#fff;font-size:11px;font-weight:700;text-shadow:none;vertical-align:1px}
+.btn .thirst{margin-left:0}
+.plant{display:grid;padding:0 8px 0 4px;line-height:1.25;min-width:0}
+.plant b,.plant span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:44vw}
 .btn:disabled{opacity:.5;cursor:default}
 .ib{border:none;background:transparent;border-radius:9px;width:36px;height:36px;display:inline-grid;place-items:center;flex:none;color:var(--ink)}
 .ib:hover{background:var(--well)}
@@ -64,7 +69,7 @@ textarea{resize:vertical;line-height:1.45;display:block}
 .crumb span{color:var(--muted);font-size:13px;white-space:nowrap}
 .top .grow{pointer-events:none}
 
-.actions{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);display:flex;gap:6px;z-index:5;max-width:calc(100% - 16px);
+.actions{position:absolute;left:8px;right:8px;bottom:14px;margin:0 auto;width:fit-content;display:flex;align-items:center;gap:6px;z-index:5;max-width:calc(100% - 16px);
   background:var(--card-t);border:1px solid var(--line);border-radius:13px;padding:6px;box-shadow:var(--shadow)}
 .quick{display:flex;gap:6px;align-items:center}
 .quick input{width:min(60vw,320px)}

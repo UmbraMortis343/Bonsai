@@ -118,3 +118,8 @@ export function ring(radius, color) {
   for (let i = 0; i <= 96; i++) { const a = (i / 96) * Math.PI * 2; pts.push(new THREE.Vector3(Math.cos(a) * radius, 0.02, Math.sin(a) * radius)); }
   return new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color }));
 }
+export function pot(color) {
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.36, 0.46, 24), new THREE.MeshPhongMaterial({ color, shininess: 20 }));
+  m.position.y = 0.23;
+  return m;
+}
