@@ -24,7 +24,11 @@ One-time setting: repo **Settings → Pages → Source: GitHub Actions**.
 
 ## Licence
 
-MIT. Free for anyone to use, change and share. See `LICENSE`.
+GNU Affero General Public License, version 3 or later (AGPL-3.0-or-later), from version 0.6.0. Free for anyone to use, change and share; if you pass on or host a changed version, you share its source under the same licence. See `LICENSE`. Versions 0.1.0 to 0.5.0 were released under the MIT licence.
+
+Copyright (C) 2026 UmbraMortis343.
+
+The bundled libraries keep their own licences: three.js and umap-js (MIT), Transformers.js and the all-MiniLM-L6-v2 model (Apache 2.0), ONNX Runtime (MIT).
 
 ## Develop
 

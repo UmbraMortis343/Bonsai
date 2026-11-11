@@ -8,6 +8,7 @@ import { md } from "./md.js";
 import * as ai from "./ai.js";
 import { textFor, hashText } from "./semantic.js";
 import { $, el, put, toast, dialog, menu, overlayOpen, closeTop, closeAll } from "./dom.js";
+import { createIsles, QUALITY } from "./isles.js";
 
 const PALETTE = [["Blue", "#3b82f6"], ["Violet", "#8b5cf6"], ["Pink", "#ec4899"], ["Red", "#ef4444"], ["Orange", "#f97316"], ["Amber", "#f59e0b"], ["Green", "#22c55e"], ["Teal", "#14b8a6"], ["Cyan", "#06b6d4"]];
 const SWATCHES = [["Auto", ""], ...PALETTE];
@@ -15,7 +16,7 @@ const SWATCHES = [["Auto", ""], ...PALETTE];
 const G = { leaf: "#22c55e", thirsty: "#f59e0b", dry: "#a8a29e", stem: "#65a30d", pot: "#c2714f" };
 const DAY = 86400000;
 const ICON = {
-  back: "M15 5l-7 7 7 7", close: "M6 6l12 12M18 6L6 18", plus: "M12 5v14M5 12h14", more: "M5 12h.01M12 12h.01M19 12h.01",
+  back: "M15 5l-7 7 7 7", fold: "M6 9l6 6 6-6", unfold: "M6 15l6-6 6 6", close: "M6 6l12 12M18 6L6 18", plus: "M12 5v14M5 12h14", more: "M5 12h.01M12 12h.01M19 12h.01",
   search: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4", inbox: "M4 13l3-8h10l3 8v6H4zM4 13h5a3 3 0 0 0 6 0h5", play: "M8 5l11 7-11 7z", pause: "M8 5v14M16 5v14",
 };
 const icon = (d) => el("span", { class: "ic", html: `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>` });
@@ -28,9 +29,10 @@ const S = {
   tree: null, sel: null, panel: null, pick: null, quick: null, review: null, cutoff: null, stitch: false, editBody: false,
   flora: null, lay: null, forest: null, fsel: null, pendingSel: null,
   scope: null, mean: null, suggest: null, aiOn: false,
+  garden: null, model: [], isle: -1, topic: -1, treeBack: "#/", meanBack: "#/", hashNow: null, water: undefined,
 };
 const ideaView = () => S.view === "tree" || S.view === "meaning";
-let stage, T, labelEls = new Map(), decor = [], selMesh, playTimer = 0;
+let stage, isles, T, labelEls = new Map(), decor = [], selMesh, playTimer = 0;
 
 // Scene colours come from the stylesheet, so light and dark stay in step.
 function theme() {
@@ -62,6 +64,7 @@ async function load() {
     if (n.parentId != null) { if (!S.kids.has(n.parentId)) S.kids.set(n.parentId, []); S.kids.get(n.parentId).push(n); }
   }
   for (const l of S.kids.values()) l.sort(byOrder);
+  await loadGarden();
 }
 function dueList(treeId) {
   const live = new Set(S.trees.map((t) => t.id)), now = Date.now();
@@ -220,7 +223,7 @@ async function showMeaning(scope) {
   S.tree = null; S.lay = null; S.sel = null; S.panel = null; S.mean = null; S.suggest = null;
   document.body.dataset.meaning = "";
   clearScene(); stage.setLabels([]); addDecor(grid(60, T.grid)); placeSel(); renderChrome();
-  if (!(await aiAllowed())) { if (run === meanRun) location.hash = "#/"; return; }
+  if (!(await aiAllowed())) { if (run === meanRun) location.hash = S.meanBack; return; }
   const nodes = scopeNodes(S.scope), ids = nodes.map((n) => n.id), items = aiItems(nodes);
   try {
     setStatus("Starting");
@@ -337,10 +340,18 @@ async function go() {
   const m = location.hash.match(/^#\/tree\/([^/?]+)/), id = m && decodeURIComponent(m[1]);
   const mm = location.hash.match(/^#\/meaning(?:\/([^/?]+))?/);
   meanRun++; setStatus(""); document.body.dataset.meaning = "";
-  if (mm) showMeaning(mm[1] && decodeURIComponent(mm[1]));
+  // remember where a graph or the meaning view was opened from, so Back returns there
+  const from = S.hashNow; S.hashNow = location.hash;
+  const origin = from == null || /^#\/(tree|meaning)/.test(from) ? null : from || "#/";
+  if (origin && mm && S.view !== "meaning") S.meanBack = origin;
+  if (origin && id && S.view !== "tree") S.treeBack = origin;
+  const home = !mm && !location.hash.startsWith("#/garden") && !location.hash.startsWith("#/forest") && !(id && treeOf(id));
+  showWindow(home);
+  if (home) { if (id) history.replaceState(null, "", "#/"); showIsles(); }
+  else if (mm) showMeaning(mm[1] && decodeURIComponent(mm[1]));
   else if (location.hash.startsWith("#/garden")) showGarden();
-  else if (id && treeOf(id)) showTree(id);
-  else { if (id) history.replaceState(null, "", "#/"); showForest(); }
+  else if (id) showTree(id);
+  else showForest();
 }
 function showTree(id) {
   const from = S.view;
@@ -370,12 +381,13 @@ function showGarden() {
   const at = from && treeSpot(from);
   stage.setView(at ? { ...at, radius: at.radius * 1.5, phi: 1.1 } : { ...forestView(), theta: stage.theta });
   renderChrome();
+  if (S.water !== undefined) { const w = S.water; S.water = undefined; if (w.treeId) S.fsel = w.treeId; reviewIds(w.ids); }
 }
 // Shift+Tab: swap between the knowledge window and the garden.
 function toggleWindow() {
   if (S.review || S.pick) return;
-  if (S.view === "garden") location.hash = S.lastKnowledge || "#/";
-  else { S.lastKnowledge = location.hash || "#/"; location.hash = "#/garden"; }
+  if (S.view === "isles" || S.view === "garden") location.hash = S.lastKnowledge || "#/forest";
+  else { S.lastKnowledge = location.hash || "#/forest"; location.hash = "#/"; }
 }
 function pickPlant(id) {
   S.fsel = treeOf(id) ? id : null; markSel(); renderActions();
@@ -383,6 +395,7 @@ function pickPlant(id) {
 }
 async function refresh({ animate = false, panel = true } = {}) {
   await load();
+  if (S.view === "isles") { drawIsles(); renderTop(); renderEmpty(); return; }
   if (S.view === "meaning") { if (S.mean) buildMeaning(); }
   else if (S.view === "tree") {
     const t = treeOf(S.tree.id);
@@ -455,19 +468,25 @@ function showHover(id, x, y) {
 function renderTop() {
   const due = dueList(null).length;
   const search = ib("searchBtn", "Search", ICON.search, () => find());
-  const swap = el("button", { class: "btn pill plain", id: "switchBtn", title: "Shift+Tab", onclick: toggleWindow }, S.view === "garden" ? "Knowledge" : "Garden", S.view !== "garden" && due ? el("span", { class: "thirst", text: String(due) }) : null);
+  const swap = el("button", { class: "btn pill plain", id: "switchBtn", title: "Shift+Tab", onclick: toggleWindow }, S.view === "garden" || S.view === "isles" ? "Knowledge" : "Garden", S.view !== "garden" && S.view !== "isles" && due ? el("span", { class: "thirst", text: String(due) }) : null);
   const brand = el("div", { class: "brand" }, el("img", { src: "icons/icon-192.png", alt: "", width: 26, height: 26 }), el("h1", { text: "Bonsai" }));
   if (S.view === "meaning") {
     const pick = el("select", { id: "scopeSel", "aria-label": "Show", onchange: (e) => goMeaning(e.target.value) }, el("option", { value: "", text: "Everything", selected: !S.scope }), S.zones.map((z) => el("option", { value: z.id, text: z.name, selected: z.id === S.scope })));
-    put($("#top"), ib("backBtn", "Forest", ICON.back, () => { location.hash = "#/"; }), el("div", { class: "crumb" }, el("h1", { text: "Meaning" }), pick),
+    put($("#top"), ib("backBtn", "Back", ICON.back, () => { location.hash = S.meanBack; }), el("div", { class: "crumb" }, el("h1", { text: "Meaning" }), pick),
       el("span", { class: "grow" }), S.mean && el("button", { class: "btn pill plain", id: "suggestBtn", text: "Suggest", onclick: openSuggest }), search);
   } else if (S.view === "tree") {
     const zone = S.zones.find((z) => z.id === S.tree.zoneId);
-    put($("#top"), ib("backBtn", "Forest", ICON.back, () => { location.hash = "#/"; }),
+    put($("#top"), ib("backBtn", "Back", ICON.back, () => { location.hash = S.treeBack; }),
       el("div", { class: "crumb" }, el("h1", { text: S.tree.name }), el("span", { text: zone?.name || "" })),
       el("span", { class: "grow" }), swap, search, ib("moreBtn", "Tree menu", ICON.more, (e) => treeMenu(e.currentTarget)));
-  } else if (S.view === "garden") {
+  } else if (S.view === "isles") {
     put($("#top"), brand, el("span", { class: "grow" }),
+      due ? el("button", { class: "btn pill", id: "waterAll", onclick: () => water(null) }, `Water ${due}`) : null,
+      swap, search, ib("addBtn", "Add", ICON.plus, (e) => menu(e.currentTarget, [
+        { label: "New knowledge graph", key: "N", run: () => newGraph() }, { label: "New topic", key: "Z", run: newZone }, { label: "New note", key: "I", run: capture }])),
+      ib("moreBtn", "Menu", ICON.more, (e) => appMenu(e.currentTarget)));
+  } else if (S.view === "garden") {
+    put($("#top"), ib("backBtn", "Garden", ICON.back, () => { location.hash = "#/"; }), el("div", { class: "crumb" }, el("h1", { text: "Watering" })), el("span", { class: "grow" }),
       due ? el("button", { class: "btn pill", id: "waterAll", onclick: () => startReview(null) }, `Water ${due}`) : null,
       swap, ib("moreBtn", "Menu", ICON.more, (e) => appMenu(e.currentTarget)));
   } else {
@@ -481,7 +500,7 @@ function renderTop() {
 function appMenu(anchor) {
   const archived = [...S.allZones.filter((z) => z.archived), ...S.allTrees.filter((t) => t.archived)];
   menu(anchor, [
-    S.view === "forest" && { label: "Meaning view", key: "M", run: () => goMeaning() },
+    (S.view === "forest" || S.view === "isles") && { label: "Meaning view", key: "M", run: () => goMeaning() },
     S.view === "forest" && { label: "Timeline", key: "T", run: toggleTimeline },
     archived.length && { label: "Archived", run: () => menu(anchor, archived.map((x) => ({ label: `Restore ${x.name}`, run: async () => { await safely(() => (x.rootId ? store.updateTree : store.updateZone)(x.id, { archived: false })); refresh(); } }))) },
     "-", { label: "Export backup", run: exportBackup }, { label: "Restore backup", run: () => $("#importFile").click() },
@@ -503,10 +522,10 @@ function treeMenu(anchor) {
       if (v && (await safely(() => store.updateTree(t.id, { zoneId: v.zoneId })))) refresh();
     } },
     { label: "Graft onto…", key: "G", run: graftWholeTree },
-    { label: "Archive", run: async () => { if (await safely(() => store.updateTree(t.id, { archived: true }))) { toast(`Archived ${t.name}`); location.hash = "#/"; } } },
+    { label: "Archive", run: async () => { if (await safely(() => store.updateTree(t.id, { archived: true }))) { toast(`Archived ${t.name}`); location.hash = S.treeBack; } } },
     { label: "Delete", danger: true, run: async () => {
       const n = (S.byTree.get(t.id) || []).length;
-      if (await dialog({ title: `Delete ${t.name} and its ${n} idea${n === 1 ? "" : "s"}?`, ok: "Delete", danger: true })) { await safely(() => store.deleteTree(t.id)); location.hash = "#/"; }
+      if (await dialog({ title: `Delete ${t.name} and its ${n} idea${n === 1 ? "" : "s"}?`, ok: "Delete", danger: true })) { await safely(() => store.deleteTree(t.id)); location.hash = S.treeBack; }
     } },
     "-", { label: "Shortcuts", key: "?", run: shortcuts },
   ]);
@@ -556,7 +575,7 @@ async function capture() {
 function shortcuts() {
   const rows = [["↑ ↓ ← →", "Child, parent, siblings"], ["Tab", "Add a branch"], ["Enter", "Add a sibling"], ["R", "Rename"], ["Del", "Delete"], ["Space", "Notes"],
     ["L", "Link"], ["G", "Graft"], ["C", "Colour"], ["F", "Fly to idea"], ["0", "Fit view"], ["W A S D  Q E", "Fly"], ["/", "Search"], ["I", "Capture"],
-    ["P", "Patches"], ["T", "Timeline"], ["M", "Meaning view"], ["N  Z", "New tree, new zone"], ["Shift+Tab", "Knowledge or garden"], ["Enter  V", "Garden: water the plant, water everything"], ["Esc", "Back"]];
+    ["1–9", "Garden: go to an island, then a topic"], ["0  Esc", "Garden: step back out"], ["W", "Garden: water"], ["D", "Garden: day or night"], ["P", "Patches"], ["T", "Timeline"], ["M", "Meaning view"], ["N  Z", "New tree, new zone"], ["Shift+Tab", "Knowledge or garden"], ["Enter  V", "Garden: water the plant, water everything"], ["Esc", "Back"]];
   dialog({ title: "Shortcuts", ok: null, cancel: "Close", body: el("table", { class: "keys" }, rows.map(([k, d]) => el("tr", {}, el("td", {}, el("kbd", { text: k })), el("td", { text: d })))) });
 }
 async function exportBackup() {
@@ -806,6 +825,11 @@ function startReview(treeId) {
   S.review = { ids: q.map((n) => n.id), i: 0, shown: false, n: 0 }; S.panel = null; S.quick = null;
   stepReview();
 }
+function reviewIds(ids) {
+  if (!ids.length) return toast("Nothing to water");
+  S.review = { ids, i: 0, shown: false, n: 0 }; S.panel = null; S.quick = null;
+  stepReview();
+}
 function stepReview() {
   const r = S.review, n = r && S.byId.get(r.ids[r.i]);
   if (!n) return endReview();
@@ -881,8 +905,166 @@ function renderTimeline() {
 }
 
 // ---------- empty forest ----------
+// ---------- the garden: islands of topics ----------
+const BIOMES = [["highland", "Highlands"], ["tropical", "Jungle"], ["bloom", "Blossom"], ["lantern", "Lantern trees"], ["glowcap", "Mushrooms"], ["fern", "Ferns"]];
+const CENTRES = [["arches", "Stone arches"], ["academy", "Academy"], ["amphitheatre", "Amphitheatre"], ["statue", "Statue"]];
+const MARKS = [["kit", "Monument"], ["observatory", "Observatory"], ["pipes", "Organ pipes"], ["lighthouse", "Lighthouse"], ["windmill", "Windmill"], ["coil", "Coil mast"], ["solids", "Pyramid"], ["colonnade", "Colonnade"], ["circle", "Standing stones"]];
+const FULL_PLOT = 150;   // ideas that fill a topic's plot; past this the island grows
+const pref = (k, d) => { try { return localStorage.getItem("bonsai." + k) || d; } catch { return d; } };
+const setPref = (k, v) => { try { localStorage.setItem("bonsai." + k, v); } catch {} };
+const newId = () => "g" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+// Which island each topic sits on is kept beside the data; topics new to it join the last island with room.
+async function loadGarden() {
+  const g = (await store.getMeta("garden").catch(() => null)) || { islands: [], zone: {}, patron: "none" };
+  g.zone ||= {}; const live = new Set(S.zones.map((z) => z.id)), seen = new Set(); let dirty = false;
+  for (const isl of g.islands) { const keep = isl.zoneIds.filter((id) => live.has(id) && !seen.has(id) && seen.add(id)); if (keep.length !== isl.zoneIds.length) { isl.zoneIds = keep; dirty = true; } }
+  if (!g.islands.length) { g.islands.push({ id: "home", name: "Home", landmark: "arches", zoneIds: [] }); dirty = true; }
+  for (const z of S.zones) if (!seen.has(z.id)) {
+    let isl = [...g.islands].reverse().find((q) => q.zoneIds.length < 6);
+    if (!isl) { isl = { id: newId(), name: `Island ${g.islands.length + 1}`, landmark: CENTRES[1 + ((g.islands.length - 1) % 3)][0], zoneIds: [] }; g.islands.push(isl); }
+    isl.zoneIds.push(z.id); dirty = true;
+  }
+  S.garden = g;
+  if (dirty) await store.setMeta("garden", g).catch(() => {});
+}
+const saveGarden = async () => { await safely(() => store.setMeta("garden", S.garden)); await refresh(); };
+// What the garden draws: growth is how full a topic's plot is, health is the share of its ideas not waiting to be watered.
+function gardenModel() {
+  const zone = new Map(S.zones.map((z) => [z.id, z])), now = Date.now();
+  return S.garden.islands.map((isl, i) => {
+    const topics = isl.zoneIds.map((id) => zone.get(id)).filter(Boolean).map((z, k) => {
+      const trees = S.trees.filter((t) => t.zoneId === z.id), nodes = trees.flatMap((t) => S.byTree.get(t.id) || []), rev = nodes.filter((n) => srs.reviewable(n, kidsOf(n.id).length)), due = rev.filter((n) => srs.isDue(n, now)), o = S.garden.zone[z.id] || {};
+      return { id: z.id, name: z.name, biome: o.biome || BIOMES[k % 6][0], mark: o.mark || "kit", growth: Math.min(2, Math.pow(nodes.length / FULL_PLOT, 0.6)), health: rev.length ? 1 - due.length / rev.length : 1, ideas: nodes.length, due: due.map((n) => n.id), trees };
+    });
+    if (!topics.length) topics.push({ id: null, name: "", biome: "bloom", mark: "kit", growth: 0.04, health: 1, ideas: 0, due: [], trees: [] });
+    return { id: isl.id, name: isl.name, landmark: isl.landmark, patron: i === 0 && isl.landmark === "arches" ? S.garden.patron || "none" : undefined, mountain: isl.landmark === "arches", topics };
+  });
+}
+// Every island is bridged to the first; links between ideas on two islands widen their bridge.
+function gardenLinks() {
+  const where = new Map(); S.model.forEach((isl) => isl.topics.forEach((t) => where.set(t.id, isl.id)));
+  const isleOf = (nodeId) => where.get(treeOf(S.byId.get(nodeId)?.treeId)?.zoneId), n = new Map();
+  for (const l of S.links) { const a = isleOf(l.fromId), b = isleOf(l.toId); if (a && b && a !== b) { const k = [a, b].sort().join("|"); n.set(k, (n.get(k) || 0) + 1); } }
+  const home = S.model[0]?.id, out = S.model.slice(1).map((isl) => { const k = [home, isl.id].sort().join("|"), c = n.get(k) || 0; n.delete(k); return [home, isl.id, 1 + Math.min(3, c)]; });
+  for (const [k, c] of n) out.push([...k.split("|"), Math.min(4, c)]);
+  return out;
+}
+function showWindow(garden) {
+  $("#stage").hidden = garden; $("#isles").hidden = !garden; $("#gpanel").hidden = !garden; document.body.dataset.window = garden ? "garden" : "";
+  if (!garden) { isles?.setActive(false); stage.resize(); }   // the stage has no size while hidden; measure it again before anything is framed
+}
+function showIsles() {
+  S.view = "isles"; S.tree = null; S.sel = null; S.lay = null; S.panel = null; clearScene();
+  if (!isles) {
+    try { isles = createIsles({ canvas: $("#igl"), sky: $("#sky"), tags: $("#tags"), quality: pref("detail", matchMedia("(pointer: coarse)").matches ? "low" : "medium"), onIsland: (i) => pickIsle(i), onTopic: (i, k) => { if (S.isle !== i) pickIsle(i); pickTopic(k); }, onReady: () => { document.body.dataset.isles = "ready"; } }); }
+    catch { location.hash = "#/forest"; return; }
+    isles.setNight(pref("night", "") === "1"); $("#isles").classList.toggle("night", isles.night);
+  }
+  isles.setActive(true); drawIsles(); renderChrome();
+}
+function drawIsles() {
+  S.model = gardenModel();
+  if (S.isle >= S.model.length) { S.isle = -1; S.topic = -1; }
+  if (S.isle >= 0 && S.topic >= S.model[S.isle].topics.length) S.topic = -1;
+  isles.setData(S.model, gardenLinks()); isles.select(S.topic); renderGarden();
+}
+function pickIsle(i) { S.isle = S.model[i] ? i : -1; S.topic = -1; isles.focus(S.isle); isles.select(-1); renderGarden(); }
+function pickTopic(k) { const t = S.model[S.isle]?.topics[k]; S.topic = t && t.id ? k : -1; isles.select(S.topic); renderGarden(); }
+const goTopic = (zoneId) => { const i = S.model.findIndex((isl) => isl.topics.some((t) => t.id === zoneId)); if (i < 0) return; if (S.isle !== i) pickIsle(i); pickTopic(S.model[i].topics.findIndex((t) => t.id === zoneId)); };
+function water(ids, treeId) { S.water = { ids: ids || dueList(null).map((n) => n.id), treeId }; location.hash = "#/garden"; }
+const pct = (x) => Math.round(x * 100) + "%";
+let gfold = matchMedia("(max-width:700px)").matches;   // on a phone the panel starts as a strip, so the garden shows
+function renderGarden() {
+  const box = $("#gpanel"), isl = S.model[S.isle], t = isl?.topics[S.topic];
+  box.classList.toggle("fold", gfold);
+  const fold = ib("gFold", gfold ? "Show more" : "Show less", gfold ? ICON.unfold : ICON.fold, () => { gfold = !gfold; renderGarden(); });
+  const seg = (label, opts, now, run) => el("div", { class: "seg", role: "group", "aria-label": label }, opts.map(([v, text]) => el("button", { text, "aria-pressed": String(v === now), onclick: () => run(v) })));
+  const act = (id, text, key, run, primary) => el("button", { class: "btn" + (primary ? " primary" : ""), id, onclick: run }, text, key ? el("kbd", { text: key }) : null);
+  const row = (key, name, meta, due, run) => el("button", { class: "grow-row", onclick: run }, key ? el("kbd", { text: key }) : null, el("b", { text: name }), el("span", { class: "muted", text: meta }), due ? el("span", { class: "thirst", text: String(due) }) : null);
+  const foot = el("div", { class: "gfoot" },
+    seg("Time", [["", "Day"], ["1", "Night"]], isles.night ? "1" : "", (v) => { isles.setNight(v === "1"); setPref("night", v); $("#isles").classList.toggle("night", isles.night); renderGarden(); }),
+    seg("Detail", Object.keys(QUALITY).map((q) => [q, q[0].toUpperCase() + q.slice(1)]), isles.quality, (v) => { isles.setQuality(v); setPref("detail", v); renderGarden(); }));
+  if (t) {
+    const due = t.due.length;
+    put(box, el("div", { class: "ph" }, ib("gBack", "Back", ICON.back, () => pickTopic(-1)), el("h2", { text: t.name }), ib("topicMore", "Topic menu", ICON.more, (e) => topicMenu(t, e.currentTarget)), fold),
+      el("div", { class: "stats" }, el("span", {}, el("b", { text: String(t.ideas) }), ` idea${t.ideas === 1 ? "" : "s"}`), el("span", {}, el("b", { text: pct(t.growth) }), " grown"), el("span", {}, el("b", { text: pct(t.health) }), " healthy")),
+      el("h3", { text: "Knowledge graphs" }),
+      t.trees.length ? el("div", { class: "rows" }, t.trees.map((tr, k) => { const n = (S.byTree.get(tr.id) || []).length; return row(k < 9 ? String(k + 1) : "", tr.name, `${n} idea${n === 1 ? "" : "s"}`, dueList(tr.id).length, () => goTree(tr.id)); })) : el("p", { class: "muted", text: "None yet." }),
+      el("div", { class: "gacts" }, due ? act("waterTopic", `Water ${due}`, "W", () => water(t.due), true) : null, act("newGraph", "New knowledge graph", "N", () => newGraph(t.id), !due), act("topicMap", "Meaning map", "M", () => goMeaning(t.id))), foot);
+  } else if (isl) {
+    put(box, el("div", { class: "ph" }, ib("gBack", "Back", ICON.back, () => pickIsle(-1)), el("h2", { text: isl.name }), ib("isleMore", "Island menu", ICON.more, (e) => isleMenu(S.isle, e.currentTarget)), fold),
+      el("h3", { text: "Topics" }),
+      isl.topics[0].id ? el("div", { class: "rows" }, isl.topics.map((q, k) => row(String(k + 1), q.name, pct(q.growth), q.due.length, () => pickTopic(k)))) : el("p", { class: "muted", text: "No topics here yet." }),
+      el("div", { class: "gacts" }, act("newTopic", "New topic", "Z", newZone, true)), foot);
+  } else {
+    const all = S.model.flatMap((q) => q.topics).filter((q) => q.id), thirsty = all.filter((q) => q.due.length).sort((a, b) => b.due.length - a.due.length), top = Math.max(1, ...all.map((q) => q.ideas));
+    put(box, el("div", { class: "ph" }, el("h2", { text: "Garden" }), ib("isleAdd", "New island", ICON.plus, newIsle), fold),
+      el("div", { class: "stats" }, el("span", {}, el("b", { text: String(S.nodes.filter((n) => treeOf(n.treeId)).length) }), " ideas"), el("span", {}, el("b", { text: String(S.trees.length) }), " graphs"), el("span", {}, el("b", { text: String(all.length) }), " topics")),
+      el("h3", { text: "Needs watering" }),
+      thirsty.length ? el("div", { class: "rows" }, thirsty.slice(0, 6).map((q) => row("", q.name, "", q.due.length, () => goTopic(q.id)))) : el("p", { class: "muted", text: "Nothing right now." }),
+      all.length ? el("h3", { text: "Knowledge spread" }) : null,
+      all.length ? el("div", { class: "spread" }, all.map((q) => el("button", { class: "bar", title: `${q.name}: ${q.ideas}`, onclick: () => goTopic(q.id) }, el("span", { text: q.name }), el("i", {}, el("b", { style: `width:${Math.max(3, (100 * q.ideas) / top)}%` }))))) : null,
+      el("div", { class: "gacts" }, act("newGraph", "New knowledge graph", "N", () => newGraph(), true), act("newNote", "New note", "I", capture), act("mapBtn", "Meaning map", "M", () => goMeaning())), foot);
+  }
+}
+// A new graph asks only for its topic and its name.
+async function newGraph(zoneId) {
+  const NEW = "\u0000new", has = S.zones.length > 0;
+  const v = await dialog({ title: "New knowledge graph", ok: "Create", fields: [
+    has ? { name: "zoneId", label: "Topic", type: "select", value: zoneId || S.model[S.isle]?.topics[Math.max(0, S.topic)]?.id || S.zones[0].id, options: [...S.zones.map((z) => [z.id, z.name]), [NEW, "New topic…"]] } : { name: "topic", label: "Topic", max: 80 },
+    { name: "name", label: "Name", max: 80 }] });
+  if (!v) return;
+  let zid = v.zoneId;
+  if (!has || zid === NEW) {
+    const name = has ? (await dialog({ title: "New topic", fields: [{ name: "name", label: "Topic", max: 80 }], ok: "Add" }))?.name : v.topic; if (!name) return;
+    zid = (await safely(() => store.createZone({ name })))?.id; if (!zid) return;
+  }
+  const t = await safely(() => store.createTree({ zoneId: zid, name: v.name }));
+  if (t) { await load(); goTree(t.id); }
+}
+function isleMenu(i, anchor) {
+  const rec = S.garden.islands[i]; if (!rec) return;
+  menu(anchor, [
+    { label: "Rename", run: async () => { const v = await dialog({ title: "Rename island", fields: [{ name: "name", label: "Island", value: rec.name, max: 40 }] }); if (v) { rec.name = v.name; saveGarden(); } } },
+    { label: "Centrepiece", run: () => menu(anchor, CENTRES.map(([v, text]) => ({ label: (rec.landmark === v ? "✓ " : "") + text, run: () => { rec.landmark = v; saveGarden(); } }))) },
+    i === 0 && rec.landmark === "arches" && { label: "Figure under the arches", run: () => menu(anchor, [["none", "None"], ["athena", "Athena"], ["saraswati", "Saraswati"]].map(([v, text]) => ({ label: ((S.garden.patron || "none") === v ? "✓ " : "") + text, run: () => { S.garden.patron = v; saveGarden(); } }))) },
+    "-", { label: "New island", run: newIsle },
+    i > 0 && !rec.zoneIds.length && { label: "Remove island", danger: true, run: () => { S.garden.islands.splice(i, 1); S.isle = -1; isles.focus(-1); saveGarden(); } },
+  ]);
+}
+async function newIsle() {
+  const v = await dialog({ title: "New island", ok: "Add", fields: [{ name: "name", label: "Island", max: 40 }, { name: "landmark", label: "Centrepiece", type: "select", value: "academy", options: CENTRES }] });
+  if (!v) return;
+  S.garden.islands.push({ id: newId(), name: v.name, landmark: v.landmark, zoneIds: [] }); await saveGarden(); pickIsle(S.garden.islands.length - 1);
+}
+function topicMenu(t, anchor) {
+  const z = S.zones.find((q) => q.id === t.id), o = (S.garden.zone[t.id] ||= {}), here = S.garden.islands[S.isle];
+  const choose = (list, now, set) => () => menu(anchor, list.map(([v, text]) => ({ label: (now === v ? "✓ " : "") + text, run: () => { set(v); saveGarden(); } })));
+  const move = (to) => { here.zoneIds = here.zoneIds.filter((id) => id !== t.id); to.zoneIds.push(t.id); S.topic = -1; saveGarden(); };
+  menu(anchor, [
+    { label: "Rename", run: () => renameThing(z, store.updateZone, "Topic") },
+    { label: "Biome", run: choose(BIOMES, t.biome, (v) => { o.biome = v; }) },
+    { label: "Landmark", run: choose(MARKS, t.mark, (v) => { o.mark = v; }) },
+    { label: "Move to island", run: () => menu(anchor, [...S.garden.islands.filter((q) => q !== here && q.zoneIds.length < 6).map((q) => ({ label: q.name, run: () => move(q) })),
+      { label: "New island…", run: async () => { const v = await dialog({ title: "New island", ok: "Move", fields: [{ name: "name", label: "Island", max: 40 }] }); if (!v) return; const q = { id: newId(), name: v.name, landmark: "academy", zoneIds: [] }; S.garden.islands.push(q); move(q); } }]) },
+  ]);
+}
+function islesKey(k, stop) {
+  const isl = S.model[S.isle], t = isl?.topics[S.topic];
+  if (/^[1-9]$/.test(k)) { stop(); const i = +k - 1; if (t) { const tr = t.trees[i]; if (tr) goTree(tr.id); } else if (isl) pickTopic(i); else pickIsle(i); return; }
+  if (k === "ArrowRight" || k === "ArrowLeft") { stop(); const d = k === "ArrowRight" ? 1 : -1; if (isl && S.topic >= 0) { const n = isl.topics.length; pickTopic((S.topic + d + n) % n); } else { const n = S.model.length; pickIsle(((S.isle < 0 ? (d > 0 ? -1 : 0) : S.isle) + d + n) % n); } return; }
+  if (k === "ArrowDown" || k === "Enter") { stop(); if (t) { if (t.trees[0]) goTree(t.trees[0].id); else newGraph(t.id); } else if (isl) pickTopic(0); else pickIsle(0); return; }
+  if (k === "ArrowUp") { stop(); return back(); }
+  if (k === "n") { stop(); return newGraph(t?.id); }
+  if (k === "z") { stop(); return newZone(); }
+  if (k === "m") { stop(); return goMeaning(t?.id); }
+  if (k === "w" || k === "v") { stop(); return t ? (t.due.length ? water(t.due) : toast("Nothing to water")) : water(null); }
+  if (k === "d") { stop(); $("#gpanel .seg button[aria-pressed=false]")?.click(); }
+}
+
 function renderEmpty() {
-  const box = $("#empty"), show = S.view === "forest" && !S.zones.length && S.cutoff == null;
+  const box = $("#empty"), show = (S.view === "forest" || S.view === "isles") && !S.zones.length && S.cutoff == null;
   box.hidden = !show;
   if (!show || box.firstChild) return;
   const input = el("input", { id: "zoneName", placeholder: "First subject", maxLength: 80, required: true, "aria-label": "Zone name", autocomplete: "off" });
@@ -929,7 +1111,8 @@ function back() {
   if (S.cutoff != null) return toggleTimeline();
   if (S.panel) { S.panel = null; return renderPanel(); }
   if (S.view === "garden" && S.fsel) return pickPlant(null);
-  if (S.view !== "forest") location.hash = S.view === "garden" ? S.lastKnowledge || "#/" : "#/";
+  if (S.view === "isles") { if (S.topic >= 0) return pickTopic(-1); if (S.isle >= 0) pickIsle(-1); return; }
+  location.hash = S.view === "tree" ? S.treeBack : S.view === "meaning" ? S.meanBack : "#/";
 }
 function onKey(e) {
   if (e.key === "Escape") { e.preventDefault(); return back(); }
@@ -946,9 +1129,10 @@ function onKey(e) {
   if (k === "/") { stop(); return find(); }
   if (k === "?") { stop(); return shortcuts(); }
   if (k === "i") { stop(); return capture(); }
-  if (k === "t") { stop(); return toggleTimeline(); }
-  if (k === "0") { stop(); return fitView(); }
+  if (k === "t" && S.view !== "isles") { stop(); return toggleTimeline(); }
+  if (k === "0") { stop(); return S.view === "isles" ? pickIsle(-1) : fitView(); }
   if (S.cutoff != null) return;
+  if (S.view === "isles") return islesKey(k, stop);
   if (S.view === "garden") {
     if (k === "v") { stop(); return startReview(null); }
     if (k.startsWith("Arrow")) { stop(); stepForest(k === "ArrowRight" || k === "ArrowUp" ? 1 : -1); return renderActions(); }
@@ -965,7 +1149,7 @@ function onKey(e) {
   }
   const n = S.byId.get(S.sel);
   if (S.view === "meaning") {
-    if (k === "m") { stop(); location.hash = "#/"; }
+    if (k === "m") { stop(); location.hash = S.meanBack; }
     else if (k === "Enter" && n) { stop(); S.pendingSel = n.id; goTree(n.treeId); }
     else if (k === " ") { stop(); togglePanel(); }
     else if (k === "l") { stop(); linkFrom(); }

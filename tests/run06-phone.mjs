@@ -8,12 +8,16 @@ await seed(page);
 await page.waitForSelector('.lbl.tree:text-is("Synthesis")');
 await page.screenshot({ path: "tests/shots/forest-phone.png" });
 t.eq(await state(page, () => document.querySelector("#top").scrollWidth <= 390), true, "top bar fits the phone");
-await page.tap("#switchBtn"); await page.waitForSelector(".lbl.tree");
+await page.tap("#switchBtn"); await page.waitForSelector("body[data-isles=ready]");
+await page.waitForSelector(".tag.isle"); await page.waitForTimeout(600); await page.screenshot({ path: "tests/shots/isles-phone.png" });
+t.eq(await state(page, () => document.querySelector("#top").scrollWidth <= 390), true, "garden top bar fits the phone");
+await page.evaluate(() => { location.hash = "#/garden"; }); await page.waitForSelector(".lbl.tree");
 await page.tap('.lbl.tree:has-text("Synthesis")'); await page.waitForSelector("#waterBtn");
 const card = await page.locator("#actions").boundingBox();
 if (card.x < 0 || card.x + card.width > 390) t.fail("plant card wider than the screen");
 await page.waitForTimeout(500); await page.screenshot({ path: "tests/shots/garden-phone.png" });
 await page.tap("#switchBtn"); await page.waitForSelector("#addBtn");
+await page.waitForSelector('.lbl.tree:text-is("Basic electronics")');
 await page.tap('.lbl.tree:text-is("Basic electronics")');
 await page.waitForSelector(".lbl.trunk");
 

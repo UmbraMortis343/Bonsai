@@ -2,6 +2,19 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.6.0 — 2026-11-12
+
+The garden is the home screen.
+
+- **Islands:** your topics are biomes on floating islands made of small blocks, with a centrepiece on each island, bridges between islands, animals, and day or night. A topic's biome fills in as you add ideas and dries out from its edges when ideas wait to be watered.
+- **Garden panel:** how many ideas, graphs and topics you have, what needs watering, how your knowledge is spread, and buttons for a new knowledge graph, a new note and the meaning map.
+- **Number keys:** 1–9 goes to an island, then to a topic, then opens one of its graphs. 0 or Esc steps back out. W waters, D switches day and night. Each tag shows its key.
+- **New knowledge graph (N)** asks only for a topic and a name.
+- **Arrange it:** rename islands, choose their centrepiece, add islands, move a topic to another island, and pick each topic's biome and landmark.
+- A topic that passes a full plot (about 150 ideas) gets its own landmark and the island grows outward.
+- The forest of trees is still there under Knowledge (Shift+Tab). Watering opens the potted plants as before.
+- **Licence:** Bonsai is now under the GNU AGPL, version 3 or later. Versions up to 0.5.0 stay MIT.
+
 ## 0.5.0 — 2026-11-10
 
 Ideas placed by meaning.

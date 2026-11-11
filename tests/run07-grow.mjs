@@ -17,7 +17,10 @@ await page.evaluate(async () => {
 t.eq(await page.textContent("#switchBtn .thirst"), "5", "thirsty count on the Garden button");   // 3 trunks, Resistors, Capacitors
 await page.keyboard.press("Shift+Tab");
 await page.waitForSelector("#waterAll");
-t.eq(await state(page, () => [bonsai.S.view, location.hash]), ["garden", "#/garden"], "Shift+Tab opens the garden");
+t.eq(await state(page, () => [bonsai.S.view, location.hash]), ["isles", "#/"], "Shift+Tab opens the garden");
+await page.click("#waterAll"); await page.waitForSelector("#showAnswer");
+t.eq(await state(page, () => [bonsai.S.view, bonsai.S.review.ids.length]), ["garden", 5], "Water starts a round in the watering view");
+await key("Escape"); await page.waitForSelector("#review", { state: "hidden" });
 await page.click('.lbl.tree:has-text("Basic electronics")');
 await page.waitForSelector("#waterBtn");
 t.eq(await page.textContent("#waterBtn"), "Water 3", "thirsty in this plant");
@@ -41,7 +44,7 @@ await page.waitForTimeout(500); await page.screenshot({ path: "tests/shots/garde
 
 // Back in the knowledge window the trees carry no roots or fading.
 await page.keyboard.press("Shift+Tab");
-await page.waitForSelector("#addBtn");
+await page.waitForSelector(".lbl.tree");
 t.eq(await state(page, () => bonsai.S.view), "forest", "Shift+Tab returns to knowledge");
 await openTree(page, ids.basic);
 t.eq(await state(page, () => [bonsai.S.flora.limbMesh.count, bonsai.S.flora.ids.length]), [9, 9], "knowledge tree has no roots");

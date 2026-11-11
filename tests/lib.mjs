@@ -17,8 +17,8 @@ export async function start(name, port) {
       const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, ...opts }), page = await ctx.newPage();
       page.on("pageerror", (e) => t.fail("page error: " + e.message));
       page.on("console", (m) => { if (m.type() === "error" && !/favicon|Failed to load resource/.test(m.text())) t.fail("console error: " + m.text()); });
-      await page.goto(t.url + path);
-      if (!path) await page.waitForSelector("body[data-ready]");
+      await page.goto(t.url + (path || "#/forest"));   // most tests start in the knowledge window; the garden is the home
+      if (!path || path === "#/") await page.waitForSelector("body[data-ready]");
       return page;
     },
     async end() { await browser.close(); server.close(); if (t.failed) process.exit(1); console.log(`PASS ${name}`); },

@@ -1,6 +1,6 @@
 {
   "name": "bonsai",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "description": "Bonsai: grow a forest of linked notes. Zones are subjects, trees are topics.",
   "type": "module",
@@ -12,5 +12,6 @@
   "devDependencies": {
     "playwright": "1.63.0",
     "three": "^0.180.0"
-  }
+  },
+  "license": "AGPL-3.0-or-later"
 }

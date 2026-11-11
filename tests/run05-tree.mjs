@@ -71,7 +71,8 @@ await key("/"); await page.keyboard.type("coul"); await page.waitForSelector(".r
 await sel("Coulombs");
 
 await page.reload(); await page.waitForSelector("body[data-ready]"); await page.waitForSelector('.lbl.node:text-is("Coulombs")');
-await key("Escape");
+await key("Escape"); await page.waitForSelector("#gpanel:not([hidden])");   // opened directly, so Back goes home to the garden
+await page.evaluate(() => { location.hash = "#/forest"; });
 await page.click('.lbl.tree:text-is("Basic electronics")');
 await page.waitForSelector(".lbl.trunk");
 await t.end();

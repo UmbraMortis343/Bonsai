@@ -24,7 +24,7 @@ await page.evaluate(() => new Promise((res, rej) => {
   };
   req.onerror = () => rej(req.error);
 }));
-await page.goto(t.url); await page.waitForSelector("body[data-ready]");
+await page.goto(t.url + "#/forest"); await page.waitForSelector("body[data-ready]");
 await page.waitForSelector('.lbl.tree:text-is("Basic electronics")');
 await page.click('.lbl.tree:text-is("Basic electronics")');
 await page.waitForSelector('.lbl.node:text-is("Resistors")');
