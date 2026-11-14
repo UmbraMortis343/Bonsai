@@ -116,7 +116,7 @@ const shape = (page) => state(page, () => bonsai.S.hubs.map((h) => [h.name, h.is
   await page.waitForFunction(() => bonsai.S.model.length === 2, null, { timeout: 90000 });
   t.eq(await state(page, () => bonsai.S.model.map((i) => [i.name, i.topics.map((q) => [q.name, q.ideas, q.trees.length])])), [["Home", [["", 0, 0]]], ["Physics", [["Physics", 2, 1], ["Mechanics", 201, 1], ["Electromagnetism", 151, 1], ["Quantum", 131, 1]]]], "the topic has its own island and its main branches are topics there");
   t.eq(await state(page, () => bonsai.S.links.length), 3, "the trunk stays linked to each branch that left");
-  await page.click("#toast button"); await page.waitForFunction(() => bonsai.S.model.length === 1);
+  await page.evaluate(() => document.querySelector("#toast button").click()); await page.waitForFunction(() => bonsai.S.model.length === 1, null, { timeout: 90000 });   // the toast can time out while slow software drawing rebuilds the islands
   t.eq(await state(page, () => [bonsai.S.model[0].topics.map((q) => [q.name, q.ideas, q.trees.length]), bonsai.S.links.length, bonsai.S.zones.length]), [[["Physics", 485, 2]], 0, 1], "Undo puts everything back");
 }
 await t.end();

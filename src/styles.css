@@ -156,6 +156,11 @@ time{font-size:12px;color:var(--muted)}
 .dialog label{display:grid;gap:4px;font-size:13px;color:var(--muted)}
 .dialog label>*{color:var(--ink)}
 .dialog label>span{color:var(--muted)}
+.checks{display:grid;gap:2px;max-height:50vh;overflow:auto;margin:0 -4px}
+.dialog label.check{display:flex;align-items:center;gap:10px;padding:6px 4px;border-radius:8px;cursor:pointer}
+.dialog label.check:hover{background:var(--well)}
+.dialog label.check input{width:auto;accent-color:var(--accent)}
+.dialog label.check .muted{margin-left:auto}
 .menu{position:fixed;min-width:190px;max-height:calc(100% - 16px);overflow:auto;display:grid;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:5px;box-shadow:var(--shadow)}
 .mi{display:flex;justify-content:space-between;align-items:center;gap:18px;border:none;background:none;text-align:left;padding:8px 10px;border-radius:8px}
 .mi:hover:not(:disabled),.mi:focus-visible{background:var(--well);outline:none}

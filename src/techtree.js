@@ -1,101 +1,147 @@
 // Bonsai: the tech tree. A flat map of everything you know.
-// Tree: each island is a lane, its topics down the left, opening out to the key ideas of their
-// graphs and on to every idea. Links between ideas are drawn between whatever is open, so a
-// folded topic still shows what it connects to. Web: every idea at once, laid out by its
-// connections, clustered by island; drag to reshape, positions are kept.
-// Drawn on a 2D canvas so it stays light on a phone.
+// Tree: a radial map grown from a start in the middle. Each topic is a cell on a ring; a topic sits one
+// ring further out than the topics it builds on. Open a cell and it grows, filling with a small map of its
+// ideas (trunks in the middle, branches outward), and the rest of the map is pushed out to make room.
+// Links between ideas are drawn between whatever is showing, so closed cells still show how topics connect.
+// Web: every idea at once, laid out by its connections, clustered by island; drag to reshape, positions kept.
+// Drawn on a 2D canvas so it stays light on a phone. Positions scale with zoom; dots and words keep their size.
 
 const HUES = ["#5b8def", "#9a7cf0", "#e0709f", "#e8834f", "#d4a23a", "#4fb286", "#35a9b6", "#8a9b48"];
-const ROW = 24, TOPIC_X = 0, IDEA_X = 236, COL = 214, ARC = 104, ISLE_W = 260, LANE_GAP = 18, HUB_HEAD = 34, HUB_GAP = 30;
-const LABEL = { topic: 172, idea: 146 };
+const START = 70, GAP = 70, RIN = 40, STEP = 54, LABEL = 150, TAU = Math.PI * 2;
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const topicKey = (id) => "z:" + id;
+const wrap = (a) => ((a % TAU) + TAU) % TAU;
 
 export function createTechTree({ host, saved = {}, onSelect = () => {}, onOpen = () => {}, onHover = () => {}, onState = () => {}, onLayout = () => {} }) {
   const cv = document.createElement("canvas"); cv.setAttribute("aria-label", "Tech tree"); host.append(cv);
   const ctx = cv.getContext("2d");
   let W = 1, H = 1, dpr = 1, active = false, raf = 0, last = 0, C = colours();
-  let mode = saved.mode === "web" ? "web" : "tree", auto = false, frames = 0, sel = null, hov = null, drag = null, alpha = 0, settled = true, framed = { tree: false, web: false };
-  const open = new Set(saved.open || []), view = { x: 0, y: 0, k: 1 }, goal = { x: 0, y: 0, k: 1, on: false };
-  let N = new Map(), topics = [], isles = [], hubs = [], raw = [], pairs = [], lanes = [], heads = [], bounds = { x0: 0, y0: 0, x1: 1, y1: 1 }, order = [];
+  let mode = saved.mode === "web" ? "web" : "tree", level = [0, 1, 2].includes(saved.level) ? saved.level : 1, auto = false, frames = 0;
+  let sel = null, hov = null, drag = null, alpha = 0, settled = true, framed = { tree: false, web: false };
+  const cells = new Map(Object.entries(saved.cells || {})), view = { x: 0, y: 0, k: 1 }, goal = { x: 0, y: 0, k: 1, on: false };
+  let N = new Map(), topics = [], isles = [], hubs = [], raw = [], pairs = [], rings = [], after = {}, shown = [];
   let pos = saved.pos || {}, pin = new Set(saved.pin || []);
   const widths = new Map();
 
   function colours() {
-    const css = getComputedStyle(document.documentElement), v = (k) => css.getPropertyValue(k).trim();
-    const ink = v("--ink") || "#000000";
-    return { bg: v("--bg") || "#fff", ink, soft: /^#[0-9a-f]{6}$/i.test(ink) ? `rgba(${parseInt(ink.slice(1, 3), 16)},${parseInt(ink.slice(3, 5), 16)},${parseInt(ink.slice(5), 16)},.78)` : ink, muted: v("--muted") || "#888", line: v("--line") || "#ddd", limb: v("--limb") || "#999", sap: v("--sap") || "#d97706", dark: matchMedia("(prefers-color-scheme: dark)").matches };
+    const css = getComputedStyle(document.documentElement), v = (k) => css.getPropertyValue(k).trim(), ink = v("--ink") || "#000000";
+    const rgb = /^#[0-9a-f]{6}$/i.test(ink) ? [1, 3, 5].map((i) => parseInt(ink.slice(i, i + 2), 16)).join(",") : "0,0,0";
+    return { bg: v("--bg") || "#fff", ink, soft: `rgba(${rgb},.72)`, faint: `rgba(${rgb},.16)`, muted: v("--muted") || "#888", line: v("--line") || "#ddd", sap: v("--sap") || "#d97706", dark: matchMedia("(prefers-color-scheme: dark)").matches };
   }
-  const font = (kind) => (kind === "topic" ? "600 13px " : kind === "root" ? "600 12px " : "500 12px ") + 'system-ui,"Segoe UI",Roboto,sans-serif';
+  const FONT = { topic: '600 13px system-ui,"Segoe UI",Roboto,sans-serif', root: '600 12px system-ui,"Segoe UI",Roboto,sans-serif', idea: '500 12px system-ui,"Segoe UI",Roboto,sans-serif' };
   function fit(text, kind, max) {
     const key = kind + "|" + max + "|" + text; if (widths.has(key)) return widths.get(key);
-    const isle = kind === "isle"; ctx.font = isle ? "700 12px system-ui,sans-serif" : font(kind); if (isle && "letterSpacing" in ctx) ctx.letterSpacing = "1.2px";
-    let s = text, w = ctx.measureText(s).width;
+    ctx.font = FONT[kind]; let s = text, w = ctx.measureText(s).width;
     if (w > max) { while (s.length > 1 && ctx.measureText(s + "…").width > max) s = s.slice(0, -1); s = s.trimEnd() + "…"; w = ctx.measureText(s).width; }
-    if (isle && "letterSpacing" in ctx) ctx.letterSpacing = "0px";
     const r = { s, w }; widths.set(key, r); return r;
   }
   const kindOf = (n) => (n.kind === "topic" ? "topic" : n.depth === 0 ? "root" : "idea");
+  const alphaHex = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; };
 
   // ---------- data ----------
   function setData(d) {
-    const old = N; N = new Map(); C = colours(); widths.clear();
+    const old = N; N = new Map(); C = colours(); widths.clear(); after = d.after || {};
     hubs = d.hubs?.length ? d.hubs : [{ id: "", name: "" }];
     isles = d.islands.map((q, i) => ({ ...q, i, hue: HUES[i % HUES.length], topics: [] }));
-    const rec = (id, o) => { const p = old.get(id); const r = { id, kids: [], parent: null, vis: false, a: 0, ta: 0, x: 0, y: 0, tx: 0, ty: 0, wx: 0, wy: 0, vx: 0, vy: 0, desc: 0, ...o }; if (p) { r.x = p.x; r.y = p.y; r.a = p.a; r.wx = p.wx; r.wy = p.wy; r.placed = p.placed; } N.set(id, r); return r; };
+    const rec = (id, o) => { const p = old.get(id); const r = { id, kids: [], parent: null, vis: false, a: 0, ta: 0, x: 0, y: 0, tx: 0, ty: 0, wx: 0, wy: 0, vx: 0, vy: 0, desc: 0, ...o }; if (p) for (const k of ["x", "y", "a", "wx", "wy", "wplaced", "placed", "ang", "R", "drc"]) r[k] = p[k]; N.set(id, r); return r; };
     topics = d.topics.map((t) => { const isl = isles[t.isle] || isles[0], r = rec(topicKey(t.id), { kind: "topic", zoneId: t.id, title: t.name, isle: isl.i, hue: isl.hue, depth: -1, growth: t.growth || 0, mist: !!t.mist, ideas: t.ideas || 0 }); isl.topics.push(r); return r; });
-    const zoneOf = new Map(d.trees.map((t) => [t.id, t])), byParent = new Map();
-    for (const n of d.nodes) { const t = zoneOf.get(n.treeId); if (!t || !N.has(topicKey(t.zoneId))) continue; const top = N.get(topicKey(t.zoneId)); rec(n.id, { kind: "idea", title: n.title || "Untitled", note: n.note || "", treeId: n.treeId, zoneId: t.zoneId, isle: top.isle, hue: top.hue, src: n }); }
+    const treeOf = new Map(d.trees.map((t) => [t.id, t])), byParent = new Map();
+    for (const n of d.nodes) { const t = treeOf.get(n.treeId); if (!t || !N.has(topicKey(t.zoneId))) continue; const top = N.get(topicKey(t.zoneId)); rec(n.id, { kind: "idea", title: n.title || "Untitled", note: n.note || "", treeId: n.treeId, zoneId: t.zoneId, isle: top.isle, hue: top.hue, src: n }); }
     for (const n of d.nodes) { const r = N.get(n.id); if (!r) continue; const pid = n.parentId != null && N.has(n.parentId) ? n.parentId : topicKey(r.zoneId); if (!byParent.has(pid)) byParent.set(pid, []); byParent.get(pid).push(r); }
     const treeAt = new Map(d.trees.map((t, i) => [t.id, i])), by = (a, b) => (a.parentId ? 0 : treeAt.get(a.treeId) - treeAt.get(b.treeId)) || (a.order ?? 0) - (b.order ?? 0) || String(a.createdAt).localeCompare(String(b.createdAt));
     for (const [pid, kids] of byParent) { const p = N.get(pid); kids.sort((a, b) => by(a.src, b.src)); p.kids = kids; for (const k of kids) k.parent = p; }
     const walk = (n, depth) => { n.depth = depth; let c = 0; for (const k of n.kids) c += 1 + walk(k, depth + 1); n.desc = c; return c; };
     for (const t of topics) walk(t, -1);
-    for (const id of [...open]) if (!N.has(id)) open.delete(id);
+    for (const r of N.values()) { delete r.src; r.top = r.kind === "topic" ? r : N.get(topicKey(r.zoneId)); }
+    for (const z of [...cells.keys()]) if (!N.has(z)) cells.delete(z);
     if (sel && !N.has(sel)) sel = null; if (hov && !N.has(hov)) hov = null;
     raw = d.links.filter((l) => N.has(l.fromId) && N.has(l.toId) && l.fromId !== l.toId).map((l) => ({ id: l.id, a: N.get(l.fromId), b: N.get(l.toId), label: l.label || "" }));
-    for (const r of N.values()) delete r.src;
     layout(); if (mode === "web") webStart(false);
     if (!framed[mode]) { home(true); framed[mode] = true; }
     kick();
   }
 
-  // ---------- tree layout: lanes of islands, tidy rows inside ----------
-  function layout() {
-    for (const r of N.values()) { r.vis = false; r.ta = 0; }
-    let y = 0; lanes = []; heads = []; order = [];
-    const many = hubs.length > 1;
-    const place = (n) => {
-      n.vis = true; n.ta = 1; n.tx = n.kind === "topic" ? TOPIC_X : IDEA_X + n.depth * COL; order.push(n);
-      const kids = open.has(n.id) ? n.kids : [];
-      if (!kids.length) { n.ty = y + ROW / 2; y += ROW; return; }
-      kids.forEach((c, i) => { if (n.kind === "topic" && i) y += 6; place(c); });
-      n.ty = (kids[0].ty + kids[kids.length - 1].ty) / 2;
+  // ---------- tree: rings of cells around a start ----------
+  const cellLevel = (t) => (cells.has(t.id) ? cells.get(t.id) : level);
+  // A topic's ring: one past the furthest topic it builds on. Loops are ignored.
+  function tiers() {
+    const memo = new Map(), busy = new Set();
+    const tier = (t) => {
+      if (memo.has(t)) return memo.get(t); if (busy.has(t)) return 0; busy.add(t);
+      let m = 0; for (const p of t.after) m = Math.max(m, tier(p)); busy.delete(t); memo.set(t, m + 1); return m + 1;
     };
-    hubs.forEach((h, hi) => {
-      const list = isles.filter((q) => (many ? (q.hub || 0) === hi : true)); if (many && hi > 0 && !list.length) return;
-      if (many) { heads.push({ name: h.name || "Hub", y: y + 12 }); y += HUB_HEAD; }
-      for (const q of list) {
-        const top = y; y += 36;   // the island's name sits along the top of its lane
-        if (!q.topics.length) y += ROW;
-        q.topics.forEach((t, i) => { if (i) y += 6; place(t); });
-        y += 8; lanes.push({ q, top, bottom: y }); y += LANE_GAP;
+    for (const t of topics) t.after = (after[t.zoneId] || []).map((z) => N.get(topicKey(z))).filter((p) => p && p !== t);
+    for (const t of topics) t.tier = tier(t);
+  }
+  // Inside a cell: the topic in the middle, its trunks on the first ring, branches further out.
+  function inner(t) {
+    const L = cellLevel(t), show = (n) => L >= 2 || n.depth <= 1;
+    const vis = []; let deep = 0;
+    const leaves = (n) => { const ks = n.kids.filter(show); n.vk = ks; n.leaves = ks.length ? ks.reduce((a, k) => a + leaves(k), 0) : 1; return n.leaves; };
+    if (L === 0 || !t.kids.length) { t.rc = 18 + 5 * Math.min(2, t.growth); t.inner = []; return; }
+    leaves(t);
+    const perDepth = [];
+    const walk = (n) => { for (const k of n.vk) { vis.push(k); deep = Math.max(deep, k.depth); perDepth[k.depth] = (perDepth[k.depth] || 0) + 1; walk(k); } };
+    walk(t);
+    let step = STEP;   // spread the rings out until the busiest one has room for its dots and words
+    for (let dd = 0; dd <= deep; dd++) { const need = ((perDepth[dd] || 0) * (dd === deep ? 17 : 26)) / TAU; if (need > RIN + dd * step) step = Math.max(step, (need - RIN) / Math.max(1, dd)); }
+    const place = (n, a0, span) => { let a = a0; for (const k of n.vk) { const s = (span * k.leaves) / n.leaves; k.la = a + s / 2; k.lr = RIN + k.depth * step; place(k, a, s); a += s; } };
+    place(t, 0, TAU);
+    t.inner = vis; t.rc = RIN + deep * step + (L >= 2 ? 64 : 76);
+  }
+  function layout() {
+    tiers();
+    for (const r of N.values()) { r.vis = false; r.ta = 0; }
+    for (const t of topics) inner(t);
+    // island sectors, with a wider gap between hubs
+    const many = hubs.length > 1, order = [...isles].sort((a, b) => (a.hub || 0) - (b.hub || 0) || a.i - b.i).filter((q) => q.topics.length);
+    const weight = (q) => Math.max(1, ...[...new Set(q.topics.map((t) => t.tier))].map((tt) => q.topics.filter((t) => t.tier === tt).reduce((a, t) => a + t.rc, 0) / 30));
+    const gapOf = (q, i) => (i && many && (q.hub || 0) !== (order[i - 1].hub || 0) ? 2.2 : 0.6);
+    const total = order.reduce((a, q, i) => a + weight(q) + gapOf(q, i), 0) + (many && order.length ? 2.2 : 0.6);
+    let a = -Math.PI / 2;
+    order.forEach((q, i) => { a += (gapOf(q, i) / total) * TAU; q.a0 = a; a += (weight(q) / total) * TAU; q.a1 = a; });
+    // rings: radius from the cells on them; angles spread inside each island's sector, ordered under what they build on
+    rings = []; const max = Math.max(0, ...topics.map((t) => t.tier));
+    let R = 0, prevMax = 0;
+    for (let tt = 1; tt <= max; tt++) {
+      const on = topics.filter((t) => t.tier === tt); if (!on.length) { rings.push(null); continue; }
+      const big = Math.max(...on.map((t) => t.rc));
+      R = tt === 1 || !prevMax ? START + big : R + prevMax + big + GAP;
+      for (const q of order) {
+        const mine = on.filter((t) => t.isle === q.i), bary = (t) => (t.after.length ? Math.atan2(t.after.reduce((s, p) => s + Math.sin(p.ang), 0), t.after.reduce((s, p) => s + Math.cos(p.ang), 0)) : null);
+        const keyOf = (t) => { const b = bary(t); return b == null ? q.topics.indexOf(t) / q.topics.length : wrap(b - q.a0) / Math.max(1e-6, q.a1 - q.a0); };
+        mine.sort((x, y) => keyOf(x) - keyOf(y)).forEach((t, j) => { t.ang = q.a0 + ((j + 0.5) / mine.length) * (q.a1 - q.a0); });
       }
-      if (many) y += HUB_GAP;
-    });
-    for (const r of N.values()) if (!r.vis) { let v = r.parent; while (v && !v.vis) v = v.parent; v ||= r; r.tx = v.tx; r.ty = v.ty; }
-    for (const r of N.values()) if (r.a === 0 && r.vis && r.parent) { let v = r.parent; while (v && v.a === 0 && v.parent) v = v.parent; r.x = v.x; r.y = v.y; }   // new rows grow out of their parent
-    for (const r of N.values()) if (r.vis && r.kind === "topic" && r.a === 0 && !r.placed) { r.x = r.tx; r.y = r.ty; r.placed = true; }
-    let x1 = IDEA_X; for (const n of order) x1 = Math.max(x1, n.tx + 24 + (n.kind === "topic" ? LABEL.topic : LABEL.idea));
-    bounds = { x0: -ARC - 18, y0: -10, x1: x1 + 20, y1: y };
+      const need = on.reduce((s, t) => s + 2 * t.rc + GAP * 0.5, 0) / TAU; if (need > R) R = need;
+      on.sort((x, y) => x.ang - y.ang);
+      for (let it = 0; it < 40 && on.length > 1; it++) {   // push neighbours apart along the ring until no two cells overlap
+        let moved = false;
+        for (let j = 0; j < on.length; j++) {
+          const p = on[j], q = on[(j + 1) % on.length], want = (p.rc + q.rc + GAP * 0.5) / R, d = wrap(q.ang - p.ang) || (j === on.length - 1 ? TAU : 0);
+          if (d < want) { const push = (want - d) / 2; p.ang -= push; q.ang += push; moved = true; }
+        }
+        if (!moved) break;
+      }
+      for (const t of on) { t.R = R; t.tx = R * Math.cos(t.ang); t.ty = R * Math.sin(t.ang); }
+      rings.push(R); prevMax = big;
+    }
+    shown = [];
+    for (const t of topics) {
+      t.vis = true; t.ta = 1; shown.push(t);
+      const rot = t.ang + Math.PI / 2;   // the cell's map is turned so it opens away from the start
+      for (const n of t.inner) { n.vis = true; n.ta = 1; n.tx = t.tx + n.lr * Math.cos(n.la + rot); n.ty = t.ty + n.lr * Math.sin(n.la + rot); shown.push(n); }
+    }
+    for (const r of N.values()) if (!r.vis) { r.tx = r.top.tx; r.ty = r.top.ty; }
+    for (const t of topics) if (!t.placed) { t.x = t.tx; t.y = t.ty; t.placed = true; t.a = 1; }
+    for (const r of N.values()) if (r.vis && r.a === 0 && r.kind === "idea") { r.x = r.top.x; r.y = r.top.y; }   // new ideas grow out of the middle of their cell
     pairs = lift();
   }
-  // A link between two ideas is drawn between the nearest things that are open.
+  // A link between two ideas is drawn between the nearest things that are showing.
   function lift() {
-    const shown = (r) => { if (mode === "web") return r; while (r && !r.vis) r = r.parent; return r; };
+    const showing = (r) => { if (mode === "web") return r; while (r && !r.vis) r = r.parent; return r; };
     const m = new Map();
     for (const l of raw) {
-      const a = shown(l.a), b = shown(l.b); if (!a || !b || a === b) continue;
+      const a = showing(l.a), b = showing(l.b); if (!a || !b || a === b) continue;
       const k = a.id < b.id ? a.id + "|" + b.id : b.id + "|" + a.id;
       const p = m.get(k) || { a, b, n: 0, label: "", direct: false }; p.n++; if (a === l.a && b === l.b) { p.direct = true; p.label ||= l.label; } m.set(k, p);
     }
@@ -105,19 +151,20 @@ export function createTechTree({ host, saved = {}, onSelect = () => {}, onOpen =
   // ---------- web: everything, by its connections ----------
   let rnd = 1; const rand = () => ((rnd = (rnd * 16807) % 2147483647) / 2147483647);
   function webStart(reset) {
-    if (reset) { pos = {}; pin.clear(); for (const r of N.values()) r.placed = false; }
+    if (reset) { pos = {}; pin.clear(); for (const r of N.values()) r.wplaced = false; }
     rnd = 7; const n = isles.length || 1, R = n > 1 ? 150 * Math.sqrt(n) + 140 : 0;
-    isles.forEach((q, i) => { const a = (i / n) * Math.PI * 2 - Math.PI / 2; q.cx = R * Math.cos(a); q.cy = R * Math.sin(a); });
+    isles.forEach((q, i) => { const a = (i / n) * TAU - Math.PI / 2; q.cx = R * Math.cos(a); q.cy = R * Math.sin(a); });
     let fresh = 0;
-    const put = (r, x, y) => { const p = pos[r.id]; if (p) { r.wx = p[0]; r.wy = p[1]; } else if (!r.placed) { r.wx = x; r.wy = y; fresh++; } r.placed = true; r.vx = r.vy = 0; r.pin = pin.has(r.id); };
+    const put = (r, x, y) => { const p = pos[r.id]; if (p) { r.wx = p[0]; r.wy = p[1]; } else if (!r.wplaced) { r.wx = x; r.wy = y; fresh++; } r.wplaced = true; r.vx = r.vy = 0; r.pin = pin.has(r.id); };
     for (const q of isles) q.topics.forEach((t, k) => {
-      const a = (k / Math.max(1, q.topics.length)) * Math.PI * 2 + 0.4; put(t, q.cx + 95 * Math.cos(a), q.cy + 95 * Math.sin(a));
-      const grow = (p) => p.kids.forEach((c) => { const b = rand() * Math.PI * 2; put(c, p.wx + 26 * Math.cos(b), p.wy + 26 * Math.sin(b)); grow(c); }); grow(t);
+      const a = (k / Math.max(1, q.topics.length)) * TAU + 0.4; put(t, q.cx + 95 * Math.cos(a), q.cy + 95 * Math.sin(a));
+      const grow = (p) => p.kids.forEach((c) => { const b = rand() * TAU; put(c, p.wx + 26 * Math.cos(b), p.wy + 26 * Math.sin(b)); grow(c); }); grow(t);
     });
     for (const r of N.values()) { r.x = r.wx; r.y = r.wy; }
     alpha = fresh || reset ? 1 : Math.max(alpha, 0.08); settled = false;
     pairs = lift();
   }
+  const sub = (n) => { const out = []; const go = (x) => { for (const k of x.kids) { out.push(k); go(k); } }; go(n); return out; };
   function tick() {
     const all = [...N.values()], cell = 90, grid = new Map(), A = alpha;
     const spring = (a, b, len, s) => { const dx = b.wx - a.wx, dy = b.wy - a.wy, d = Math.hypot(dx, dy) || 0.01, f = ((d - len) / d) * s * A; a.vx += dx * f; a.vy += dy * f; b.vx -= dx * f; b.vy -= dy * f; };
@@ -146,18 +193,18 @@ export function createTechTree({ host, saved = {}, onSelect = () => {}, onOpen =
     for (const r of all) { if (r.pin || r === drag?.r) { r.vx = r.vy = 0; continue; } r.vx *= 0.58; r.vy *= 0.58; r.wx += clamp(r.vx, -30, 30); r.wy += clamp(r.vy, -30, 30); }
     alpha *= 0.985;
   }
-  const sub = (n) => { const out = []; const go = (x) => { for (const k of x.kids) { out.push(k); go(k); } }; go(n); return out; };
   function saveLayout() { pos = {}; for (const r of N.values()) pos[r.id] = [Math.round(r.wx), Math.round(r.wy)]; onLayout({ pos, pin: [...pin] }); }
 
   // ---------- frame ----------
   function frame(t) {
     raf = 0; const dt = Math.min(0.05, (t - last) / 1000 || 0.016); last = t;
-    let moving = false; const e = 1 - Math.exp(-dt * 13);
+    let moving = false; const e = 1 - Math.exp(-dt * 9);
     if (mode === "tree") {
       for (const r of N.values()) {
-        r.x += (r.tx - r.x) * e; r.y += (r.ty - r.y) * e; r.a += (r.ta - r.a) * Math.min(1, e * 1.4);
+        r.x += (r.tx - r.x) * e; r.y += (r.ty - r.y) * e; r.a += (r.ta - r.a) * Math.min(1, e * 1.5);
         if (Math.abs(r.tx - r.x) > 0.3 || Math.abs(r.ty - r.y) > 0.3 || Math.abs(r.ta - r.a) > 0.01) moving = true; else { r.x = r.tx; r.y = r.ty; r.a = r.ta; }
       }
+      for (const t of topics) { t.drc = t.drc == null ? t.rc : t.drc + (t.rc - t.drc) * e; if (Math.abs(t.rc - t.drc) > 0.3) moving = true; else t.drc = t.rc; }
     } else if (alpha > 0.015 || drag) {
       for (let i = 0; i < 2; i++) tick(); for (const r of N.values()) { r.x = r.wx; r.y = r.wy; r.a = 1; } moving = true;
       if (auto && !drag && ++frames % 6 === 0) home();   // keep the whole web in view while it settles, until you move it yourself
@@ -172,10 +219,14 @@ export function createTechTree({ host, saved = {}, onSelect = () => {}, onOpen =
   const kick = () => { if (active && !raf) { last = performance.now(); raf = requestAnimationFrame(frame); } };
 
   // ---------- drawing ----------
-  const alphaHex = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; };
+  const X = (r) => r.x * view.k + view.x, Y = (r) => r.y * view.k + view.y;
   function focusSet() {
     const focus = N.get(hov) || N.get(sel), near = new Set();
-    if (focus) { near.add(focus); for (const p of pairs) { if (p.a === focus) near.add(p.b); if (p.b === focus) near.add(p.a); } if (mode === "web") { if (focus.parent) near.add(focus.parent); for (const c of focus.kids) near.add(c); } }
+    if (focus) {
+      near.add(focus); for (const p of pairs) { if (p.a === focus) near.add(p.b); if (p.b === focus) near.add(p.a); }
+      if (focus.parent) near.add(focus.parent); for (const c of focus.kids) near.add(c);
+      if (focus.kind === "topic" && mode === "tree") { for (const p of focus.after) near.add(p); for (const t of topics) if (t.after.includes(focus)) near.add(t); }
+    }
     return { focus, near };
   }
   function draw() {
@@ -183,104 +234,116 @@ export function createTechTree({ host, saved = {}, onSelect = () => {}, onOpen =
     if (mode === "web") drawWeb(); else drawTree();
     ctx.setLineDash([]); ctx.globalAlpha = 1; ctx.textAlign = "left";
   }
-  function linkStroke(p, on, dim, px) {
-    const a = p.a, b = p.b, same = a.isle === b.isle, al = dim ? 0.1 : on ? 0.95 : same ? 0.42 : 0.55, w = Math.min(4.5, 1.1 + Math.log2(p.n) * 0.9) * (on ? 1.3 : 1);
-    return { same, al, w: Math.max(px, w), dash: same ? [3, 4] : [7, 4] };
+  function paintLink(p, c, on, dim) {
+    const same = p.a.isle === p.b.isle, al = dim ? 0.08 : on ? 0.95 : same ? 0.42 : 0.55;
+    if (same) ctx.strokeStyle = alphaHex(p.a.hue, al);
+    else { const g = ctx.createLinearGradient(c[0], c[1], c[6], c[7]); g.addColorStop(0, alphaHex(p.a.hue, al)); g.addColorStop(1, alphaHex(p.b.hue, al)); ctx.strokeStyle = g; }
+    ctx.lineWidth = Math.min(4.5, 1.1 + Math.log2(p.n) * 0.9) * (on ? 1.3 : 1); ctx.setLineDash(same ? [3, 4] : [7, 4]);
+    ctx.beginPath(); ctx.moveTo(c[0], c[1]); ctx.bezierCurveTo(c[2], c[3], c[4], c[5], c[6], c[7]); ctx.stroke();
+    if (on && p.direct && p.label) { const m = bez(c, 0.5); ctx.setLineDash([]); ctx.font = "italic 500 11px system-ui,sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; halo(p.label, m[0], m[1] - 7, C.sap); ctx.textAlign = "left"; }
   }
-  function paintLink(p, c, st, ax, ay, bx, by) {
-    if (st.same) ctx.strokeStyle = alphaHex(p.a.hue, st.al);
-    else { const g = ctx.createLinearGradient(ax, ay, bx, by); g.addColorStop(0, alphaHex(p.a.hue, st.al)); g.addColorStop(1, alphaHex(p.b.hue, st.al)); ctx.strokeStyle = g; }
-    ctx.lineWidth = st.w; ctx.setLineDash(st.dash); ctx.beginPath(); ctx.moveTo(c[0], c[1]); ctx.bezierCurveTo(c[2], c[3], c[4], c[5], c[6], c[7]); ctx.stroke();
-  }
+  const bowed = (ax, ay, bx, by, f = 0.14) => { const mx = (ax + bx) / 2, my = (ay + by) / 2, ox = -(by - ay) * f, oy = (bx - ax) * f; return [ax, ay, mx + ox, my + oy, mx + ox, my + oy, bx, by]; };
+  const bez = (c, t) => { const u = 1 - t; return [u * u * u * c[0] + 3 * u * u * t * c[2] + 3 * u * t * t * c[4] + t * t * t * c[6], u * u * u * c[1] + 3 * u * u * t * c[3] + 3 * u * t * t * c[5] + t * t * t * c[7]]; };
+  const toward = (r, x, y, gap) => { const dx = x - r.x, dy = y - r.y, d = Math.hypot(dx, dy) || 1; return [r.x + (dx / d) * gap, r.y + (dy / d) * gap]; };
 
-  // Tree: drawn in the map's own units, so the whole thing scales like a picture.
   function drawTree() {
-    const k = view.k, px = 1 / k, { focus } = focusSet(), text = k * 12 >= 7.5;
-    ctx.setTransform(dpr * k, 0, 0, dpr * k, dpr * view.x, dpr * view.y);
-    const vy0 = -view.y / k - 40, vy1 = (H - view.y) / k + 40, vx0 = -view.x / k - 300, vx1 = (W - view.x) / k + 300;
-    const inView = (r) => r.y > vy0 && r.y < vy1 && r.x > vx0 && r.x < vx1;
-    drawLanes(k, text);
-    ctx.lineCap = "round";
-    for (const r of N.values()) {
-      if (!r.parent || r.a < 0.02 || r.parent.a < 0.02) continue;
-      const p = r.parent; if (!inView(r) && !inView(p)) continue;
-      ctx.strokeStyle = alphaHex(r.hue, 0.42 * Math.min(r.a, p.a)); ctx.lineWidth = Math.max(px, 1.3);
-      const sx = p.x + labelEnd(p) + 8, mx = (sx + r.x) / 2; ctx.beginPath(); ctx.moveTo(sx, p.y); ctx.bezierCurveTo(mx, p.y, mx, r.y, r.x - 6, r.y); ctx.stroke();
-    }
-    for (const p of pairs) {
-      const a = p.a, b = p.b; if (a.a < 0.3 || b.a < 0.3) continue;
-      if (Math.max(a.y, b.y) < vy0 - 200 || Math.min(a.y, b.y) > vy1 + 200) continue;
-      const on = !!focus && (a === focus || b === focus), st = linkStroke(p, on, !!focus && !on, px), c = route(a, b);
-      paintLink(p, c, st, a.x, a.y, b.x, b.y);
-      if (on && p.direct && p.label && text) { const m = bez(c, 0.5); ctx.setLineDash([]); ctx.font = "italic 500 11px system-ui,sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; halo(p.label, m[0], m[1] - 7, C.sap); ctx.textAlign = "left"; }
-    }
+    const k = view.k, { focus, near } = focusSet(), ox = view.x, oy = view.y;
+    const sx = (x) => x * k + ox, sy = (y) => y * k + oy, inView = (x, y, m = 80) => x > -m && x < W + m && y > -m && y < H + m;
+    const rcOf = (t) => t.drc ?? t.rc, dim = (r) => !!focus && !near.has(r) && r.top !== focus.top;
+    // faint rings, and a soft glow of each island's colour around its cells
+    ctx.strokeStyle = C.faint; ctx.lineWidth = 1; ctx.setLineDash([2, 6]);
+    for (const R of rings) if (R) { ctx.beginPath(); ctx.arc(ox, oy, R * k, 0, TAU); ctx.stroke(); }
     ctx.setLineDash([]);
-    const list = order.concat([...N.values()].filter((r) => !r.vis && r.a > 0.02)).filter((r) => r.id !== sel); if (N.get(sel)?.vis) list.push(N.get(sel));
-    for (const r of list) {
-      if (r.a < 0.02 || !inView(r)) continue;
-      const rad = radius(r), folded = r.kids.length && !open.has(r.id);
-      ctx.globalAlpha = r.a; node(r, r.x, r.y, rad, folded);
-      if (r.kind === "topic" ? k * 13 >= 6.5 : text) {
-        const kind = kindOf(r), f = fit(r.title, kind, r.kind === "topic" ? LABEL.topic : LABEL.idea), lx = r.x + rad + 7;
-        label(r, f, kind, lx, r.y);
-        if (folded && text) { ctx.font = "500 11px system-ui,sans-serif"; ctx.fillStyle = C.muted; ctx.fillText(String(r.kind === "topic" ? r.ideas : r.desc), lx + f.w + 7, r.y + 0.5); }
+    for (const t of topics) {
+      const x = sx(t.x), y = sy(t.y), R = rcOf(t) * k * (cellLevel(t) && t.kids.length ? 1.15 : 2.4); if (!inView(x, y, R)) continue;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, R); g.addColorStop(0, alphaHex(t.hue, C.dark ? 0.14 : 0.1)); g.addColorStop(1, alphaHex(t.hue, 0)); ctx.fillStyle = g; dot(x, y, R);
+    }
+    // the start, and what each topic builds on
+    ctx.lineCap = "round";
+    for (const t of topics) {
+      for (const p of t.after.length ? t.after : [null]) {
+        const [ax, ay] = p ? toward(p, t.x, t.y, rcOf(p)) : toward({ x: 0, y: 0 }, t.x, t.y, 12), [bx, by] = toward(t, p ? p.x : 0, p ? p.y : 0, rcOf(t));
+        const on = focus && (focus === t || focus === p), off = focus && !on;
+        if (p) { const g = ctx.createLinearGradient(sx(ax), sy(ay), sx(bx), sy(by)); g.addColorStop(0, alphaHex(p.hue, off ? 0.12 : 0.75)); g.addColorStop(1, alphaHex(t.hue, off ? 0.12 : 0.75)); ctx.strokeStyle = g; ctx.lineWidth = on ? 2.4 : 1.8; }
+        else { ctx.strokeStyle = alphaHex(t.hue, off ? 0.08 : 0.3); ctx.lineWidth = 1.2; }
+        ctx.beginPath(); ctx.moveTo(sx(ax), sy(ay)); ctx.lineTo(sx(bx), sy(by)); ctx.stroke();
       }
+    }
+    star(ox, oy);
+    // cells
+    for (const t of topics) {
+      const x = sx(t.x), y = sy(t.y), R = rcOf(t) * k, open = cellLevel(t) && t.kids.length; if (!inView(x, y, R)) continue;
+      ctx.globalAlpha = dim(t) ? 0.4 : 1;
+      if (t.mist) { ctx.setLineDash([3, 4]); ctx.strokeStyle = C.muted; ctx.lineWidth = 1.2; ring(x, y, R); ctx.setLineDash([]); }
+      else { ctx.fillStyle = alphaHex(t.hue, open ? 0.04 : 0.16); dot(x, y, R); ctx.strokeStyle = alphaHex(t.hue, open ? 0.45 : 0.8); ctx.lineWidth = open ? 1.2 : 1.6; ring(x, y, R); }
+      if (t.id === sel) { ctx.strokeStyle = C.ink; ctx.lineWidth = 1.6; ring(x, y, R + 4); }
       ctx.globalAlpha = 1;
     }
+    // inside the cells: branches, links, dots
+    for (const r of N.values()) {
+      if (r.kind !== "idea" || r.a < 0.02) continue;
+      const p = r.parent, x0 = sx(p.x), y0 = sy(p.y), x1 = sx(r.x), y1 = sy(r.y); if (!inView(x0, y0) && !inView(x1, y1)) continue;
+      ctx.globalAlpha = r.a * (dim(r) ? 0.3 : 1); ctx.strokeStyle = alphaHex(r.hue, 0.5); ctx.lineWidth = r.depth === 0 ? 1.5 : 1.1;
+      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    for (const p of pairs) {
+      if (p.a.a < 0.3 || p.b.a < 0.3) continue;
+      const on = !!focus && (p.a === focus || p.b === focus || (focus.kind === "topic" && (p.a.top === focus || p.b.top === focus))), ga = p.a.kind === "topic" ? rcOf(p.a) : 4, gb = p.b.kind === "topic" ? rcOf(p.b) : 4;
+      const [ax, ay] = toward(p.a, p.b.x, p.b.y, ga), [bx, by] = toward(p.b, p.a.x, p.a.y, gb);
+      paintLink(p, bowed(sx(ax), sy(ay), sx(bx), sy(by), 0.12), on, !!focus && !on);
+    }
+    ctx.setLineDash([]);
+    for (const r of N.values()) {
+      if (r.kind !== "idea" || r.a < 0.02) continue; const x = sx(r.x), y = sy(r.y); if (!inView(x, y)) continue;
+      ctx.globalAlpha = r.a * (dim(r) ? 0.35 : 1); ctx.fillStyle = r.depth === 0 ? r.hue : alphaHex(r.hue, 0.85); dot(x, y, radius(r));
+      if (r.id === sel) { ctx.strokeStyle = C.ink; ctx.lineWidth = 1.6; ring(x, y, radius(r) + 4); }
+      ctx.globalAlpha = 1;
+    }
+    for (const t of topics) if (cellLevel(t) && t.kids.length) { ctx.globalAlpha = dim(t) ? 0.4 : 1; ctx.fillStyle = t.hue; dot(sx(t.x), sy(t.y), 4.5); ctx.globalAlpha = 1; }
+    // words: the most important first, and none that would land on one already placed
+    const boxes = [], free = (b) => boxes.every((o) => b.x1 < o.x0 || b.x0 > o.x1 || b.y1 < o.y0 || b.y0 > o.y1);
+    const rank = (r) => (r.id === sel ? 0 : r === focus ? 1 : r.kind === "topic" ? 2 : near.has(r) ? 3 : r.depth === 0 ? 4 : r.depth === 1 ? 5 : 6);
+    const want = (r) => r.a > 0.5 && (rank(r) <= 4 || (r.depth === 1 && k >= 0.55) || k >= 0.9);
+    for (const r of shown.filter(want).sort((a, b) => rank(a) - rank(b))) {
+      const x = sx(r.x), y = sy(r.y); if (!inView(x, y)) continue;
+      const kind = kindOf(r), f = fit(r.title, kind, LABEL); let lx, ly = y;
+      if (r.kind === "topic") { const R = rcOf(r) * k, open = cellLevel(r) && r.kids.length; lx = x - f.w / 2; if (open) ly = y + 16; else if (f.w + 12 >= 2 * R) ly = y + R + 11; }
+      else { const out = Math.cos(Math.atan2(r.y - r.top.y, r.x - r.top.x)) >= -0.05; lx = out ? x + radius(r) + 6 : x - radius(r) - 6 - f.w; }   // words sit on the outer side of their dot
+      const b = { x0: lx - 3, y0: ly - 8, x1: lx + f.w + 3, y1: ly + 8 };
+      if (rank(r) > 2 && !free(b)) continue; boxes.push(b);
+      ctx.globalAlpha = dim(r) ? 0.45 : 1; label(r, f, kind, lx, ly); ctx.globalAlpha = 1;
+    }
+    // island names at the outer edge of their sector
+    for (const q of isles) {
+      if (!q.topics.length) continue;
+      const out = Math.max(...q.topics.map((t) => t.R + rcOf(t))) + 22, a = (q.a0 + q.a1) / 2, x = ox + Math.cos(a) * out * k, y = oy + Math.sin(a) * out * k;
+      ctx.font = "700 11px system-ui,sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; if ("letterSpacing" in ctx) ctx.letterSpacing = "1.6px";
+      ctx.globalAlpha = focus && !q.topics.includes(focus.top) && !q.topics.some((t) => near.has(t)) ? 0.4 : 1; ctx.fillStyle = q.hue; ctx.fillText(q.name.toUpperCase(), x, y); ctx.globalAlpha = 1;
+      if ("letterSpacing" in ctx) ctx.letterSpacing = "0px"; ctx.textAlign = "left";
+    }
   }
-  function node(r, x, y, rad, folded) {
-    if (r.mist) { ctx.setLineDash([2.5, 2.5]); ctx.strokeStyle = C.muted; ctx.lineWidth = 1.2; ring(x, y, rad); ctx.setLineDash([]); }
-    else { if (folded) { ctx.fillStyle = alphaHex(r.hue, 0.18); dot(x, y, rad + 3.5); } ctx.fillStyle = r.depth > 0 ? alphaHex(r.hue, 0.85) : r.hue; dot(x, y, rad); }
-    if (r.id === sel) { ctx.strokeStyle = C.ink; ctx.lineWidth = 1.6; ring(x, y, rad + 4); }
+  function star(x, y) {
+    const gold = C.dark ? "#f5d78e" : "#c79a2e"; ctx.strokeStyle = alphaHex(gold, 0.9); ctx.lineWidth = 1.2;
+    for (let i = 0; i < 8; i++) { const a = (i / 8) * TAU, l = i % 2 ? 6 : 11; ctx.beginPath(); ctx.moveTo(x + Math.cos(a) * 3, y + Math.sin(a) * 3); ctx.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); ctx.stroke(); }
+    ctx.fillStyle = gold; dot(x, y, 2.6);
   }
   function label(r, f, kind, lx, ly) {
-    ctx.font = font(kind); ctx.textBaseline = "middle";
+    ctx.font = FONT[kind]; ctx.textBaseline = "middle";
     if (r.id === sel) { ctx.fillStyle = C.ink; pill(lx - 5, ly - 10, f.w + 10, 20); ctx.fillStyle = C.bg; ctx.fillText(f.s, lx, ly + 0.5); }
     else halo(f.s, lx, ly + 0.5, r.mist ? C.muted : r.depth > 1 ? C.soft : C.ink);
   }
-  function drawLanes(k, text) {
-    ctx.textBaseline = "middle";
-    for (const h of heads) {
-      ctx.font = "700 11px system-ui,sans-serif"; if ("letterSpacing" in ctx) ctx.letterSpacing = "1.6px";
-      ctx.fillStyle = C.muted; ctx.fillText(h.name.toUpperCase(), bounds.x0 + 4, h.y);
-      const w = ctx.measureText(h.name.toUpperCase()).width; if ("letterSpacing" in ctx) ctx.letterSpacing = "0px";
-      ctx.strokeStyle = C.line; ctx.lineWidth = 1 / k; ctx.beginPath(); ctx.moveTo(bounds.x0 + w + 16, h.y); ctx.lineTo(bounds.x1, h.y); ctx.stroke();
-    }
-    for (const L of lanes) {
-      const q = L.q; ctx.fillStyle = alphaHex(q.hue, C.dark ? 0.07 : 0.055); pill(bounds.x0, L.top, bounds.x1 - bounds.x0, L.bottom - L.top, 12);
-      ctx.fillStyle = q.hue; ctx.fillRect(bounds.x0, L.top + 10, 3, Math.max(8, L.bottom - L.top - 20));
-      if (k * 12 >= 5) {
-        const f = fit(q.name.toUpperCase(), "isle", ISLE_W - 30); ctx.font = "700 12px system-ui,sans-serif"; if ("letterSpacing" in ctx) ctx.letterSpacing = "1.2px";
-        ctx.fillStyle = q.hue; ctx.fillText(f.s, bounds.x0 + 18, L.top + 20); if ("letterSpacing" in ctx) ctx.letterSpacing = "0px";
-        if (text) { ctx.font = "500 11px system-ui,sans-serif"; ctx.fillStyle = C.muted; const n = q.topics.length; ctx.fillText(n ? String(n) : "", bounds.x0 + 18 + f.w + 12, L.top + 20.5); }
-      }
-    }
-  }
-  // Where a link runs in the tree. Topic to topic: an arc in the gutter on the left. Two ideas in one column with
-  // nothing open to their right: a bracket on the right, past their labels. Across columns: out of the left one's
-  // label and into the right one's dot, like a branch but dashed. Otherwise a short bow on the left.
-  function route(a, b) {
-    const dy = Math.abs(a.y - b.y), free = (r) => !(r.kids.length && open.has(r.id)), end = (r) => r.x + labelEnd(r) + 6;
-    if (a.kind === "topic" && b.kind === "topic") { const bow = Math.min(ARC - 14, 18 + dy * 0.2); return [a.x - radius(a) - 2, a.y, a.x - bow, a.y + (b.y - a.y) * 0.1, b.x - bow, b.y - (b.y - a.y) * 0.1, b.x - radius(b) - 2, b.y]; }
-    if (Math.abs(a.x - b.x) < 1) {
-      if (free(a) && free(b) && a.kind !== "topic") { const xa = end(a), xb = end(b), m = Math.max(xa, xb) + Math.min(70, 14 + dy * 0.08); return [xa, a.y, m, a.y, m, b.y, xb, b.y]; }
-      const bow = Math.min(34, 10 + dy * 0.05); return [a.x - radius(a) - 2, a.y, a.x - bow, a.y, b.x - bow, b.y, b.x - radius(b) - 2, b.y];
-    }
-    const [l, r] = a.x < b.x ? [a, b] : [b, a], sx = free(l) ? end(l) : l.x + radius(l) + 2, ex = r.x - radius(r) - 3, d = Math.max(30, (ex - sx) * 0.5);
-    const c = [sx, l.y, sx + d, l.y, ex - d, r.y, ex, r.y]; return a === l ? c : [c[6], c[7], c[4], c[5], c[2], c[3], c[0], c[1]];
-  }
-  const bez = (c, t) => { const u = 1 - t; return [u * u * u * c[0] + 3 * u * u * t * c[2] + 3 * u * t * t * c[4] + t * t * t * c[6], u * u * u * c[1] + 3 * u * u * t * c[3] + 3 * u * t * t * c[5] + t * t * t * c[7]]; };
 
-  // Web: positions scale with zoom, dots and words stay the same size on screen, and words that would collide are left out.
+  // Web: positions scale with zoom, dots and words stay the same size, words that would collide are left out.
   function drawWeb() {
-    const k = view.k, X = (r) => r.x * k + view.x, Y = (r) => r.y * k + view.y, { focus, near } = focusSet();
+    const k = view.k, { focus, near } = focusSet();
     const inView = (x, y) => x > -80 && x < W + 80 && y > -40 && y < H + 40;
     for (const q of isles) {
       if (!q.members?.length) continue;
       const x = q.mx * k + view.x, y = q.my * k + view.y, R = q.mr * k, g = ctx.createRadialGradient(x, y, 0, x, y, R);
       g.addColorStop(0, alphaHex(q.hue, C.dark ? 0.13 : 0.1)); g.addColorStop(1, alphaHex(q.hue, 0)); ctx.fillStyle = g; dot(x, y, R);
       ctx.font = "700 11px system-ui,sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; if ("letterSpacing" in ctx) ctx.letterSpacing = "1.4px";
-      ctx.globalAlpha = focus && !near.has(q.topics[0]) && ![...near].some((r) => r.isle === q.i) ? 0.45 : 1; ctx.fillStyle = q.hue; ctx.fillText(q.name.toUpperCase(), x, y - R * 0.72); ctx.globalAlpha = 1;
+      ctx.globalAlpha = focus && ![...near].some((r) => r.isle === q.i) ? 0.45 : 1; ctx.fillStyle = q.hue; ctx.fillText(q.name.toUpperCase(), x, y - R * 0.72); ctx.globalAlpha = 1;
       if ("letterSpacing" in ctx) ctx.letterSpacing = "0px"; ctx.textAlign = "left";
     }
     ctx.lineCap = "round";
@@ -290,33 +353,29 @@ export function createTechTree({ host, saved = {}, onSelect = () => {}, onOpen =
       ctx.strokeStyle = alphaHex(r.hue, focus ? (near.has(r) && near.has(p) ? 0.6 : 0.07) : 0.26); ctx.lineWidth = r.depth <= 0 ? 1.4 : 1;
       ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
     }
-    for (const p of pairs) {
-      const ax = X(p.a), ay = Y(p.a), bx = X(p.b), by = Y(p.b), on = !!focus && (p.a === focus || p.b === focus), st = linkStroke(p, on, !!focus && !on, 1);
-      const mx = (ax + bx) / 2, my = (ay + by) / 2, c = [ax, ay, mx - (by - ay) * 0.14, my + (bx - ax) * 0.14, mx - (by - ay) * 0.14, my + (bx - ax) * 0.14, bx, by];
-      paintLink(p, c, st, ax, ay, bx, by);
-      if (on && p.direct && p.label) { const m = bez(c, 0.5); ctx.setLineDash([]); ctx.font = "italic 500 11px system-ui,sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; halo(p.label, m[0], m[1] - 7, C.sap); ctx.textAlign = "left"; }
-    }
+    for (const p of pairs) { const on = !!focus && (p.a === focus || p.b === focus); paintLink(p, bowed(X(p.a), Y(p.a), X(p.b), Y(p.b)), on, !!focus && !on); }
     ctx.setLineDash([]);
     const all = [...N.values()];
     for (const r of all) {
       const x = X(r), y = Y(r); if (!inView(x, y)) continue;
-      ctx.globalAlpha = focus && !near.has(r) ? (hov ? 0.22 : 0.5) : 1; node(r, x, y, radius(r), false); ctx.globalAlpha = 1;
+      ctx.globalAlpha = focus && !near.has(r) ? (hov ? 0.22 : 0.5) : 1;
+      if (r.mist) { ctx.setLineDash([2.5, 2.5]); ctx.strokeStyle = C.muted; ctx.lineWidth = 1.2; ring(x, y, radius(r)); ctx.setLineDash([]); } else { ctx.fillStyle = r.depth > 0 ? alphaHex(r.hue, 0.85) : r.hue; dot(x, y, radius(r)); }
+      if (r.id === sel) { ctx.strokeStyle = C.ink; ctx.lineWidth = 1.6; ring(x, y, radius(r) + 4); }
+      ctx.globalAlpha = 1;
     }
-    // words, most important first; any that would overlap one already placed are skipped
     const rank = (r) => (r.id === sel ? 0 : r === focus ? 1 : near.has(r) ? 2 : r.kind === "topic" ? 3 : r.depth === 0 ? 4 : r.depth === 1 ? 5 : 6);
     const want = (r) => rank(r) <= 3 || (r.depth === 0 && k >= 0.7) || (r.depth === 1 && k >= 1.3) || k >= 2;
     const boxes = [], free = (b) => boxes.every((o) => b.x1 < o.x0 || b.x0 > o.x1 || b.y1 < o.y0 || b.y0 > o.y1);
     for (const r of all.filter(want).sort((a, b) => rank(a) - rank(b))) {
       const x = X(r), y = Y(r); if (!inView(x, y)) continue;
-      const kind = kindOf(r), f = fit(r.title, kind, r.kind === "topic" ? LABEL.topic : LABEL.idea), lx = x + radius(r) + 6, b = { x0: lx - 4, y0: y - 9, x1: lx + f.w + 4, y1: y + 9 };
+      const kind = kindOf(r), f = fit(r.title, kind, LABEL), lx = x + radius(r) + 6, b = { x0: lx - 4, y0: y - 9, x1: lx + f.w + 4, y1: y + 9 };
       if (rank(r) > 1 && !free(b)) continue; boxes.push(b);
       ctx.globalAlpha = focus && !near.has(r) ? (hov ? 0.3 : 0.6) : 1; label(r, f, kind, lx, y); ctx.globalAlpha = 1;
     }
   }
-  const radius = (r) => (r.kind === "topic" ? (mode === "web" ? 6 : 5.5) + 2.2 * Math.min(2, r.growth) : r.depth === 0 ? (mode === "web" ? 3.6 : 4.2) : mode === "web" ? 2.4 : 3.2);
-  const labelEnd = (r) => radius(r) + 7 + fit(r.title, kindOf(r), r.kind === "topic" ? LABEL.topic : LABEL.idea).w + (r.kind === "topic" && r.kids.length && !open.has(r.id) ? 30 : 0);
-  const dot = (x, y, r) => { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); };
-  const ring = (x, y, r) => { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke(); };
+  const radius = (r) => (r.kind === "topic" ? 6 + 2.2 * Math.min(2, r.growth) : r.depth === 0 ? 3.6 : 2.4);
+  const dot = (x, y, r) => { ctx.beginPath(); ctx.arc(x, y, Math.max(0.1, r), 0, TAU); ctx.fill(); };
+  const ring = (x, y, r) => { ctx.beginPath(); ctx.arc(x, y, Math.max(0.1, r), 0, TAU); ctx.stroke(); };
   const pill = (x, y, w, h, r = h / 2) => { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, r) : ctx.rect(x, y, w, h); ctx.fill(); };
   function halo(s, x, y, colour) { ctx.lineJoin = "round"; ctx.strokeStyle = C.bg; ctx.lineWidth = 3.5; ctx.strokeText(s, x, y); ctx.fillStyle = colour; ctx.fillText(s, x, y); }
 
@@ -327,36 +386,39 @@ export function createTechTree({ host, saved = {}, onSelect = () => {}, onOpen =
   }
   const pad = () => ({ t: 64, b: 86, l: 16, r: 16 });
   function extent() {
-    if (mode === "tree") return bounds;
-    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const r of N.values()) { x0 = Math.min(x0, r.wx); y0 = Math.min(y0, r.wy); x1 = Math.max(x1, r.wx + 60); y1 = Math.max(y1, r.wy); }
-    return isFinite(x0) ? { x0: x0 - 30, y0: y0 - 40, x1: x1 + 30, y1: y1 + 30 } : { x0: 0, y0: 0, x1: 1, y1: 1 };
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    if (mode === "tree") { for (const t of topics) { const m = t.rc + 30; x0 = Math.min(x0, t.tx - m); y0 = Math.min(y0, t.ty - m); x1 = Math.max(x1, t.tx + m); y1 = Math.max(y1, t.ty + m); } }
+    else for (const r of N.values()) { x0 = Math.min(x0, r.wx); y0 = Math.min(y0, r.wy); x1 = Math.max(x1, r.wx + 60); y1 = Math.max(y1, r.wy); }
+    return isFinite(x0) ? { x0: x0 - 30, y0: y0 - 40, x1: x1 + 30, y1: y1 + 30 } : { x0: -100, y0: -100, x1: 100, y1: 100 };
   }
   function to(x, y, k, now) { Object.assign(goal, { x, y, k, on: !now }); if (now) Object.assign(view, { x, y, k }); kick(); }
-  // Fit everything; a tall tree starts at its top at a readable size rather than shrunk to nothing.
   function home(now) {
-    const b = extent(), p = pad(), w = W - p.l - p.r, h = H - p.t - p.b, fw = w / (b.x1 - b.x0), fh = h / (b.y1 - b.y0);
-    const k = mode === "tree" ? clamp(Math.min(fw, Math.max(fh, 0.85)), W < 700 ? 0.82 : 0.62, 1.1) : clamp(Math.min(fw, fh), 0.2, 1.4); auto = mode === "web";
-    const x = (b.x1 - b.x0) * k < w ? p.l + (w - (b.x1 - b.x0) * k) / 2 - b.x0 * k : p.l - b.x0 * k;
-    const y = (b.y1 - b.y0) * k < h ? p.t + (h - (b.y1 - b.y0) * k) / 2 - b.y0 * k : p.t - b.y0 * k;
-    to(x, y, k, now);
+    const b = extent(), p = pad(), w = W - p.l - p.r, h = H - p.t - p.b, k = clamp(Math.min(w / (b.x1 - b.x0), h / (b.y1 - b.y0)), 0.15, 1.4);
+    auto = mode === "web";
+    to(p.l + w / 2 - ((b.x0 + b.x1) / 2) * k, p.t + h / 2 - ((b.y0 + b.y1) / 2) * k, k, now);
   }
-  function show(r, now) {
-    if (!r) return; const p = pad(), x = mode === "tree" ? r.tx : r.wx, y = mode === "tree" ? r.ty : r.wy, k = Math.max(goal.on ? goal.k : view.k, mode === "tree" ? 0.8 : 0.9), cx = view.x, cy = view.y;
-    const sx = x * k + cx, sy = y * k + cy, right = mode === "tree" ? 180 : 80;
-    if (sx > p.l + 30 && sx < W - p.r - right && sy > p.t + 20 && sy < H - p.b - 20 && k === view.k) return;
-    to(clamp(W * 0.42 - x * k, -Infinity, Infinity), H * 0.45 - y * k, k, now);
+  // Bring something into view; a cell that has just opened is fitted whole.
+  function show(r, now, whole = false) {
+    if (!r) return; const p = pad(), x = mode === "tree" ? r.tx : r.wx, y = mode === "tree" ? r.ty : r.wy;
+    let k = goal.on ? goal.k : view.k;
+    if (whole && r.kind === "topic") k = clamp(Math.min((W - 40) / (2 * r.rc + 40), (H - p.t - p.b) / (2 * r.rc + 40)), 0.2, 1.3);
+    else k = Math.max(k, 0.6);
+    const sx = x * k + view.x, sy = y * k + view.y;
+    if (!whole && k === view.k && sx > p.l + 40 && sx < W - p.r - 160 && sy > p.t + 30 && sy < H - p.b - 30) return;
+    to(W / 2 - x * k, p.t + (H - p.t - p.b) / 2 - y * k, k, now);
   }
-  function zoomAt(sx, sy, f) { auto = false; const k = clamp(view.k * f, 0.15, 3.5); goal.on = false; view.x = sx - ((sx - view.x) * k) / view.k; view.y = sy - ((sy - view.y) * k) / view.k; view.k = k; draw(); }
+  function zoomAt(sx, sy, f) { auto = false; const k = clamp(view.k * f, 0.08, 4); goal.on = false; view.x = sx - ((sx - view.x) * k) / view.k; view.y = sy - ((sy - view.y) * k) / view.k; view.k = k; draw(); }
 
   // ---------- picking and input ----------
   function hit(sx, sy) {
-    const x = (sx - view.x) / view.k, y = (sy - view.y) / view.k, web = mode === "web", slack = web ? 7 : 8 / view.k; let best = null, bd = Infinity;
+    let best = null, bd = Infinity;
     for (const r of N.values()) {
       if (r.a < 0.5 || (mode === "tree" && !r.vis)) continue;
-      const rad = radius(r) + slack, dx = web ? sx - (r.x * view.k + view.x) : x - r.x, dy = web ? sy - (r.y * view.k + view.y) : y - r.y, d = Math.hypot(dx, dy);
-      if (d < rad && d < bd) { best = r; bd = d; continue; }
-      if (mode === "tree" && dx > 0 && dx < labelEnd(r) + 4 && Math.abs(dy) < ROW / 2 - 1 && bd === Infinity) best = r;
+      const d = Math.hypot(sx - X(r), sy - Y(r)), open = cellLevel(r.top) && r.top.kids.length;
+      const reach = mode === "tree" && r.kind === "topic" ? (open ? 12 : Math.max(12, (r.drc ?? r.rc) * view.k + 2)) : radius(r) + 7;
+      if (d < reach && d < bd) { best = r; bd = d; }
     }
+    if (!best && mode === "tree") for (const t of topics) if (cellLevel(t) && t.kids.length && Math.hypot(sx - X(t), sy - Y(t)) < (t.drc ?? t.rc) * view.k) return { cell: t };
     return best;
   }
   const pts = new Map(); let press = null, pinch = null;
@@ -364,8 +426,8 @@ export function createTechTree({ host, saved = {}, onSelect = () => {}, onOpen =
     cv.setPointerCapture(e.pointerId); pts.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
     if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), k: view.k }; press = null; drag = null; return; }
     const r = hit(e.offsetX, e.offsetY);
-    press = { x: e.offsetX, y: e.offsetY, vx: view.x, vy: view.y, r, moved: false, type: e.pointerType };
-    if (mode === "web" && r) drag = { r }; goal.on = false; auto = false; onHover(null);
+    press = { x: e.offsetX, y: e.offsetY, vx: view.x, vy: view.y, r, moved: false };
+    if (mode === "web" && r && !r.cell) drag = { r }; goal.on = false; auto = false; onHover(null);
   });
   cv.addEventListener("pointermove", (e) => {
     if (pts.has(e.pointerId)) pts.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
@@ -376,91 +438,80 @@ export function createTechTree({ host, saved = {}, onSelect = () => {}, onOpen =
       else { view.x = press.vx + dx; view.y = press.vy + dy; draw(); }
       return;
     }
-    if (e.pointerType === "mouse") { const r = hit(e.offsetX, e.offsetY), id = r?.id || null; cv.style.cursor = r ? "pointer" : ""; if (id !== hov) { hov = id; draw(); } onHover(r ? info(r) : null, e.clientX, e.clientY); }
+    if (e.pointerType === "mouse") { const h = hit(e.offsetX, e.offsetY), r = h && !h.cell ? h : null, id = r?.id || null; cv.style.cursor = r ? "pointer" : ""; if (id !== hov) { hov = id; draw(); } onHover(r ? info(r) : null, e.clientX, e.clientY); }
   });
-  const up = (e) => {
+  cv.addEventListener("pointerup", (e) => {
     pts.delete(e.pointerId); if (pts.size < 2) pinch = null;
     const p = press; press = null; const d = drag; drag = null;
     if (!p) return;
     if (d && p.moved) { settled = false; alpha = Math.max(alpha, 0.05); kick(); return; }
-    if (p.moved) return;
-    tap(p.r, p.type);
-  };
-  cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", (e) => { pts.delete(e.pointerId); press = null; drag = null; pinch = null; });
+    if (!p.moved) tap(p.r);
+  });
+  cv.addEventListener("pointercancel", (e) => { pts.delete(e.pointerId); press = null; drag = null; pinch = null; });
   cv.addEventListener("pointerleave", () => { if (hov) { hov = null; draw(); } onHover(null); });
   cv.addEventListener("dblclick", (e) => { const r = hit(e.offsetX, e.offsetY); if (r && r.kind === "idea") onOpen(info(r)); });
   cv.addEventListener("wheel", (e) => { e.preventDefault(); zoomAt(e.offsetX, e.offsetY, Math.exp(-e.deltaY * (e.deltaMode ? 0.05 : 0.0016))); }, { passive: false });
-  // A tap selects; tapping a folded branch opens it, tapping the open one folds it again.
-  function tap(r, type) {
-    if (!r) { select(null); return; }
-    if (mode === "tree" && r.kids.length && (r.id === sel || type === "mouse")) toggle(r.id);
+  // Tapping a topic opens its cell, or closes it again. Tapping an idea picks it.
+  function tap(r) {
+    if (!r || r.cell) { select(null); return; }
+    if (mode === "tree" && r.kind === "topic" && r.kids.length) { sel = r.id; toggle(r.id); onSelect(info(r)); return; }
     select(r.id);
   }
 
   // ---------- actions ----------
   function info(r) {
-    if (!r) return null; const q = isles[r.isle], t = N.get(topicKey(r.zoneId));
-    return { id: r.kind === "topic" ? r.zoneId : r.id, kind: r.kind, title: r.title, note: r.note || "", zoneId: r.zoneId, treeId: r.treeId, island: q?.name || "", topic: t?.title || "", kids: r.kids.length, open: open.has(r.id), ideas: r.kind === "topic" ? r.ideas : r.desc };
+    if (!r) return null; const q = isles[r.isle];
+    return { id: r.kind === "topic" ? r.zoneId : r.id, kind: r.kind, title: r.title, note: r.note || "", zoneId: r.zoneId, treeId: r.treeId, island: q?.name || "", topic: r.top?.title || "", open: r.kind === "topic" ? cellLevel(r) > 0 : false, ideas: r.kind === "topic" ? r.ideas : r.desc, after: r.kind === "topic" ? (after[r.zoneId] || []) : [] };
   }
   const key = (id) => (N.has(id) ? id : N.has(topicKey(id)) ? topicKey(id) : null);
-  function select(id, { reveal = false } = {}) {
-    const k = id && key(id); sel = k || null;
-    if (reveal && sel) { let p = N.get(sel).parent, grew = false; while (p) { if (!open.has(p.id)) { open.add(p.id); grew = true; } p = p.parent; } if (grew) { layout(); onState(ui()); } }
-    onSelect(info(N.get(sel))); if (sel) show(N.get(sel)); draw(); kick();
+  function select(id) {
+    const k = id && key(id); sel = k || null; const r = N.get(sel);
+    if (r && mode === "tree" && !r.vis) { cells.set(r.top.id, 2); layout(); onState(ui()); }
+    onSelect(info(r)); if (r) show(r); draw(); kick();
   }
+  // A cell opens to everything in it, and closes back to what the level shows (or shut, when the level shows everything).
   function toggle(id, on) {
-    const k = key(id); if (!k || !N.get(k).kids.length) return;
-    const want = on ?? !open.has(k); if (want) open.add(k); else { open.delete(k); for (const d of sub(N.get(k))) open.delete(d.id); }
-    if (mode === "tree") { layout(); kick(); } onState(ui()); if (sel) onSelect(info(N.get(sel)));
+    const k = key(id); if (!k) return; const t = N.get(k).top; if (!t.kids.length) return;
+    const want = on ?? cellLevel(t) < 2;
+    if (want) cells.set(t.id, 2); else if (level < 2) cells.delete(t.id); else cells.set(t.id, 0);
+    if (sel && N.get(sel)?.top === t && N.get(sel) !== t && !want) sel = t.id;
+    if (mode === "tree") { layout(); show(t, false, want); kick(); }
+    onState(ui()); if (sel) onSelect(info(N.get(sel)));
   }
-  // 0: topics only; 1: topics opened to the key ideas (each graph's trunk and main branches); 2: everything.
   function setLevel(l) {
-    open.clear();
-    if (l >= 1) for (const t of topics) { if (t.kids.length) open.add(t.id); for (const c of t.kids) if (c.kids.length) open.add(c.id); }
-    if (l >= 2) for (const r of N.values()) if (r.kids.length) open.add(r.id);
-    if (sel && l < 2) { let r = N.get(sel); while (r && !(r.kind === "topic" || (l >= 1 && r.depth <= 1))) r = r.parent; sel = r?.id || null; onSelect(info(N.get(sel))); }
-    if (mode === "tree") { layout(); if (sel) show(N.get(sel)); else home(); kick(); }
-    onState(ui());
-  }
-  function level() {
-    const exp = [...N.values()].filter((r) => r.kids.length), keyset = new Set(); for (const t of topics) { if (t.kids.length) keyset.add(t.id); for (const c of t.kids) if (c.kids.length) keyset.add(c.id); }
-    if (!open.size) return 0; if (open.size === keyset.size && [...keyset].every((x) => open.has(x))) return 1; if (exp.every((r) => open.has(r.id))) return 2; return -1;
+    level = l; cells.clear();
+    const r = N.get(sel); if (r && r.kind === "idea" && !(l >= 2 || r.depth <= 1)) sel = r.top.id;
+    if (mode === "tree") { layout(); home(); kick(); }
+    onState(ui()); onSelect(info(N.get(sel)));
   }
   function setMode(m) {
     if (m === mode) return; mode = m;
     if (mode === "web") webStart(false); else { for (const r of N.values()) { r.x = r.tx; r.y = r.ty; r.a = r.ta; } pairs = lift(); }
-    if (!framed[mode]) { framed[mode] = true; home(true); } else if (sel) show(N.get(sel), true); else home(true);
+    if (!framed[mode] || !sel) { framed[mode] = true; home(true); } else show(N.get(sel), true);
     onState(ui()); draw(); kick();
   }
   function resetLayout() { if (mode !== "web") return; webStart(true); saveLayout(); home(); kick(); }
-  const ui = () => ({ mode, open: [...open] });
-  // Keys: arrows walk the tree like a file list (→ opens, ← folds or steps out); in the web they move to the nearest idea that way.
+  const ui = () => ({ mode, level, cells: Object.fromEntries(cells) });
+  // Arrows move to the nearest thing showing in that direction.
   function step(k) {
-    const r = N.get(sel);
-    if (!r) { const first = mode === "tree" ? order[0] : topics[0]; if (first) select(first.id); return; }
-    if (mode === "tree") {
-      const i = order.indexOf(r);
-      if (k === "ArrowDown" && order[i + 1]) select(order[i + 1].id);
-      else if (k === "ArrowUp" && i > 0) select(order[i - 1].id);
-      else if (k === "ArrowRight") { if (r.kids.length && !open.has(r.id)) toggle(r.id, true); else if (r.kids.length) select(r.kids[0].id); }
-      else if (k === "ArrowLeft") { if (open.has(r.id)) toggle(r.id, false); else if (r.parent) select(r.parent.id); }
-      return;
-    }
+    const r = N.get(sel), list = mode === "tree" ? shown : [...N.values()];
+    if (!r) { const first = [...topics].sort((a, b) => (a.R || 0) - (b.R || 0) || a.ang - b.ang)[0]; if (first) select(first.id); return; }
     const dir = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] }[k]; let best = null, bs = Infinity;
-    for (const o of N.values()) { if (o === r) continue; const dx = o.wx - r.wx, dy = o.wy - r.wy, d = Math.hypot(dx, dy) || 1, c = (dx * dir[0] + dy * dir[1]) / d; if (c < 0.5) continue; const s = d * (2 - c); if (s < bs) { bs = s; best = o; } }
+    for (const o of list) { if (o === r) continue; const dx = X(o) - X(r), dy = Y(o) - Y(r), d = Math.hypot(dx, dy) || 1, c = (dx * dir[0] + dy * dir[1]) / d; if (c < 0.5) continue; const s = d * (2 - c); if (s < bs) { bs = s; best = o; } }
     if (best) select(best.id);
   }
 
   new ResizeObserver(resize).observe(host);
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { C = colours(); widths.clear(); draw(); });
   return {
-    setData, setMode, setLevel, level, toggle, select, step, resetLayout, resize,
-    get mode() { return mode; }, get selected() { return info(N.get(sel)); },
+    setData, setMode, setLevel, toggle, select, step, resetLayout, resize,
+    get mode() { return mode; }, get level() { return level; }, get selected() { return info(N.get(sel)); },
     setActive(on) { active = on; if (on) { resize(); kick(); } else if (raf) { cancelAnimationFrame(raf); raf = 0; } },
     fit(now) { home(now); }, zoom(f) { zoomAt(W / 2, H / 2, f); },
-    focus(id) { const k = key(id); if (!k) return; select(k, { reveal: true }); const r = N.get(k); if (r.kids.length && !open.has(k)) toggle(k, true); show(r); },
+    focus(id) { const k = key(id); if (!k) return; const r = N.get(k); if (r.kind === "topic") { sel = k; if (r.kids.length) toggle(k, true); else show(r); onSelect(info(r)); } else select(k); },
     // for tests and pictures
-    state: () => ({ mode, level: level(), sel, open: [...open], shown: order.map((r) => r.id), pairs: pairs.map((p) => ({ a: p.a.id, b: p.b.id, n: p.n })), settled: mode === "tree" ? !raf : settled, view: { ...view } }),
-    screenOf(id) { const r = N.get(key(id)); return r && { x: r.x * view.k + view.x, y: r.y * view.k + view.y }; },
+    state: () => ({ mode, level, sel, cells: Object.fromEntries(cells), shown: shown.map((r) => r.id), pairs: pairs.map((p) => ({ a: p.a.id, b: p.b.id, n: p.n })), settled: mode === "tree" ? !goal.on && [...N.values()].every((r) => Math.abs(r.tx - r.x) < 0.5 && Math.abs(r.ty - r.y) < 0.5 && Math.abs(r.ta - r.a) < 0.02) : settled,
+      topics: Object.fromEntries(topics.map((t) => [t.zoneId, { tier: t.tier, R: Math.round(t.R), rc: Math.round(t.rc) }])) }),
+    screenOf(id) { const r = N.get(key(id)); return r && { x: X(r), y: Y(r) }; },
   };
 }

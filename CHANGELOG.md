@@ -2,6 +2,16 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.9.0 — 2026-11-14
+
+The tech tree grows from a start.
+
+- **Radial map:** the tech tree now grows outward from a start in the middle. Each topic is a cell, and topics of one island share a slice of the circle, softly lit in its colour. The coloured lanes are gone.
+- **Builds on (B):** pick a topic and choose which topics it builds on (Mechanics on Calculus, say). A topic sits one ring further out than everything it builds on, with a line from each. It's your call and can be changed any time; a topic can't build on one that builds on it. Inside a topic, the order of ideas is the graph's own: an idea comes after the one it branches from.
+- **Cells:** tap a topic and its cell grows and fills with a small map of its ideas, trunks in the middle and branches outward; the rest of the map moves out to make room. Tap again to close it. 1 closes every cell, 2 shows each topic's key ideas, 3 shows everything.
+- Links between ideas run from cell to cell, gathered into one thicker line when a cell is closed. Picking a topic brings forward everything it links to and builds on.
+- The web (L) is unchanged.
+
 ## 0.8.0 — 2026-11-14
 
 The tech tree.
