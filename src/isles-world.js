@@ -77,7 +77,7 @@ export function buildWorld(isl, N) {
   const pts = [[0.02, -0.42], [-0.13, -0.3], [0.08, -0.16], [0, 0.03], [-0.07, 0.22], [0.12, 0.42], [-0.03, 0.62], [0.1, 0.84], [0.16, 1.1], [0.2, 1.45], [0.27, 1.85]];
 
   // --- everything that doesn't depend on health or growth is worked out once per island and resolution, and kept ---
-  const key = isl.id + "|" + N + "|" + E + "|" + (isl.patron && isl.patron !== "none" ? 1 : 0) + TOPICS.map((t) => t.biome).join();
+  const key = isl.id + "|" + N + "|" + E + "|" + isl.landmark + "|" + (isl.mountain ? 1 : 0) + (isl.patron && isl.patron !== "none" ? 1 : 0) + TOPICS.map((t) => t.biome).join();
   let F = FIELDS.get(key);
   if (!F) {
     const wd = new Float32Array(N * N).fill(99), wl = new Float32Array(N * N), wc = new Float32Array(N * N), wb = new Float32Array(N * N), wt = new Int8Array(N * N).fill(-1);

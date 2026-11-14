@@ -949,7 +949,7 @@ function gardenModel() {
       return { id: z.id, name: z.name, biome: o.biome || BIOMES[k % 6][0], mark: o.mark || "kit", growth: Math.min(2, Math.pow(nodes.length / FULL_PLOT, 0.6)), health: rev.length ? 1 - due.length / rev.length : 1, ideas: nodes.length, mist: !nodes.length && charted(), due: due.map((n) => n.id), trees };
     });
     if (!topics.length) topics.push({ id: null, name: "", biome: "bloom", mark: "kit", growth: 0.04, health: 1, ideas: 0, mist: charted(), due: [], trees: [] });
-    return { id: isl.id, name: isl.name, hub: at.get(hubKey(isl)) || 0, landmark: isl.landmark, patron: i === 0 && isl.landmark === "arches" ? S.garden.patron || "none" : undefined, mountain: isl.landmark === "arches", topics };
+    return { id: isl.id, name: isl.name, hub: at.get(hubKey(isl)) || 0, landmark: isl.landmark, patron: i === 0 && isl.landmark === "arches" ? S.garden.patron || "none" : undefined, mountain: isl.landmark === "arches" || !!isl.mountain, topics };
   });
   S.hubs = hubs.map((h, k) => ({ id: h.id, name: h.name, isles: model.map((q, i) => (q.hub === k ? i : -1)).filter((i) => i >= 0) }));
   return model;
@@ -1058,6 +1058,7 @@ function isleItems(i) {
     !rec.mapId && { label: "Rename", run: async () => { const v = await dialog({ title: "Rename island", fields: [{ name: "name", label: "Island", value: rec.name, max: 40 }] }); if (v) { rec.name = v.name; saveGarden(); } } },
     !rec.mapId && { label: "Centrepiece", run: (anchor) => menu(anchor, CENTRES.map(([v, text]) => ({ label: (rec.landmark === v ? "✓ " : "") + text, run: () => { rec.landmark = v; saveGarden(); } }))) },
     i === 0 && rec.landmark === "arches" && { label: "Figure under the arches", run: (anchor) => menu(anchor, [["none", "None"], ["athena", "Athena"], ["saraswati", "Saraswati"]].map(([v, text]) => ({ label: ((S.garden.patron || "none") === v ? "✓ " : "") + text, run: () => { S.garden.patron = v; saveGarden(); } }))) },
+    rec.landmark !== "arches" && { label: (rec.mountain ? "✓ " : "") + "Mountain", run: () => { rec.mountain = !rec.mountain; saveGarden(); } },   // the arches always stand under one
     !S.garden.mapAt && "-", !S.garden.mapAt && { label: "New island", run: newIsle },
     i > 0 && !rec.mapId && !rec.zoneIds.length && { label: "Remove island", danger: true, run: () => { S.garden.islands.splice(i, 1); S.isle = -1; isles.focus(-1); saveGarden(); } },
   ].filter(Boolean);

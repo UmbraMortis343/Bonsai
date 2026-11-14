@@ -64,8 +64,11 @@ const shape = (page) => state(page, () => bonsai.S.hubs.map((h) => [h.name, h.is
   t.eq([await page.textContent("#gpanel h2"), await page.locator("#gpanel .grow-row").count(), await page.locator(".tag.isle.keys:not(.off)").count()], ["Academics", 3, 3], "the hub lists its islands, each with a key");
   await page.waitForTimeout(1800); await page.screenshot({ path: "tests/shots/hubs-hub.png" });
   await key(page, "2"); t.eq(await page.textContent("#gpanel h2"), "Sciences", "2 goes to the hub's second island");
-  t.eq(await page.locator("#isleMore").count(), 0, "an island from the map has nothing to rename here");
   await page.waitForTimeout(2500); await page.screenshot({ path: "tests/shots/hubs-island.png" });
+  await page.click("#isleMore");
+  t.eq(await page.locator(".menu button").allTextContents(), ["Mountain"], "an island from the map can't be renamed here, but can be given a mountain");
+  await page.click(".menu >> text=Mountain"); await page.waitForFunction(() => bonsai.S.model[1].mountain === true);
+  await page.waitForFunction(() => bonsai.isles.ready, null, { timeout: 90000 });
   await key(page, "2"); t.eq(await page.textContent("#gpanel h2"), "Electronics", "2 picks the island's second topic");
   await key(page, "Escape"); await key(page, "Escape");
   t.eq(await state(page, () => [bonsai.S.hub, bonsai.S.isle]), [0, -1], "Esc steps back to the hub");
