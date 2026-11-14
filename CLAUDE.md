@@ -43,6 +43,7 @@ Garden levels: every hub → one hub → one island → one topic (`S.hub`, `S.i
 - Commits are authored as Claude and end with the attribution lines the session gives.
 - The workspace can't open the live site; check the Actions run with `gh run list -R UmbraMortis343/Bonsai`.
 - In the cloud workspace: `export PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers` and `mkdir -p tests/.out` first. Drawing is in software there and very slow, so a test that makes hundreds of writes should pause the garden (`bonsai.isles.setActive(false)`) around them. `run07` sometimes times out for that reason; run it again on its own.
+- Pictures for him: `bonsai.isles.look(yaw, pitch)` sets the camera angle; `look(0, 2)` looks straight down, which is the view to use when checking whether anything overlaps (the mountain is then at the top).
 
 ## Landmarks
 `tools/landmarks/`: `BRIEF.md` (give this to whoever makes landmarks), `kit.mjs`, `render.mjs` (`node tools/landmarks/render.mjs <file.mjs> <out.png>`), and `library/` with the approved ones. Bell tower and gear tower are to be redone. Agreed route: Opus 5.5 on high, two renders per landmark, several landmarks per run. Not yet wired into the app: the app still draws its own built-in landmarks in `isles-world.js`.

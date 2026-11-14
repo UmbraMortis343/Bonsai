@@ -427,6 +427,8 @@ export function createIsles(opts) {
     },
     focus(i) { if (i == null || i < 0) overview(); else flyTo(i); wake(); },
     focusHub(h) { if (h == null || h < 0) overview(); else flyHub(h); wake(); },
+    // turn the camera to a set angle: yaw, and pitch up to straight down (for pictures and checks; dragging stops short of that)
+    look(y, p) { yaw = y; pitch = clamp(p, 0.2, Math.PI / 2 - 0.004); idle = 0; wake(); },
     select(k) { selTopic = k; showTags(); },
     setActive(on) { active = on; if (on) { renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, QUALITY[quality].dpr)); resize(); wake(); } },
     setNight(on) { setNight(on); },
