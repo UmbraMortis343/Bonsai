@@ -31,9 +31,10 @@ export function createTechTree({ host, saved = {}, art = () => null, onSelect = 
   const ctx = cv.getContext("2d");
   let W = 1, H = 1, dpr = 1, active = false, raf = 0, last = 0, C = colours();
   // what the tree shows: the island at the end of the chain (focus), and how many steps back the middle is (out)
-  let look = saved.look === "organic" ? "organic" : "simple";   // how it is drawn: plain lines, or tapered arms
+  let look = saved.look === "simple" ? "simple" : "organic";   // how it is drawn: plain lines, or tapered arms
   let mode = saved.mode === "web" ? "web" : "tree", focus = saved.focus || null, out = saved.out || 0;
   const open = new Set(saved.open || []);
+  let loose = saved.loose !== false;   // web: does the rest give way and spring back while you drag (J)
   let all = !!saved.all, tier = !!saved.tier, hl = false, pick = null, hov = null, framedOnce = false;
   const view = { x: 0, y: 0, k: 1 }, goal = { x: 0, y: 0, k: 1, on: false };
   let N = new Map(), topics = [], isles = [], byIsle = new Map(), raw = [], START = null;
@@ -220,8 +221,8 @@ export function createTechTree({ host, saved = {}, art = () => null, onSelect = 
         x.x += (x.tx - x.x) * e; x.y += (x.ty - x.y) * e; x.a += (1 - x.a) * Math.min(1, e * 1.4);
         if (Math.abs(x.tx - x.x) > 0.3 || Math.abs(x.ty - x.y) > 0.3 || x.a < 0.99) moving = true; else { x.x = x.tx; x.y = x.ty; x.a = 1; }
       }
-    } else if (drag) { for (const r of N.values()) { r.x = r.wx; r.y = r.wy; } }
-    else if (alpha > 0.015) {
+    } else if (drag && !loose) { for (const r of N.values()) { r.x = r.wx; r.y = r.wy; } }
+    else if (alpha > 0.015 || drag) {
       for (let i = 0; i < 2; i++) tick(); for (const r of N.values()) { r.x = r.wx; r.y = r.wy; } moving = true;
       if (auto && !drag && ++frames % 6 === 0) home();
     } else if (!settled) { settled = true; saveLayout(); }
@@ -343,7 +344,7 @@ export function createTechTree({ host, saved = {}, art = () => null, onSelect = 
     // words, most important first; any that would land on one already placed are left out
     const boxes = [], free = (b) => boxes.every((o) => b.x1 < o.x0 || b.x0 > o.x1 || b.y1 < o.y0 || b.y0 > o.y1);
     const rank = (x) => (x.key === pick ? 0 : x.key === hov ? 1 : x.kind === "hex" ? 2 : x.kind === "cell" ? 3 : x.kind === "key" ? 4 : P.get(x.rec.parent.id)?.kind === "key" ? 5 : 6);
-    for (const x of [...P.values()].filter((x) => rank(x) <= 5 || k >= 1.3).sort((a, b) => rank(a) - rank(b))) {
+    for (const x of [...P.values()].filter((x) => x.kind !== "idea" || x.key === pick || x.key === hov || x.rec.parent.id === pick).sort((a, b) => rank(a) - rank(b))) {
       const sx = SX(x.x), sy = SY(x.y); if (!inView(sx, sy)) continue;
       const font = x.kind === "hex" || x.kind === "cell" ? FONT.hex : x.kind === "key" ? FONT.key : FONT.idea, f = fit(titleOf(x), font, LABEL), r = radiusOf(x);
       let lx, ly = sy;
@@ -393,7 +394,7 @@ export function createTechTree({ host, saved = {}, art = () => null, onSelect = 
       ctx.globalAlpha = 1;
     }
     const rank = (r) => (r.id === pick ? 0 : r === f0 ? 1 : near.has(r) ? 2 : r.kind === "topic" ? 3 : r.depth === 0 ? 4 : r.depth === 1 ? 5 : 6);
-    const want = (r) => rank(r) <= 3 || (r.depth === 0 && k >= 0.7) || (r.depth === 1 && k >= 1.3) || k >= 2;
+    const want = (r) => rank(r) <= 3 || (r.depth === 0 && k >= 0.7);   // the little ideas only near what is picked
     const boxes = [], free = (b) => boxes.every((o) => b.x1 < o.x0 || b.x0 > o.x1 || b.y1 < o.y0 || b.y0 > o.y1);
     for (const r of allR.filter(want).sort((a, b) => rank(a) - rank(b))) {
       const x = X(r), y = Y(r); if (!inView(x, y)) continue;
@@ -418,9 +419,11 @@ export function createTechTree({ host, saved = {}, art = () => null, onSelect = 
     return isFinite(x0) ? { x0: x0 - 30, y0: y0 - 40, x1: x1 + 30, y1: y1 + 30 } : { x0: -100, y0: -100, x1: 100, y1: 100 };
   }
   function to(x, y, k, now) { Object.assign(goal, { x, y, k, on: !now }); if (now) Object.assign(view, { x, y, k }); kick(); }
-  function home(now) {
+  // fit everything; keep = never zoom out, just bring the middle back to the middle
+  function home(now, keep) {
     const b = extent(), p = pad(), w = W - p.l - p.r, h = H - p.t - p.b, k = clamp(Math.min(w / (b.x1 - b.x0), h / (b.y1 - b.y0)), 0.12, 1.6);
     auto = mode === "web";
+    if (keep && view.k > k) { to(p.l + w / 2, p.t + h / 2, view.k, now); return; }
     to(p.l + w / 2 - ((b.x0 + b.x1) / 2) * k, p.t + h / 2 - ((b.y0 + b.y1) / 2) * k, k, now);
   }
   function show(key) {
@@ -444,14 +447,15 @@ export function createTechTree({ host, saved = {}, art = () => null, onSelect = 
     if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), k: view.k }; press = null; drag = null; return; }
     const h = hit(e.offsetX, e.offsetY);
     press = { x: e.offsetX, y: e.offsetY, vx: view.x, vy: view.y, h, moved: false };
-    if (mode === "web" && h) { const r = N.get(h); drag = { r, kids: sub(r).filter((c) => !c.pin) }; } goal.on = false; auto = false; onHover(null);
+    if (mode === "web" && h) { const r = N.get(h); drag = { r, kids: loose ? [] : sub(r).filter((c) => !c.pin) }; } goal.on = false; auto = false; onHover(null);
   });
   cv.addEventListener("pointermove", (e) => {
     if (pts.has(e.pointerId)) pts.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
     if (pinch && pts.size === 2) { const [a, b] = [...pts.values()], d = Math.hypot(a.x - b.x, a.y - b.y); zoomAt((a.x + b.x) / 2, (a.y + b.y) / 2, (pinch.k * d) / pinch.d / view.k); return; }
     if (press) {
       const dx = e.offsetX - press.x, dy = e.offsetY - press.y; if (Math.hypot(dx, dy) > 4) press.moved = true; if (!press.moved) return;
-      if (drag?.r) {   // what you drag moves with everything under it; nothing else stirs
+      if (drag?.r && loose) { const r = drag.r; r.wx = r.x = (e.offsetX - view.x) / view.k; r.wy = r.y = (e.offsetY - view.y) / view.k; r.pin = true; pin.add(r.id); alpha = Math.max(alpha, 0.18); settled = false; kick(); }
+      else if (drag?.r) {   // held still: what you drag moves with everything under it; nothing else stirs
         const r = drag.r, nx = (e.offsetX - view.x) / view.k, ny = (e.offsetY - view.y) / view.k, dx = nx - r.wx, dy = ny - r.wy;
         r.wx = nx; r.wy = ny; for (const c of drag.kids) { c.wx += dx; c.wy += dy; } for (const c of [r, ...drag.kids]) { c.x = c.wx; c.y = c.wy; }
         r.pin = true; pin.add(r.id); alpha = 0; draw();
@@ -465,7 +469,7 @@ export function createTechTree({ host, saved = {}, art = () => null, onSelect = 
     pts.delete(e.pointerId); if (pts.size < 2) pinch = null;
     const p = press; press = null; const d = drag; drag = null;
     if (!p) return;
-    if (d?.r && p.moved) { settled = true; saveLayout(); return; }
+    if (d?.r && p.moved) { if (loose) { settled = false; alpha = Math.max(alpha, 0.05); kick(); } else { settled = true; saveLayout(); } return; }
     if (!p.moved) tap(p.h);
   });
   cv.addEventListener("pointercancel", (e) => { pts.delete(e.pointerId); press = null; drag = null; pinch = null; });
@@ -491,8 +495,8 @@ export function createTechTree({ host, saved = {}, art = () => null, onSelect = 
     if (r.kind === "topic") return { kind: "topic", key, id: r.zoneId, zoneId: r.zoneId, title: r.title, island: r.isle.name };
     return { kind: "idea", key, id: r.id, title: r.title, note: r.note, treeId: r.treeId, zoneId: r.zoneId, topic: r.top.title, island: r.isle.name, keyIdea: r.depth === 0, open: all || open.has(r.id), kids: r.kids.length };
   }
-  const ui = () => ({ mode, focus, out, open: [...open], all, tier, look });
-  function changed(fit = false) { if (mode === "tree") { layout(); if (fit) home(); } onState(ui()); onSelect(pick ? info(pick) : null); draw(); kick(); }
+  const ui = () => ({ mode, focus, out, open: [...open], all, tier, look, loose });
+  function changed(fit = false) { if (mode === "tree") { layout(); if (fit) home(false, fit === "keep"); } onState(ui()); onSelect(pick ? info(pick) : null); draw(); kick(); }
   function select(key) { pick = key || null; onSelect(pick ? info(pick) : null); if (pick) show(pick); draw(); kick(); }
   // open or close an idea: a key idea shows everything under it
   function toggle(key) {
@@ -503,9 +507,9 @@ export function createTechTree({ host, saved = {}, art = () => null, onSelect = 
     pick = key; changed(); show(kk.id);
   }
   // step back a tier: the island before takes the middle; the route back stays lit until you click away
-  function back() { const c = chain(); if (c[0].start) return false; out++; tier = false; hl = true; pick = null; changed(true); return true; }
+  function back() { const c = chain(); if (c[0].start) return false; out++; tier = false; hl = true; pick = null; changed("keep"); return true; }
   function goTo(q) { const c = chain(), i = c.indexOf(q); if (i > 0) out -= i; else if (i < 0) { focus = q.id; out = 0; } hl = false; pick = null; changed(true); }
-  function toStart() { let c = chain(); while (!c[0].start) { out++; c = chain(); } hl = out > 0; tier = false; pick = null; changed(true); }
+  function toStart() { let c = chain(); while (!c[0].start) { out++; c = chain(); } hl = out > 0; tier = false; pick = null; changed("keep"); }
   function step(dir) {
     const list = mode === "tree" ? [...P.values()].filter((x) => !lit || lit.has(x.key)).map((x) => ({ key: x.key, x: SX(x.x), y: SY(x.y) })) : [...N.values()].map((r) => ({ key: r.id, x: SX(r.x), y: SY(r.y) }));
     const cur = list.find((o) => o.key === pick);
@@ -532,6 +536,7 @@ export function createTechTree({ host, saved = {}, art = () => null, onSelect = 
       if (k === "Escape" && pick) { select(null); return true; }
       if (k === "r") { webStart(true); saveLayout(); home(); kick(); return true; }
     }
+    if (k === "j") { loose = !loose; onState(ui()); return true; }
     if (k === "y") { look = look === "organic" ? "simple" : "organic"; onState(ui()); draw(); return true; }
     if (k.startsWith("Arrow")) { step(k); return true; }
     if (k === "0") { home(); return true; }
@@ -550,7 +555,7 @@ export function createTechTree({ host, saved = {}, art = () => null, onSelect = 
   return {
     setData, setMode, key, select, resize, back,
     get mode() { return mode; }, get selected() { return pick ? info(pick) : null; },
-    get flags() { return { tier, all, hl: !!lit, out, look }; },
+    get flags() { return { tier, all, hl: !!lit, out, look, loose }; },
     redraw() { draw(); },
     restyle() { C = colours(); widths.clear(); draw(); },
     setActive(on) { active = on; if (on) { C = colours(); resize(); kick(); } else if (raf) { cancelAnimationFrame(raf); raf = 0; } },

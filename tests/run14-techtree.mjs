@@ -100,15 +100,15 @@ await key(page, "a");
 
 // ----- Y: the look; the map stays the same -----
 const before = await snap(page);
-t.eq(before.look, "simple", "it starts simple");
+t.eq(before.look, "organic", "it starts organic");
 await key(page, "y");
 let after = await snap(page);
-t.eq([after.look, await page.getAttribute("#lookOrganic", "aria-pressed")], ["organic", "true"], "Y switches to the organic look");
+t.eq([after.look, await page.getAttribute("#lookSimple", "aria-pressed")], ["simple", "true"], "Y switches to the simple look");
 t.eq([after.shown, after.nums, after.centre], [before.shown, before.nums, before.centre], "the look changes nothing else");
-t.eq(await state(page, () => JSON.parse(localStorage.getItem("bonsai-beta.tech")).look), "organic", "the look is kept");
-await page.screenshot({ path: "tests/shots/tech-organic.png" });
-await page.click("#lookSimple");
-t.eq((await snap(page)).look, "simple", "and back");
+t.eq(await state(page, () => JSON.parse(localStorage.getItem("bonsai-beta.tech")).look), "simple", "the look is kept");
+await page.screenshot({ path: "tests/shots/tech-simple.png" });
+await page.click("#lookOrganic");
+t.eq((await snap(page)).look, "organic", "and back");
 // pictures of the islands come from the garden's renderer, made on demand
 await page.waitForFunction(() => bonsai.isles && bonsai.isles.hasData, null, { timeout: 60000 });
 t.eq(await state(page, () => { const c = bonsai.isles.snap("found", { size: 64 }); const d = c.getContext("2d").getImageData(0, 0, 64, 64).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++; return n > 400; }), true, "an island's picture has the island in it");
@@ -131,12 +131,16 @@ await page.screenshot({ path: "tests/shots/tech-web.png" });
 const p0 = await state(page, (id) => bonsai.tech.screenOf(id), I.Harmonics);
 const others = () => state(page, (ids) => ids.map((id) => bonsai.tech.screenOf(id)), [I.Numbers, I.Energy, I.Kinematics]);
 const o0 = await others();
+t.eq(await page.getAttribute("#techLoose", "aria-pressed"), "true", "the web jiggles while you drag");
+await key(page, "j");
+t.eq(await page.getAttribute("#techLoose", "aria-pressed"), "false", "J holds it still");
 await page.mouse.move(p0.x, p0.y); await page.mouse.down(); await page.mouse.move(p0.x + 60, p0.y + 50, { steps: 6 }); await page.mouse.up();
 await page.waitForFunction(() => bonsai.tech.snapshot().settled, null, { timeout: 90000 });
 t.eq((await state(page, () => bonsai.store.getMeta("techtree")))?.pin?.length, 1, "a dragged idea stays where it was put");
 const p1 = await state(page, (id) => bonsai.tech.screenOf(id), I.Harmonics);
 t.eq([Math.round(p1.x - p0.x), Math.round(p1.y - p0.y)], [60, 50], "it goes where it is dragged");
 t.eq(await others(), o0, "and nothing else moves");
+await key(page, "j");
 await key(page, "l");
 
 // ----- Esc at the start, with nothing picked, leaves -----
