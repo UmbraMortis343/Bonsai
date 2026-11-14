@@ -58,7 +58,21 @@ const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 // ---------- one island ----------
 let TOPICS = [];
 // isl: { id, landmark, patron, mountain, size, E, topics: [{ name, biome, health, growth, mark, color, color2, color3 }] }; N: voxels across
+// How far each centrepiece reaches from its middle near the ground, in world units, measured from the blocks it lays:
+// the furthest reach in each of 32 directions, since a hall is longer one way than the other.
+// Water is placed around that, so whatever stands in the middle, no pond, lake or stream runs under it.
+const SPANS = new Map(), PLAZA = { academy: 15, amphitheatre: 16 }, SECTORS = 32, sectorOf = (a) => ((Math.round((a / (Math.PI * 2)) * SECTORS) % SECTORS) + SECTORS) % SECTORS;
+function spanOf(landmark) {
+  if (!SPANS.has(landmark)) {   // not built yet in this session: raise it once on a small bare island, just to measure it
+    SPANS.set(landmark, { max: 0, dir: new Float32Array(SECTORS) });
+    buildWorld({ id: "~probe", probe: true, landmark, size: Math.sqrt(0.5), E: 1, seed: 0, topics: [0, 1, 2].map(() => ({ biome: "bloom", growth: 0.04, health: 1, mark: "kit" })) }, 96);
+    for (const k of [...FIELDS.keys()]) if (k.startsWith("~probe|")) FIELDS.delete(k);
+  }
+  return SPANS.get(landmark);
+}
+
 export function buildWorld(isl, N) {
+  const span = isl.landmark === "arches" || isl.probe ? null : spanOf(isl.landmark);   // before anything else: measuring builds a world of its own
   TOPICS = isl.topics;
   const E = isl.E || 1, SIZE = 96 * isl.size * E, s = SIZE / N, V = (w) => w / s, Rw = 96 * isl.size * 0.455, Re = Rw * E, R = Rw / s, c = N / 2;   // Rw: the island as first made; Re: its edge now
   const G = 26, W1 = G + 0.8, W0 = G - 4.5, H = Math.ceil(V(82));           // ground, upper and lower water levels (world units)
@@ -72,7 +86,9 @@ export function buildWorld(isl, N) {
   const put = (x, y, z, m) => { grid[I(x, y, z)] = m; const j = J(x, z); if (y > ymax[j]) ymax[j] = y; if (y < ymin[j]) ymin[j] = y; };
   const set = (x, y, z, m) => { x = Math.round(x); y = Math.round(y); z = Math.round(z); if (inb(x, y, z) && grid[I(x, y, z)] === 0) { put(x, y, z, m); if (MATS[m][4]) glowVox.push(I(x, y, z)); } };
   const n = TOPICS.length, seeds = TOPICS.map((t, i) => { const a = (-90 + (360 / n) * i) * Math.PI / 180; return [Math.cos(a) * 0.62, Math.sin(a) * 0.62, a]; });
-  const arches = isl.landmark === "arches", MT = [0, -0.66], HOL = arches ? [0, 0.03] : [0, 0], HOLR = 6.5, heartR = arches ? 0.235 : Math.max(0.235, ({ academy: 15.5, amphitheatre: 16.5 }[isl.landmark] || 11) / Rw), paved = isl.landmark === "academy" || isl.landmark === "amphitheatre";
+  const arches = isl.landmark === "arches", MT = [0, -0.66], HOL = arches ? [0, 0.03] : [0, 0], HOLR = 6.5, keep = arches ? 0 : Math.max(PLAZA[isl.landmark] || 9.5, (span ? span.max : 0) + 1.5), heartR = arches ? 0.235 : Math.max(0.235, (keep + (PLAZA[isl.landmark] ? 0.5 : 1.5)) / Rw), paved = isl.landmark === "academy" || isl.landmark === "amphitheatre";
+  // how far water must stay from the middle when it lies in direction a and is hw wide (both in radians): the centrepiece's reach that way, and a little more
+  const keepAt = (a, hw) => { if (!span) return 0; let m = isl.landmark === "statue" ? 8 : 0; const k0 = sectorOf(a), kn = Math.ceil((hw / (Math.PI * 2)) * SECTORS) + 1; for (let k = -kn; k <= kn; k++) m = Math.max(m, span.dir[(k0 + k + SECTORS) % SECTORS]); return m + 1.5; };
   retint(TOPICS);
   const pts = [[0.02, -0.42], [-0.13, -0.3], [0.08, -0.16], [0, 0.03], [-0.07, 0.22], [0.12, 0.42], [-0.03, 0.62], [0.1, 0.84], [0.16, 1.1], [0.2, 1.45], [0.27, 1.85]];
 
@@ -83,7 +99,7 @@ export function buildWorld(isl, N) {
     const wd = new Float32Array(N * N).fill(99), wl = new Float32Array(N * N), wc = new Float32Array(N * N), wb = new Float32Array(N * N), wt = new Int8Array(N * N).fill(-1);
     const biome = new Int8Array(N * N).fill(-2), edge = new Float32Array(N * N), seedD = new Float32Array(N * N), h0 = new Float32Array(N * N), crk = new Float32Array(N * N).fill(99), botW = new Float32Array(N * N), rim = new Uint8Array(N * N), path = [], feats = [];
     const ox = (isl.seed || 0) * 37.3, fb = (x, z, sd) => fbm(x + ox, z - ox * 0.6, sd);
-    let enter = 0;
+    let enter = 0, fall = !!isl.mountain;
     if (arches) {   // a river from the mountain pool, dropping into a sunken hollow at the centre and out through a gorge
       for (let i = 0; i < pts.length - 1; i++) {
         const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(pts.length - 1, i + 2)];
@@ -93,10 +109,21 @@ export function buildWorld(isl, N) {
       path.forEach(([px, pz], i) => feats.push({ x: c + px * R, z: c + pz * R, r: i < 5 ? 4.2 : 1.9, level: i < enter ? W1 : W0, carve: i < 5 ? 4 : i < enter ? 6 : 3, bed: 1.5, topic: -1 }));
       feats.push({ x: c + HOL[0] * R, z: c + HOL[1] * R, r: HOLR, level: W0, carve: 3.5, bed: 2.4, topic: -1 });
     }
-    else if (isl.mountain) { const r = 3.3 * Math.sqrt(isl.size); feats.push({ x: c + pts[0][0] * R, z: c - clamp(heartR * 0.92 + r / Rw, 0.49, 0.54) * R, r, level: G + 0.9, carve: 1.8, bed: 1.3, topic: -1 }); }   // with no river to join, the waterfall lands in a small lake at the mountain's foot, set back far enough to clear the centrepiece
+    else if (isl.mountain) {   // with no river to join, the waterfall lands in a small lake at the mountain's foot: set back until it clears the centrepiece, smaller if the gap is tight. With no room for a lake there is no waterfall either
+      const r0 = 3.3 * Math.sqrt(isl.size), near = keepAt(-Math.PI / 2, 0.35), d = clamp(near + r0 + 0.5, 0.49 * Rw, 0.57 * Rw), r = Math.min(r0, d - near - 0.5);
+      fall = r >= 1.6; if (fall) feats.push({ x: c + pts[0][0] * R, z: c - (d / Rw) * R, r, level: G + 0.9, carve: 1.8, bed: 1.3, topic: -1 });
+    }
     if (isl.landmark === "statue") feats.push({ x: c, z: c, r: 8.4, level: G + 0.9, carve: 4, bed: 1.2, topic: -1 });   // the statue stands in a pool
     TOPICS.forEach((t, i) => {
-      const a = seeds[i][2], pond = (rr, da, r) => feats.push({ x: c + Math.cos(a + da) * rr * R, z: c + Math.sin(a + da) * rr * R, r: r * Math.sqrt(isl.size), level: G + 0.9, carve: 5, bed: 1.3, topic: i });
+      // a pond sits a set share of the way out from the middle, but a centrepiece is the same size on every island: on a small one the pond
+      // is pushed out until it and its banks are clear of the centrepiece's ground, and its banks are narrowed to fit
+      // it also gets smaller if the island's edge is too near, and is left out when there is no room at all
+      const a = seeds[i][2];
+      const pond = (rr, da, r) => {
+        let rad = r * Math.sqrt(isl.size), d = rr * Rw, carve = 5;
+        if (span) { const near = keepAt(a + da, (rad + 2) / d); rad = Math.min(rad, (0.88 * Rw - near - 2) / 2); if (rad < 1.2) return; d = clamp(d, near + rad + 2, 0.88 * Rw - rad); carve = clamp(d - rad - near, 1.5, 5); }
+        feats.push({ x: c + Math.cos(a + da) * (d / Rw) * R, z: c + Math.sin(a + da) * (d / Rw) * R, r: rad, level: G + 0.9, carve, bed: 1.3, topic: i });
+      };
       if (t.biome === "tropical") pond(0.56, 0.05, 4.2);
       if (t.biome === "fern") { pond(0.56, -0.2, 2.3); pond(0.75, 0.22, 2); }
     });
@@ -130,7 +157,7 @@ export function buildWorld(isl, N) {
       rim[j] = o > E - rimW - 0.6 / R && d > 1.5 ? 1 : 0;
       botW[j] = G - 4 - depth * Math.sqrt(Math.max(0, 1 - (o / E) * (o / E))) * (0.7 + fb(px * 4, pz * 4, 16) * 0.6) + (hash2(x, z, 19) - 0.5) * 3;   // floating island: a rough rock bowl underneath
     }
-    F = { wd, wl, wc, wb, wt, biome, edge, seedD, h0, crk, botW, rim, path, enter }; FIELDS.set(key, F);
+    F = { wd, wl, wc, wb, wt, biome, edge, seedD, h0, crk, botW, rim, path, enter, fall }; FIELDS.set(key, F);
     const mine = [...FIELDS.keys()].filter((q) => q.startsWith(isl.id + "|")); while (mine.length > 4) FIELDS.delete(mine.shift());   // keep only the last few sizes of this island
   }
   const { wd, wl, wc, wb, wt, biome, path, enter } = F, crackW = Math.max(0.75, s * 1.2);
@@ -145,11 +172,11 @@ export function buildWorld(isl, N) {
   }
   // waterfall: a spring two thirds of the way up the mountain spills down the south face into the pool
   const falls = [];
-  if (isl.mountain) {
+  if (F.fall) {
     const W1v = Math.round(V(W1)), fx = Math.round(c + pts[0][0] * R), sz0 = Math.round(c + MT[1] * R), lipLevel = W1v + (ht[J(fx, sz0)] - W1v) * 0.68, fw = Math.max(1, Math.round(V(1.1))); let lipZ = sz0;
     for (let z = sz0; z < c; z++) if (ht[J(fx, z)] <= lipLevel) { lipZ = z; break; }
     const lipH = ht[J(fx, lipZ)], back = Math.max(2, Math.round(V(1.6)));
-    for (let dx = -fw; dx <= fw; dx++) { const x = fx + dx; for (let z = lipZ - back; z < c; z++) { const j = J(x, z); if (z <= lipZ) { ht[j] = lipH - 1; flag[j] = 2; continue; } if (ht[j] <= W1v || wd[j] < 0) break; flag[j] = 3; } }
+    for (let dx = -fw; dx <= fw; dx++) { const x = fx + dx; for (let z = lipZ - back; z < c; z++) { const j = J(x, z); if (z <= lipZ) { ht[j] = lipH - 1; flag[j] = 2; continue; } if (ht[j] <= W1v || wd[j] < 0 || (span && Math.hypot(x - c, z - c) * s < keepAt(Math.atan2(z - c, x - c), 0.1))) break; flag[j] = 3; } }   // the stream stops at water, or at the centrepiece's ground if it finds none
   }
 
   // --- fill the columns ---
@@ -261,7 +288,8 @@ export function buildWorld(isl, N) {
   // --- landmarks: one library of shapes, built large at the centre of an island and small inside a topic that has filled its plot ---
   const markVox = [], clearings = [], groundAt = (x, z) => { x = Math.min(N - 1, Math.max(0, Math.round(x))); z = Math.min(N - 1, Math.max(0, Math.round(z))); return ht[J(x, z)]; };
   let mossy = true;
-  const stamp = (x, y, z, m) => { if (!m) return; x = Math.round(x); y = Math.round(y); z = Math.round(z); if (inb(x, y, z) && grid[I(x, y, z)] === 0) { put(x, y, z, m); if (MATS[m][4]) glowVox.push(I(x, y, z)); else if (mossy) markVox.push(I(x, y, z)); } };
+  let probe = null;   // while the centrepiece is being laid: how far out its lower blocks reach
+  const stamp = (x, y, z, m) => { if (!m) return; x = Math.round(x); y = Math.round(y); z = Math.round(z); if (probe && y <= probe.top) { const d = (Math.hypot(x - c, z - c) + 0.5) * s, k = sectorOf(Math.atan2(z - c, x - c)); if (d > probe.dir[k]) probe.dir[k] = d; if (d > probe.max) probe.max = d; } if (inb(x, y, z) && grid[I(x, y, z)] === 0) { put(x, y, z, m); if (MATS[m][4]) glowVox.push(I(x, y, z)); else if (mossy) markVox.push(I(x, y, z)); } };
   const blocked = (x, z) => { for (const q of clearings) if ((x - q[0]) ** 2 + (z - q[1]) ** 2 < q[2] * q[2]) return true; return false; };
   const R1 = (v) => Math.max(1, Math.round(v)), adiff = (a, b) => Math.abs(((a - b + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
   const cyl = (x, y, z, r, h, m) => { for (let i = 0; i < h; i++) disc(x, y + i, z, r, (X, Y, Z) => stamp(X, Y, Z, typeof m === "function" ? m(i) : m)); };
@@ -403,8 +431,10 @@ export function buildWorld(isl, N) {
     rib(-4, -15, 15, -7.5, 17, 1.25, 0, -3, Math.PI * 0.42, Math.PI);
     if (LM[isl.patron]) { const hx = Math.round(hollowX), hz = Math.round(hollowZ); mossy = false; LM[isl.patron](hx, hz, groundAt(hx, hz) + 1, V(0.8), { a: M.marble, b: M.marble2, trim: M.gold, metal: M.brass, glow: M.goldGlow }); mossy = true; }
   } else {
-    const st = isl.landmark === "statue"; LM[isl.landmark](c, c, groundAt(c, c) + 1, V(st ? 1.4 : 1), st ? { a: M.stat1, b: M.stat2, trim: M.obs2, metal: M.brass, glow: M.orb } : CENTRAL);
-    clearings.push([c, c, V({ academy: 15, amphitheatre: 16 }[isl.landmark] || 9.5)]);
+    const st = isl.landmark === "statue", floor = groundAt(c, c) + 1; if (isl.probe) probe = Object.assign(SPANS.get(isl.landmark), { top: floor + V(7) });
+    LM[isl.landmark](c, c, floor, V(st ? 1.4 : 1), st ? { a: M.stat1, b: M.stat2, trim: M.obs2, metal: M.brass, glow: M.orb } : CENTRAL);
+    if (isl.probe) { probe = null; return null; }   // measured once, on the same small island every time, so every island agrees on it
+    clearings.push([c, c, V(keep)]);
   }
   const SCALE = { observatory: 0.46, pipes: 0.72, lighthouse: 0.8, windmill: 0.8, coil: 0.8, solids: 0.78, colonnade: 0.75, circle: 0.85, kit: 0.75 }, FOOT = { observatory: 8.5, pipes: 5.6, colonnade: 7.4, circle: 5.4, solids: 5 };
   TOPICS.forEach((t, i) => {   // a topic that has filled its plot gets a landmark of its own
@@ -558,4 +588,5 @@ export function buildWorld(isl, N) {
   };
 }
 
-export { hash2, lerp, clamp, MAIN, colours };
+const centreSpan = (landmark) => (landmark === "arches" ? 0 : spanOf(landmark));
+export { hash2, lerp, clamp, MAIN, colours, centreSpan };

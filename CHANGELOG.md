@@ -2,6 +2,10 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.7.3 — 2026-11-14
+
+- Fixed: on small islands a topic's pond could sit under the corner of the centrepiece. Each centrepiece is now measured from its own blocks, in every direction, and ponds, the mountain's lake and its stream are placed around that: pushed outward, made smaller if the gap is tight, or left out if there is no room. Where a mountain has no room for its lake, it has no waterfall.
+
 ## 0.7.2 — 2026-11-14
 
 - Fixed: on an island with a mountain and an academy, amphitheatre or statue, the waterfall's water ran on across the ground and into the centrepiece. It now lands in a small lake at the mountain's foot.
