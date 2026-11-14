@@ -1,4 +1,4 @@
-// Bonsai: the tech tree. A flat map of everything you know, light or dark, drawn like a nerve cell or like a carved skill tree.
+// Bonsai: the tech tree. A flat map of everything you know, in the app's own look, light or dark; plain lines or tapered arms.
 // Tree: a web that recentres. The middle is one island, drawn as a hex, with its key ideas (the trunks of its
 // knowledge graphs, grouped by topic) as a web inside the first ring. Islands that grow out of it sit on that
 // ring as boundary cells; step into one and it takes the middle. Step back and the island before it takes the
@@ -31,7 +31,7 @@ export function createTechTree({ host, saved = {}, art = () => null, onSelect = 
   const ctx = cv.getContext("2d");
   let W = 1, H = 1, dpr = 1, active = false, raf = 0, last = 0, C = colours();
   // what the tree shows: the island at the end of the chain (focus), and how many steps back the middle is (out)
-  let look = saved.look === "poe" ? "poe" : "neuron";   // how it is drawn: like a nerve cell, or carved like a skill tree
+  let look = saved.look === "organic" ? "organic" : "simple";   // how it is drawn: plain lines, or tapered arms
   let mode = saved.mode === "web" ? "web" : "tree", focus = saved.focus || null, out = saved.out || 0;
   const open = new Set(saved.open || []);
   let all = !!saved.all, tier = !!saved.tier, hl = false, pick = null, hov = null, framedOnce = false;
@@ -107,20 +107,11 @@ export function createTechTree({ host, saved = {}, art = () => null, onSelect = 
       const spread = i === 0 ? TAU : clamp((n * 52) / (r0 + band * 0.5), 0.35, 1.9), base = i === 0 ? -Math.PI / 2 : ang;
       keys.forEach((k, j) => {
         const a = i === 0 ? base + ((j + 0.5) / n) * TAU : base + ((j + 0.5) / n - 0.5) * spread;
-        const r = i === 0 ? band * 0.6 : r0 + band * (0.4 + 0.16 * (j % 2));
+        const r = i === 0 ? band * 0.5 : r0 + band * (0.4 + 0.16 * (j % 2));
         const x = r * Math.cos(a), y = r * Math.sin(a); put(k.id, x, y, { kind: "key", rec: k, ang: a, q });
         if (shows(k)) inside(k, x, y, a, put, q);
       });
-      // topics sit between the island and their key ideas, each in the middle of its own arc
-      let j0 = 0;
-      for (const t of q.topics) {
-        const m = t.kids.length; if (!m) continue;
-        const mid = (j0 + m / 2) / n, a = i === 0 ? base + mid * TAU : base + (mid - 0.5) * spread, wide = i === 0 && m / n > 0.55; j0 += m;
-        const r = i === 0 ? band * 0.35 : r0 + band * 0.15;
-        put(t.id, r * Math.cos(a), r * Math.sin(a), { kind: "topic", rec: t, ang: a, q });
-        E.push({ a: q.key, b: t.id, hue: t.hue, kind: "web" });
-        for (const k of t.kids) E.push({ a: wide ? q.key : t.id, b: k.id, hue: t.hue, kind: "web" });
-      }
+      for (const t of q.topics) t.kids.forEach((k, j) => E.push({ a: j ? t.kids[j - 1].id : q.key, b: k.id, hue: t.hue, kind: "web" }));
       // boundary cells: islands growing from this one, each near the idea it grows from
       const kids = q.kids, m = kids.length;
       const want = kids.map((cq, j) => { const f = cq.from && T.get(cq.from.id); return f ? Math.atan2(f.ty, f.tx) : i === 0 ? base + ((j + 0.5) / m) * TAU + 0.3 : base + ((j + 0.5) / Math.max(1, m) - 0.5) * spread; });
@@ -229,7 +220,8 @@ export function createTechTree({ host, saved = {}, art = () => null, onSelect = 
         x.x += (x.tx - x.x) * e; x.y += (x.ty - x.y) * e; x.a += (1 - x.a) * Math.min(1, e * 1.4);
         if (Math.abs(x.tx - x.x) > 0.3 || Math.abs(x.ty - x.y) > 0.3 || x.a < 0.99) moving = true; else { x.x = x.tx; x.y = x.ty; x.a = 1; }
       }
-    } else if (alpha > 0.015 || drag) {
+    } else if (drag) { for (const r of N.values()) { r.x = r.wx; r.y = r.wy; } }
+    else if (alpha > 0.015) {
       for (let i = 0; i < 2; i++) tick(); for (const r of N.values()) { r.x = r.wx; r.y = r.wy; } moving = true;
       if (auto && !drag && ++frames % 6 === 0) home();
     } else if (!settled) { settled = true; saveLayout(); }
@@ -243,241 +235,151 @@ export function createTechTree({ host, saved = {}, art = () => null, onSelect = 
   const kick = () => { if (active && !raf) { last = performance.now(); raf = requestAnimationFrame(frame); } };
 
   // ---------- drawing ----------
-  // Two looks, same map. Neuron: limbs shaded like living fibre, warm by day and deep blue at night, key ideas as
-  // bulbs. PoE: carved bronze paths and gold rings on dark. Islands and topics show pictures of their plots.
+  // Two looks on the app's own colours: simple (straight lines) and organic (tapered arms, flat and dark).
+  // The island in the middle and the boundary cells show pictures of their islands.
   const SX = (x) => x * view.k + view.x, SY = (y) => y * view.k + view.y;
-  let T = null;
   const parse = (c) => { c = String(c).trim(); if (c[0] === "#") { const n = parseInt(c.length === 4 ? c.slice(1).split("").map((d) => d + d).join("") : c.slice(1, 7), 16); return [n >> 16, (n >> 8) & 255, n & 255]; } const m = c.match(/[\d.]+/g); return m ? m.slice(0, 3).map(Number) : [255, 255, 255]; };
-  const hex2 = (v) => "#" + v.map((x) => Math.round(clamp(x, 0, 255)).toString(16).padStart(2, "0")).join("");
-  const mix = (a, b, t) => { const p = parse(a), q = parse(b); return hex2(p.map((x, i) => x + (q[i] - x) * t)); };
-  const lum = (c) => { const [r, g, b] = parse(c); return (0.299 * r + 0.587 * g + 0.114 * b) / 255; };
-  function theme() {
-    const dark = lum(C.bg) < 0.45;
-    if (look === "poe") return { poe: true, dark: true, bg0: "#1a1d25", bg1: "#07080b", ink: "#efe6d2", muted: "#a59c88", halo: "#0a0b0e", ring: "rgba(201,163,90,0.16)", gold: "#c9a35a", goldHi: "#f3d995", bronze: "#4d3a22", bronzeHi: "#a5834c", lit: "#7cc2ff", sky0: "#2a3550", sky1: "#0b0f17", sap: "#e6a93e" };
-    if (dark) return { dark: true, bg0: "#13223f", bg1: "#060b17", ink: C.ink, muted: C.muted, halo: "#08101f", ring: "rgba(110,150,225,0.14)", body: "#22457e", edge: "#0d1f40", hi: "#6fa2ea", glow: "#8fd8ff", sky0: "#2b4171", sky1: "#0d1730", sap: C.sap };
-    return { bg0: "#fffaf3", bg1: "#f4e7d9", ink: C.ink, muted: C.muted, halo: "#fdf6ee", ring: "rgba(207,124,89,0.16)", body: "#f0b08b", edge: "#c97553", hi: "#ffeadb", glow: "#ff8a52", sky0: "#bfe0ff", sky1: "#eef7ff", sap: C.sap };
-  }
+  const mix = (a, b, t) => { const p = parse(a), q = parse(b); return "#" + p.map((x, i) => Math.round(clamp(x + (q[i] - x) * t, 0, 255)).toString(16).padStart(2, "0")).join(""); };
+  const dark = () => { const [r, g, b] = parse(C.bg); return (0.299 * r + 0.587 * g + 0.114 * b) / 255 < 0.45; };
   function draw() {
-    T = theme(); const z = clamp(view.k, 0.45, 1.6);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const cx = mode === "tree" ? SX(0) : W / 2, cy = mode === "tree" ? SY(0) : H / 2, g = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, H) * 0.9);
-    g.addColorStop(0, T.bg0); g.addColorStop(1, T.bg1); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-    if (mode === "web") drawWeb(z); else drawTree(z);
-    ctx.setLineDash([]); ctx.globalAlpha = 1; ctx.textAlign = "left"; ctx.shadowBlur = 0;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, H);
+    if (mode === "web") drawWeb(); else drawTree();
+    ctx.setLineDash([]); ctx.globalAlpha = 1; ctx.textAlign = "left";
   }
   const dot = (x, y, r) => { ctx.beginPath(); ctx.arc(x, y, Math.max(0.1, r), 0, TAU); ctx.fill(); };
   const ring = (x, y, r) => { ctx.beginPath(); ctx.arc(x, y, Math.max(0.1, r), 0, TAU); ctx.stroke(); };
   const pill = (x, y, w, h) => { ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(x, y, w, h, h / 2); else ctx.rect(x, y, w, h); ctx.fill(); };
-  function halo(s, x, y, colour) { ctx.lineJoin = "round"; ctx.strokeStyle = T.halo; ctx.lineWidth = 3.5; ctx.strokeText(s, x, y); ctx.fillStyle = colour; ctx.fillText(s, x, y); }
+  function halo(s, x, y, colour) { ctx.lineJoin = "round"; ctx.strokeStyle = C.bg; ctx.lineWidth = 3.5; ctx.strokeText(s, x, y); ctx.fillStyle = colour; ctx.fillText(s, x, y); }
   // a regular hexagon, point up
   function hexagon(x, y, r) { ctx.beginPath(); for (let i = 0; i < 6; i++) { const a = Math.PI / 6 + (Math.PI / 3) * i; ctx[i ? "lineTo" : "moveTo"](x + Math.cos(a) * r, y + Math.sin(a) * r); } ctx.closePath(); }
   function star(x, y, colour) { ctx.strokeStyle = colour; ctx.lineWidth = 1.3; for (let i = 0; i < 8; i++) { const a = (i / 8) * TAU, l = i % 2 ? 7 : 12; ctx.beginPath(); ctx.moveTo(x + Math.cos(a) * 3, y + Math.sin(a) * 3); ctx.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); ctx.stroke(); } ctx.fillStyle = colour; dot(x, y, 2.6); }
-  // sizes: pictures grow and shrink with the zoom, within limits; small dots keep their size
-  const radiusOf = (x) => (x.kind === "hex" ? (x.q.start ? 20 : clamp(34 * view.k, 18, 52)) : x.kind === "cell" ? clamp((x.inChain ? 22 : 19) * view.k, 10, 30) : x.kind === "topic" ? clamp(11 * view.k, 5, 17) : x.kind === "key" ? 8.5 : 3.2);
+  // the pictures grow and shrink with the zoom, within limits; dots keep their size
+  const radiusOf = (x) => (x.kind === "hex" ? (x.q.start ? 20 : clamp(30 * view.k, 20, 46)) : x.kind === "cell" ? clamp((x.inChain ? 17 : 15) * view.k, 11, 26) : x.kind === "key" ? 8.5 : 3.2);
   const hueOf = (x) => (x.kind === "hex" || x.kind === "cell" ? x.q.hue : x.rec.hue);
   const titleOf = (x) => (x.kind === "hex" || x.kind === "cell" ? x.q.name : x.rec.title);
   const hsh = (s) => { let h = 7; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return h; };
 
-  // A tapered limb, bowed a little, sampled as points with a half-width at each.
-  function limb(x0, y0, x1, y1, w0, w1, bend) {
+  // an arm: tapered, bowed a little, filled flat
+  function arm(x0, y0, x1, y1, w0, w1, bend) {
     const dx = x1 - x0, dy = y1 - y0, L = Math.hypot(dx, dy) || 1, mx = (x0 + x1) / 2 - (dy / L) * bend * L, my = (y0 + y1) / 2 + (dx / L) * bend * L;
-    const n = clamp(Math.round(L / 7), 6, 44), pts = [];
+    const n = clamp(Math.round(L / 8), 5, 40), left = [], right = [];
     for (let i = 0; i <= n; i++) {
       const t = i / n, u = 1 - t, px = u * u * x0 + 2 * u * t * mx + t * t * x1, py = u * u * y0 + 2 * u * t * my + t * t * y1;
       let tx = u * (mx - x0) + t * (x1 - mx), ty = u * (my - y0) + t * (y1 - my); const tl = Math.hypot(tx, ty) || 1; tx /= tl; ty /= tl;
-      pts.push({ x: px, y: py, nx: -ty, ny: tx, w: ((w0 + (w1 - w0) * Math.pow(t, 0.7)) * (1 + 0.9 * Math.pow(u, 9))) / 2 });
+      const w = ((w0 + (w1 - w0) * Math.pow(t, 0.7)) * (1 + 0.6 * Math.pow(u, 8))) / 2;
+      left.push([px - ty * w, py + tx * w]); right.push([px + ty * w, py - tx * w]);
     }
-    return pts;
+    ctx.beginPath(); left.forEach(([x, y], i) => ctx[i ? "lineTo" : "moveTo"](x, y)); for (let i = right.length - 1; i >= 0; i--) ctx.lineTo(right[i][0], right[i][1]); ctx.closePath(); ctx.fill();
   }
-  // fill a band of a limb: `scale` of its half-width, moved `off` half-widths towards the light (upper left)
-  function band(pts, scale, off, from = 0, to = pts.length - 1) {
-    ctx.beginPath();
-    for (let i = from; i <= to; i++) { const p = pts[i], s = -p.nx - p.ny >= 0 ? 1 : -1, o = p.w * off * s, h = p.w * scale; ctx[i > from ? "lineTo" : "moveTo"](p.x + p.nx * (o + h), p.y + p.ny * (o + h)); }
-    for (let i = to; i >= from; i--) { const p = pts[i], s = -p.nx - p.ny >= 0 ? 1 : -1, o = p.w * off * s, h = p.w * scale; ctx.lineTo(p.x + p.nx * (o - h), p.y + p.ny * (o - h)); }
-    ctx.closePath(); ctx.fill();
-  }
-  const spine = (pts) => { ctx.beginPath(); pts.forEach((p, i) => ctx[i ? "lineTo" : "moveTo"](p.x, p.y)); };
-  // shaded like a fibre: a dark rim, the body, and a soft line of light along the lit side
-  function fibre(pts, hue, kind, glow) {
-    const body = mix(T.body, hue, T.dark ? 0.2 : 0.24), rim = mix(T.edge, hue, 0.12);
-    ctx.fillStyle = rim; band(pts, 1, 0);
-    ctx.fillStyle = body; band(pts, 0.7, 0.12);
-    ctx.globalAlpha *= 0.85; ctx.fillStyle = T.hi; band(pts, 0.24, 0.42); ctx.globalAlpha /= 0.85;
-    if (kind === "grow") {   // an axon: sheathed in beads
-      ctx.fillStyle = mix(T.hi, body, 0.45); const a0 = ctx.globalAlpha; ctx.globalAlpha = a0 * 0.55;
-      for (let i = 2; i + 3 < pts.length - 1; i += 4) band(pts, 0.92, 0.04, i, i + 2);
-      ctx.globalAlpha = a0;
-    }
-    if (glow) { ctx.save(); ctx.shadowColor = T.glow; ctx.shadowBlur = 10; ctx.strokeStyle = rgba(T.glow, 0.75); ctx.lineWidth = 1.6; spine(pts); ctx.stroke(); ctx.restore(); }
-  }
-  // carved: a groove of shadow, bronze, and a thin edge of light; lit in blue when on the way back
-  function carved(x0, y0, x1, y1, w, glow) {
-    ctx.lineCap = "round";
-    const seg = (c, lw, o = 0) => { ctx.strokeStyle = c; ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(x0 + o, y0 + o); ctx.lineTo(x1 + o, y1 + o); ctx.stroke(); };
-    seg("rgba(0,0,0,0.65)", w + 3.5, 0.8); seg(T.bronze, w); seg(T.bronzeHi, Math.max(0.8, w * 0.28), -w * 0.18);
-    if (glow) { ctx.save(); ctx.shadowColor = T.lit; ctx.shadowBlur = 12; seg(rgba(T.lit, 0.9), Math.max(1.4, w * 0.45)); ctx.restore(); }
-  }
-  // a picture of the island (or a topic's plot) seen through a window of the given shape
+  const armColour = (hue) => mix(hue, "#000000", dark() ? 0.12 : 0.38);
+  // the island, seen through a window of the given shape
   function picture(x, sx, sy, r, hex) {
-    const isTopic = x.kind === "topic", img = x.q.start || (isTopic && x.rec.mist) ? null : art(x.q.id, isTopic ? x.rec.slot : -1, T.dark);
+    const img = x.q.start ? null : art(x.q.id, -1, dark());
     ctx.save(); if (hex) hexagon(sx, sy, r); else { ctx.beginPath(); ctx.arc(sx, sy, r, 0, TAU); } ctx.clip();
-    const g = ctx.createLinearGradient(sx, sy - r, sx, sy + r); g.addColorStop(0, T.sky0); g.addColorStop(1, T.sky1); ctx.fillStyle = g; ctx.fillRect(sx - r, sy - r, r * 2, r * 2);
-    if (img) { const s = r * (isTopic ? 2.15 : hex ? 2.2 : 2.3); ctx.drawImage(img, sx - s / 2, sy - s / 2 + r * 0.04, s, s); }
-    else { ctx.fillStyle = rgba(hueOf(x), 0.35); dot(sx, sy + r * 0.2, r * 0.5); }
-    const v = ctx.createRadialGradient(sx - r * 0.25, sy - r * 0.3, r * 0.2, sx, sy, r * 1.05); v.addColorStop(0, "rgba(255,255,255,0.10)"); v.addColorStop(0.7, "rgba(0,0,0,0)"); v.addColorStop(1, T.dark ? "rgba(0,0,0,0.35)" : "rgba(80,40,20,0.18)"); ctx.fillStyle = v; ctx.fillRect(sx - r, sy - r, r * 2, r * 2);
+    ctx.fillStyle = C.card; ctx.fillRect(sx - r, sy - r, r * 2, r * 2);
+    if (img) { const s = r * (hex ? 2.2 : 2.3); ctx.drawImage(img, sx - s / 2, sy - s / 2 + r * 0.04, s, s); }
     ctx.restore();
   }
-  // a bulb lit from the upper left
-  function bulb(x, y, r, base) {
-    const g = ctx.createRadialGradient(x - r * 0.38, y - r * 0.42, r * 0.08, x, y, r);
-    g.addColorStop(0, mix(base, "#ffffff", 0.62)); g.addColorStop(0.5, base); g.addColorStop(1, mix(base, "#000000", 0.38)); ctx.fillStyle = g; dot(x, y, r);
-  }
-  function aura(x, y, r, colour, a) { const g = ctx.createRadialGradient(x, y, r * 0.2, x, y, r); g.addColorStop(0, rgba(mix(colour, colour, 0), a)); g.addColorStop(1, rgba(mix(colour, colour, 0), 0)); ctx.fillStyle = g; dot(x, y, r); }
 
-  function drawNode(x, sx, sy, z) {
-    const hue = hueOf(x), r = radiusOf(x), opened = x.kind === "key" && (all || open.has(x.rec.id)), poe = T.poe;
-    if (x.kind === "hex") {
-      if (x.q.start) { if (!poe) aura(sx, sy, 34, T.body, T.dark ? 0.5 : 0.6); star(sx, sy, poe ? T.gold : T.sap); return; }
-      if (poe) {
-        ctx.strokeStyle = rgba(T.gold, 0.35); ctx.lineWidth = 1; hexagon(sx, sy, r + 8); ctx.stroke();
-        picture(x, sx, sy, r, true);
-        hexagon(sx, sy, r); ctx.strokeStyle = "rgba(0,0,0,0.7)"; ctx.lineWidth = 6; ctx.stroke(); ctx.strokeStyle = T.gold; ctx.lineWidth = 3; ctx.stroke();
-        hexagon(sx, sy, r - 3); ctx.strokeStyle = rgba(T.goldHi, 0.55); ctx.lineWidth = 1; ctx.stroke();
-      } else {
-        aura(sx, sy, r * 1.9, mix(T.body, hue, 0.2), T.dark ? 0.55 : 0.7);
-        picture(x, sx, sy, r, true);
-        hexagon(sx, sy, r); ctx.strokeStyle = mix(T.edge, hue, 0.15); ctx.lineWidth = 3.4; ctx.stroke();
-        hexagon(sx, sy, r - 2.6); ctx.strokeStyle = rgba(T.hi, 0.7); ctx.lineWidth = 1.1; ctx.stroke();
-      }
-    } else if (x.kind === "cell" || x.kind === "topic") {
-      const cell = x.kind === "cell", mist = !cell && x.rec.mist;
-      if (r < 7) { ctx.fillStyle = poe ? T.gold : mix(T.body, hue, 0.4); dot(sx, sy, r); return; }
-      if (!poe && cell) aura(sx, sy, r * 1.7, mix(T.body, hue, 0.3), x.inChain ? 0.7 : 0.45);
-      picture(x, sx, sy, r, false);
-      if (poe) { ctx.strokeStyle = "rgba(0,0,0,0.7)"; ctx.lineWidth = cell ? 5 : 4; ring(sx, sy, r); ctx.strokeStyle = cell ? T.gold : mix(T.gold, hue, 0.3); ctx.lineWidth = cell ? 2.6 : 1.8; ring(sx, sy, r); }
-      else { ctx.strokeStyle = mix(T.edge, hue, cell ? 0.25 : 0.45); ctx.lineWidth = cell ? 2.6 : 2; ring(sx, sy, r); ctx.strokeStyle = rgba(T.hi, 0.55); ctx.lineWidth = 0.9; ring(sx, sy, r - 1.8); }
-      if (cell) { ctx.setLineDash([2, 3]); ctx.strokeStyle = poe ? rgba(T.gold, 0.5) : rgba(hue, 0.75); ctx.lineWidth = x.inChain ? 1.4 : 1; ring(sx, sy, r + 5); ctx.setLineDash([]); }
-      if (mist) { ctx.setLineDash([2.5, 2.5]); ctx.strokeStyle = T.muted; ctx.lineWidth = 1.2; ring(sx, sy, r + 3); ctx.setLineDash([]); }
-    } else if (x.kind === "key") {
-      const due = x.rec.st !== "ok";
-      if (due) aura(sx, sy, r * 2.3, T.sap, poe ? 0.45 : 0.55);
-      if (poe) {
-        const g = ctx.createRadialGradient(sx - 2, sy - 2, 1, sx, sy, r); g.addColorStop(0, "#2a2d36"); g.addColorStop(1, "#0b0c10"); ctx.fillStyle = g; dot(sx, sy, r);
-        if (opened) { aura(sx, sy, r * 0.95, hue, 0.9); ctx.fillStyle = mix(hue, "#ffffff", 0.3); dot(sx, sy, r * 0.32); }
-        ctx.strokeStyle = "rgba(0,0,0,0.7)"; ctx.lineWidth = 4; ring(sx, sy, r); ctx.strokeStyle = opened ? T.gold : T.bronzeHi; ctx.lineWidth = opened ? 2.2 : 1.8; ring(sx, sy, r);
-      } else {
-        bulb(sx, sy, r, opened ? hue : mix(T.body, hue, T.dark ? 0.55 : 0.62));
-        ctx.strokeStyle = mix(T.edge, hue, 0.3); ctx.lineWidth = 1.1; ring(sx, sy, r);
-      }
-      if (due) { ctx.fillStyle = T.sap; dot(sx + r * 0.75, sy - r * 0.75, 2.4); }
-    } else {
-      const ok = x.rec.st === "ok";
-      if (poe) { ctx.fillStyle = ok ? mix(hue, "#000000", 0.25) : "#0b0c10"; dot(sx, sy, r); ctx.strokeStyle = ok ? T.bronzeHi : T.sap; ctx.lineWidth = 1.1; ring(sx, sy, r); }
-      else if (ok) bulb(sx, sy, r + 0.6, hue);
-      else { ctx.fillStyle = T.bg0; dot(sx, sy, r); ctx.strokeStyle = T.sap; ctx.lineWidth = 1.2; ring(sx, sy, r); }
-    }
-  }
-
-  function drawTree(z) {
-    const k = view.k, ox = view.x, oy = view.y, inView = (x, y, m = 80) => x > -m && x < W + m && y > -m && y < H + m;
+  function drawTree() {
+    const k = view.k, ox = view.x, oy = view.y, inView = (x, y, m = 60) => x > -m && x < W + m && y > -m && y < H + m, org = look === "organic", z = clamp(k, 0.5, 1.5);
     const op = (key) => (lit && !lit.has(key) ? 0.16 : 1), focusKey = hov || pick;
-    rings.forEach((r, i) => { ctx.strokeStyle = T.ring; ctx.globalAlpha = i === rings.length - 1 ? 1 : 0.7; ctx.lineWidth = T.poe ? 1 : 1.2; if (!T.poe) ctx.setLineDash([1.5, 5]); ring(ox, oy, r * k); ctx.setLineDash([]); });
+    rings.forEach((r, i) => { ctx.strokeStyle = C.ring; ctx.globalAlpha = i === rings.length - 1 ? 0.9 : 0.6; ctx.lineWidth = 1; ring(ox, oy, r * k); });
     ctx.globalAlpha = 1; ctx.lineCap = "round";
-    // the limbs: from the island to its topics and on to their key ideas, out along axons to the next islands, and fine branches inside
+    // the web
     for (const e of E) {
       if (e.kind === "link") continue;
       const a = P.get(e.a), b = P.get(e.b); if (!a || !b) continue;
       const x0 = SX(a.x), y0 = SY(a.y), x1 = SX(b.x), y1 = SY(b.y); if (!inView(x0, y0, 400) && !inView(x1, y1, 400)) continue;
-      const on = lit ? lit.has(e.a) && lit.has(e.b) : true, glow = !!lit && on;
+      const on = lit ? lit.has(e.a) && lit.has(e.b) : true;
       ctx.globalAlpha = (on ? 1 : 0.14) * Math.min(a.a, b.a);
-      const w = e.kind === "grow" ? [4.2, 3.4] : e.kind === "branch" ? [Math.max(1.3, 2.8 - 0.5 * b.rec.depth), Math.max(0.9, 1.8 - 0.4 * b.rec.depth)] : a.kind === "hex" && b.kind === "topic" ? [11, 5] : a.kind === "hex" ? [8, 2.8] : [5, 2.6];
-      if (T.poe) {
-        const ra = radiusOf(a), rb = radiusOf(b), L = Math.hypot(x1 - x0, y1 - y0) || 1, ux = (x1 - x0) / L, uy = (y1 - y0) / L;
-        if (L > ra + rb) carved(x0 + ux * ra, y0 + uy * ra, x1 - ux * rb, y1 - uy * rb, (e.kind === "branch" ? 2.2 : e.kind === "grow" ? 5.5 : 4.4) * z, glow);
+      if (org) {
+        const w = e.kind === "grow" ? [3.4, 2.6] : e.kind === "branch" ? [Math.max(1.4, 2.6 - 0.4 * b.rec.depth), Math.max(0.9, 1.5 - 0.3 * b.rec.depth)] : a.kind === "hex" ? [6, 2.4] : [4, 2.2];
+        ctx.fillStyle = armColour(e.hue); arm(x0, y0, x1, y1, w[0] * z, w[1] * z, ((hsh(e.a + e.b) % 1000) / 1000 - 0.5) * (e.kind === "grow" ? 0.12 : 0.28));
         continue;
       }
-      const h = hsh(e.a + e.b), pts = limb(x0, y0, x1, y1, w[0] * z, w[1] * z, ((h % 1000) / 1000 - 0.5) * (e.kind === "grow" ? 0.12 : 0.3));
-      fibre(pts, e.hue, e.kind, glow);
-      // a few fine spines off the main limbs
-      if (e.kind === "web" && z > 0.6 && pts.length > 10) for (const f of [0.42, 0.68]) {
-        const p = pts[Math.round(f * (pts.length - 1))], side = (h >> (f > 0.5 ? 3 : 5)) & 1 ? 1 : -1, len = (7 + ((h >> 7) % 7)) * z, tx = p.ny, ty = -p.nx;
-        fibre(limb(p.x, p.y, p.x + (p.nx * side * 0.9 + tx * 0.6) * len, p.y + (p.ny * side * 0.9 + ty * 0.6) * len, p.w * 1.3, 0.6, 0.2 * side), e.hue, "spine", false);
-      }
+      ctx.strokeStyle = rgba(e.hue, e.kind === "branch" ? 0.5 : 0.7); ctx.lineWidth = e.kind === "branch" ? 1 : lit && on ? 2 : 1.4;
+      const ra = radiusOf(a) + 1, rb = radiusOf(b) + 1, L = Math.hypot(x1 - x0, y1 - y0) || 1, ux = (x1 - x0) / L, uy = (y1 - y0) / L;
+      if (L > ra + rb) { ctx.beginPath(); ctx.moveTo(x0 + ux * ra, y0 + uy * ra); ctx.lineTo(x1 - ux * rb, y1 - uy * rb); ctx.stroke(); }
     }
     ctx.globalAlpha = 1;
-    // links between ideas, across topics and islands
     for (const e of E) {
       if (e.kind !== "link") continue;
       const a = P.get(e.a), b = P.get(e.b); if (!a || !b || a.a < 0.4 || b.a < 0.4) continue;
       const on = focusKey && (e.a === focusKey || e.b === focusKey), dim = (focusKey && !on) || (lit && !(lit.has(e.a) && lit.has(e.b)));
       const x0 = SX(a.x), y0 = SY(a.y), x1 = SX(b.x), y1 = SY(b.y), mx = (x0 + x1) / 2 - (y1 - y0) * 0.15, my = (y0 + y1) / 2 + (x1 - x0) * 0.15;
-      const al = dim ? 0.08 : on ? 0.95 : 0.36, lw = Math.min(4, 1 + Math.log2(e.n) * 0.8) * (on ? 1.3 : 1);
-      if (!T.poe && !dim) { ctx.strokeStyle = rgba(T.glow, on ? 0.22 : 0.1); ctx.lineWidth = lw + 5; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.quadraticCurveTo(mx, my, x1, y1); ctx.stroke(); }
-      const g = ctx.createLinearGradient(x0, y0, x1, y1); g.addColorStop(0, rgba(T.poe ? T.goldHi : e.ha, al)); g.addColorStop(1, rgba(T.poe ? T.goldHi : e.hb, al));
-      ctx.strokeStyle = g; ctx.lineWidth = lw; ctx.setLineDash(T.poe ? [2, 5] : [4, 4]);
+      const g = ctx.createLinearGradient(x0, y0, x1, y1), al = dim ? 0.08 : on ? 0.95 : 0.28; g.addColorStop(0, rgba(e.ha, al)); g.addColorStop(1, rgba(e.hb, al));
+      ctx.strokeStyle = g; ctx.lineWidth = Math.min(4, 1 + Math.log2(e.n) * 0.8) * (on ? 1.3 : 1); ctx.setLineDash([4, 4]);
       ctx.beginPath(); ctx.moveTo(x0, y0); ctx.quadraticCurveTo(mx, my, x1, y1); ctx.stroke(); ctx.setLineDash([]);
-      if (on && e.direct && e.label) { ctx.font = "italic 500 11px system-ui,sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; halo(e.label, (x0 + 2 * mx + x1) / 4, (y0 + 2 * my + y1) / 4 - 7, T.sap); ctx.textAlign = "left"; }
+      if (on && e.direct && e.label) { ctx.font = "italic 500 11px system-ui,sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; halo(e.label, (x0 + 2 * mx + x1) / 4, (y0 + 2 * my + y1) / 4 - 7, C.sap); ctx.textAlign = "left"; }
     }
     // things
     for (const x of [...P.values()].sort((a, b) => (a.key === pick) - (b.key === pick))) {
       const sx = SX(x.x), sy = SY(x.y); if (!inView(sx, sy)) continue;
-      const r = radiusOf(x), n = nums.get(x.key);
+      const hue = hueOf(x), r = radiusOf(x), n = nums.get(x.key);
       ctx.globalAlpha = op(x.key) * x.a;
-      drawNode(x, sx, sy, z);
+      if (x.kind === "hex") {
+        if (x.q.start) star(sx, sy, C.sap);
+        else { picture(x, sx, sy, r, true); hexagon(sx, sy, r); ctx.strokeStyle = hue; ctx.lineWidth = 2; ctx.stroke(); }
+      } else if (x.kind === "cell") {
+        picture(x, sx, sy, r, false); ctx.strokeStyle = hue; ctx.lineWidth = x.inChain ? 2 : 1.5; ring(sx, sy, r);
+        ctx.setLineDash([2, 2.5]); ctx.lineWidth = 0.8; ring(sx, sy, r + 4); ctx.setLineDash([]);
+      } else if (x.kind === "key") {
+        const opened = all || open.has(x.rec.id);
+        ctx.fillStyle = opened ? hue : C.card; dot(sx, sy, r); ctx.strokeStyle = org ? armColour(hue) : hue; ctx.lineWidth = 1.4; ring(sx, sy, r);
+        if (x.rec.st !== "ok") { ctx.fillStyle = C.sap; dot(sx + r * 0.75, sy - r * 0.75, 2.4); }   // due for watering
+      } else {
+        ctx.fillStyle = x.rec.st === "ok" ? hue : C.card; dot(sx, sy, r); ctx.strokeStyle = hue; ctx.lineWidth = 1.1; ring(sx, sy, r);
+      }
       if (n) {
         ctx.font = FONT.num; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-        if (x.kind === "key") { ctx.lineWidth = 2.5; ctx.strokeStyle = "rgba(0,0,0,0.35)"; ctx.strokeText(String(n), sx, sy + 0.5); ctx.fillStyle = "#fff"; ctx.fillText(String(n), sx, sy + 0.5); }
-        else { const bx = sx + r * 0.72, by = sy - r * 0.72; ctx.fillStyle = T.poe ? T.gold : T.ink; dot(bx, by, 7.5); ctx.fillStyle = T.poe ? "#0b0c10" : T.halo; ctx.fillText(String(n), bx, by + 0.5); }
+        if (x.kind === "key") { ctx.fillStyle = all || open.has(x.rec.id) ? C.card : hue; ctx.fillText(String(n), sx, sy + 0.5); }
+        else { const bx = sx + r * 0.72, by = sy - r * 0.72; ctx.fillStyle = hue; dot(bx, by, 7); ctx.fillStyle = C.card; ctx.fillText(String(n), bx, by + 0.5); }
         ctx.textAlign = "left";
       }
-      if (x.key === pick) { ctx.strokeStyle = T.poe ? T.goldHi : T.ink; ctx.lineWidth = 1.5; if (x.kind === "hex" && !x.q.start) { hexagon(sx, sy, r + 7); ctx.stroke(); } else ring(sx, sy, r + (x.kind === "cell" ? 8 : 5)); }
+      if (x.key === pick) { ctx.strokeStyle = C.ink; ctx.lineWidth = 1.5; if (x.kind === "hex" && !x.q.start) { hexagon(sx, sy, r + 6); ctx.stroke(); } else ring(sx, sy, r + (x.kind === "cell" ? 8 : 5)); }
       ctx.globalAlpha = 1;
     }
     // words, most important first; any that would land on one already placed are left out
     const boxes = [], free = (b) => boxes.every((o) => b.x1 < o.x0 || b.x0 > o.x1 || b.y1 < o.y0 || b.y0 > o.y1);
-    const rank = (x) => (x.key === pick ? 0 : x.key === hov ? 1 : x.kind === "hex" ? 2 : x.kind === "cell" ? 3 : x.kind === "topic" ? 3.5 : x.kind === "key" ? 4 : P.get(x.rec.parent.id)?.kind === "key" ? 5 : 6);
-    const same = (a, b) => a.toLowerCase().split(/\W+/)[0] === b.toLowerCase().split(/\W+/)[0];
+    const rank = (x) => (x.key === pick ? 0 : x.key === hov ? 1 : x.kind === "hex" ? 2 : x.kind === "cell" ? 3 : x.kind === "key" ? 4 : P.get(x.rec.parent.id)?.kind === "key" ? 5 : 6);
     for (const x of [...P.values()].filter((x) => rank(x) <= 5 || k >= 1.3).sort((a, b) => rank(a) - rank(b))) {
       const sx = SX(x.x), sy = SY(x.y); if (!inView(sx, sy)) continue;
-      if (x.kind === "topic" && rank(x) > 1 && x.rec.kids.length === 1 && same(x.rec.title, x.rec.kids[0].title)) continue;
-      const font = x.kind === "hex" || x.kind === "cell" ? FONT.hex : x.kind === "key" || x.kind === "topic" ? FONT.key : FONT.idea, f = fit(titleOf(x), font, LABEL), r = radiusOf(x);
+      const font = x.kind === "hex" || x.kind === "cell" ? FONT.hex : x.kind === "key" ? FONT.key : FONT.idea, f = fit(titleOf(x), font, LABEL), r = radiusOf(x);
       let lx, ly = sy;
-      if (x.kind === "hex") { lx = sx - f.w / 2; ly = x.q.start ? sy + r + 4 : sy + r * 0.62; }
-      else if (x.kind === "topic") { lx = sx - f.w / 2; ly = sy + r + 9; }
-      else { const right = Math.cos(x.ang) >= -0.05, g = r + (x.kind === "cell" ? 9 : 5); lx = right ? sx + g : sx - g - f.w; }   // words sit on the outer side
+      if (x.kind === "hex") { lx = sx - f.w / 2; ly = sy + r + 13; }
+      else { const right = Math.cos(x.ang) >= -0.05, g = r + (x.kind === "cell" ? 8 : 5); lx = right ? sx + g : sx - g - f.w; }   // words sit on the outer side
       const b = { x0: lx - 3, y0: ly - 8, x1: lx + f.w + 3, y1: ly + 8 };
       if (rank(x) > 3 && !free(b)) continue; boxes.push(b);
       ctx.globalAlpha = op(x.key) * x.a; ctx.font = font; ctx.textBaseline = "middle";
-      if (x.key === pick) { ctx.fillStyle = T.ink; pill(lx - 5, ly - 10, f.w + 10, 20); ctx.fillStyle = T.halo; ctx.fillText(f.s, lx, ly + 0.5); }
-      else halo(f.s, lx, ly + 0.5, x.kind === "cell" ? (T.poe ? T.gold : hueOf(x)) : x.kind === "idea" || x.kind === "topic" ? T.muted : T.ink);
+      if (x.key === pick) { ctx.fillStyle = C.ink; pill(lx - 5, ly - 10, f.w + 10, 20); ctx.fillStyle = C.bg; ctx.fillText(f.s, lx, ly + 0.5); }
+      else halo(f.s, lx, ly + 0.5, x.kind === "cell" ? hueOf(x) : x.kind === "idea" ? C.muted : C.ink);
       ctx.globalAlpha = 1;
     }
   }
 
-  function drawWeb(z) {
-    const k = view.k, X = (r) => SX(r.x), Y = (r) => SY(r.y), inView = (x, y) => x > -80 && x < W + 80 && y > -40 && y < H + 40;
+  function drawWeb() {
+    const k = view.k, X = (r) => SX(r.x), Y = (r) => SY(r.y), inView = (x, y) => x > -80 && x < W + 80 && y > -40 && y < H + 40, org = look === "organic", z = clamp(k, 0.5, 1.5);
     const f0 = N.get(hov) || N.get(pick), near = new Set();
     if (f0) { near.add(f0); for (const p of wpairs) { if (p.a === f0) near.add(p.b); if (p.b === f0) near.add(p.a); } if (f0.parent) near.add(f0.parent); for (const c of f0.kids) near.add(c); }
     for (const q of isles) {
       if (!q.members?.length) continue;
       const x = SX(q.mx), y = SY(q.my), R = q.mr * k, g = ctx.createRadialGradient(x, y, 0, x, y, R);
-      g.addColorStop(0, rgba(T.poe ? T.gold : q.hue, T.poe ? 0.06 : 0.1)); g.addColorStop(1, rgba(q.hue, 0)); ctx.fillStyle = g; dot(x, y, R);
+      g.addColorStop(0, rgba(q.hue, 0.1)); g.addColorStop(1, rgba(q.hue, 0)); ctx.fillStyle = g; dot(x, y, R);
       ctx.font = "700 11px system-ui,sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; if ("letterSpacing" in ctx) ctx.letterSpacing = "1.4px";
-      ctx.globalAlpha = f0 && ![...near].some((r) => r.isle === q) ? 0.45 : 1; halo(q.name.toUpperCase(), x, y - R * 0.72, T.poe ? T.gold : q.hue); ctx.globalAlpha = 1;
+      ctx.globalAlpha = f0 && ![...near].some((r) => r.isle === q) ? 0.45 : 1; halo(q.name.toUpperCase(), x, y - R * 0.72, q.hue); ctx.globalAlpha = 1;
       if ("letterSpacing" in ctx) ctx.letterSpacing = "0px"; ctx.textAlign = "left";
     }
     ctx.lineCap = "round";
     for (const r of N.values()) {
       if (!r.parent) continue; const p = r.parent, x0 = X(p), y0 = Y(p), x1 = X(r), y1 = Y(r); if (!inView(x0, y0) && !inView(x1, y1)) continue;
-      ctx.globalAlpha = f0 ? (near.has(r) && near.has(p) ? 1 : 0.12) : 0.85;
-      if (T.poe) { ctx.strokeStyle = r.depth <= 0 ? T.bronzeHi : T.bronze; ctx.lineWidth = r.depth <= 0 ? 2.2 : 1.4; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); continue; }
-      const pts = limb(x0, y0, x1, y1, (r.depth <= 0 ? 4.5 : 2.4) * z, (r.depth <= 0 ? 2 : 1.1) * z, ((hsh(r.id) % 1000) / 1000 - 0.5) * 0.25);
-      const body = mix(T.body, r.hue, 0.22); ctx.fillStyle = mix(T.edge, r.hue, 0.12); band(pts, 1, 0); ctx.fillStyle = body; band(pts, 0.6, 0.15);
+      const lit = f0 ? near.has(r) && near.has(p) : true;
+      if (org) { ctx.globalAlpha = lit ? 0.9 : 0.12; ctx.fillStyle = armColour(r.hue); arm(x0, y0, x1, y1, (r.depth <= 0 ? 4 : 2.2) * z, (r.depth <= 0 ? 1.8 : 1) * z, ((hsh(r.id) % 1000) / 1000 - 0.5) * 0.25); ctx.globalAlpha = 1; continue; }
+      ctx.strokeStyle = rgba(r.hue, f0 ? (lit ? 0.6 : 0.07) : 0.3); ctx.lineWidth = r.depth <= 0 ? 1.4 : 1; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
     }
-    ctx.globalAlpha = 1;
     for (const p of wpairs) {
-      const on = f0 && (p.a === f0 || p.b === f0), al = f0 && !on ? 0.08 : on ? 0.95 : 0.45, x0 = X(p.a), y0 = Y(p.a), x1 = X(p.b), y1 = Y(p.b), mx = (x0 + x1) / 2 - (y1 - y0) * 0.14, my = (y0 + y1) / 2 + (x1 - x0) * 0.14;
-      const g = ctx.createLinearGradient(x0, y0, x1, y1); g.addColorStop(0, rgba(T.poe ? T.goldHi : p.a.hue, al)); g.addColorStop(1, rgba(T.poe ? T.goldHi : p.b.hue, al)); ctx.strokeStyle = g; ctx.lineWidth = on ? 1.6 : 1.1; ctx.setLineDash(T.poe ? [2, 5] : [4, 4]);
+      const on = f0 && (p.a === f0 || p.b === f0), al = f0 && !on ? 0.08 : on ? 0.95 : 0.4, x0 = X(p.a), y0 = Y(p.a), x1 = X(p.b), y1 = Y(p.b), mx = (x0 + x1) / 2 - (y1 - y0) * 0.14, my = (y0 + y1) / 2 + (x1 - x0) * 0.14;
+      const g = ctx.createLinearGradient(x0, y0, x1, y1); g.addColorStop(0, rgba(p.a.hue, al)); g.addColorStop(1, rgba(p.b.hue, al)); ctx.strokeStyle = g; ctx.lineWidth = on ? 1.6 : 1.1; ctx.setLineDash([4, 4]);
       ctx.beginPath(); ctx.moveTo(x0, y0); ctx.quadraticCurveTo(mx, my, x1, y1); ctx.stroke(); ctx.setLineDash([]);
     }
     const allR = [...N.values()];
@@ -485,15 +387,9 @@ export function createTechTree({ host, saved = {}, art = () => null, onSelect = 
       const x = X(r), y = Y(r); if (!inView(x, y)) continue;
       ctx.globalAlpha = f0 && !near.has(r) ? (hov ? 0.25 : 0.5) : 1;
       const rad = r.kind === "topic" ? 6 + 2.2 * Math.min(2, r.growth) : r.depth === 0 ? 4 : 2.6;
-      if (r.kind === "topic") {
-        const R = clamp((9 + 3 * Math.min(2, r.growth)) * k, 9, 22), fake = { kind: "topic", q: r.isle, rec: r };
-        if (R >= 7) { picture(fake, x, y, R, false); ctx.strokeStyle = T.poe ? T.gold : mix(T.edge, r.hue, 0.4); ctx.lineWidth = 2; ring(x, y, R); }
-        else { ctx.fillStyle = T.poe ? T.gold : r.hue; dot(x, y, R); }
-        if (r.mist) { ctx.setLineDash([2.5, 2.5]); ctx.strokeStyle = T.muted; ctx.lineWidth = 1.2; ring(x, y, R + 3); ctx.setLineDash([]); }
-      } else if (T.poe) { ctx.fillStyle = r.st !== "ok" ? "#0b0c10" : mix(r.hue, "#000000", 0.2); dot(x, y, rad); ctx.strokeStyle = r.st !== "ok" ? T.sap : r.depth === 0 ? T.gold : T.bronzeHi; ctx.lineWidth = 1.1; ring(x, y, rad); }
-      else if (r.st !== "ok") { ctx.fillStyle = T.bg0; dot(x, y, rad); ctx.strokeStyle = T.sap; ctx.lineWidth = 1.2; ring(x, y, rad); }
-      else bulb(x, y, rad + 0.5, r.hue);
-      if (r.id === pick) { ctx.strokeStyle = T.poe ? T.goldHi : T.ink; ctx.lineWidth = 1.5; ring(x, y, (r.kind === "topic" ? clamp((9 + 3 * Math.min(2, r.growth)) * k, 9, 22) : rad) + 4); }
+      if (r.mist) { ctx.setLineDash([2.5, 2.5]); ctx.strokeStyle = C.muted; ctx.lineWidth = 1.2; ring(x, y, rad); ctx.setLineDash([]); }
+      else { ctx.fillStyle = r.kind === "idea" && r.st !== "ok" ? C.card : r.hue; dot(x, y, rad); ctx.strokeStyle = r.hue; ctx.lineWidth = 1; ring(x, y, rad); }
+      if (r.id === pick) { ctx.strokeStyle = C.ink; ctx.lineWidth = 1.5; ring(x, y, rad + 4); }
       ctx.globalAlpha = 1;
     }
     const rank = (r) => (r.id === pick ? 0 : r === f0 ? 1 : near.has(r) ? 2 : r.kind === "topic" ? 3 : r.depth === 0 ? 4 : r.depth === 1 ? 5 : 6);
@@ -501,10 +397,10 @@ export function createTechTree({ host, saved = {}, art = () => null, onSelect = 
     const boxes = [], free = (b) => boxes.every((o) => b.x1 < o.x0 || b.x0 > o.x1 || b.y1 < o.y0 || b.y0 > o.y1);
     for (const r of allR.filter(want).sort((a, b) => rank(a) - rank(b))) {
       const x = X(r), y = Y(r); if (!inView(x, y)) continue;
-      const font = r.kind === "topic" ? FONT.hex : r.depth === 0 ? FONT.key : FONT.idea, f = fit(r.title, font, LABEL), lx = x + (r.kind === "topic" ? clamp((9 + 3 * Math.min(2, r.growth)) * k, 9, 22) + 6 : 7), b = { x0: lx - 4, y0: y - 9, x1: lx + f.w + 4, y1: y + 9 };
+      const font = r.kind === "topic" ? FONT.hex : r.depth === 0 ? FONT.key : FONT.idea, f = fit(r.title, font, LABEL), lx = x + (r.kind === "topic" ? 14 : 7), b = { x0: lx - 4, y0: y - 9, x1: lx + f.w + 4, y1: y + 9 };
       if (rank(r) > 1 && !free(b)) continue; boxes.push(b);
       ctx.globalAlpha = f0 && !near.has(r) ? (hov ? 0.3 : 0.6) : 1; ctx.font = font; ctx.textBaseline = "middle";
-      if (r.id === pick) { ctx.fillStyle = T.ink; pill(lx - 5, y - 10, f.w + 10, 20); ctx.fillStyle = T.halo; ctx.fillText(f.s, lx, y + 0.5); } else halo(f.s, lx, y + 0.5, r.depth > 1 ? T.muted : T.ink);
+      if (r.id === pick) { ctx.fillStyle = C.ink; pill(lx - 5, y - 10, f.w + 10, 20); ctx.fillStyle = C.bg; ctx.fillText(f.s, lx, y + 0.5); } else halo(f.s, lx, y + 0.5, r.depth > 1 ? C.muted : C.ink);
       ctx.globalAlpha = 1;
     }
   }
@@ -548,14 +444,18 @@ export function createTechTree({ host, saved = {}, art = () => null, onSelect = 
     if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), k: view.k }; press = null; drag = null; return; }
     const h = hit(e.offsetX, e.offsetY);
     press = { x: e.offsetX, y: e.offsetY, vx: view.x, vy: view.y, h, moved: false };
-    if (mode === "web" && h) drag = { r: N.get(h) }; goal.on = false; auto = false; onHover(null);
+    if (mode === "web" && h) { const r = N.get(h); drag = { r, kids: sub(r).filter((c) => !c.pin) }; } goal.on = false; auto = false; onHover(null);
   });
   cv.addEventListener("pointermove", (e) => {
     if (pts.has(e.pointerId)) pts.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
     if (pinch && pts.size === 2) { const [a, b] = [...pts.values()], d = Math.hypot(a.x - b.x, a.y - b.y); zoomAt((a.x + b.x) / 2, (a.y + b.y) / 2, (pinch.k * d) / pinch.d / view.k); return; }
     if (press) {
       const dx = e.offsetX - press.x, dy = e.offsetY - press.y; if (Math.hypot(dx, dy) > 4) press.moved = true; if (!press.moved) return;
-      if (drag?.r) { const r = drag.r; r.wx = r.x = (e.offsetX - view.x) / view.k; r.wy = r.y = (e.offsetY - view.y) / view.k; r.pin = true; pin.add(r.id); alpha = Math.max(alpha, 0.18); settled = false; kick(); }
+      if (drag?.r) {   // what you drag moves with everything under it; nothing else stirs
+        const r = drag.r, nx = (e.offsetX - view.x) / view.k, ny = (e.offsetY - view.y) / view.k, dx = nx - r.wx, dy = ny - r.wy;
+        r.wx = nx; r.wy = ny; for (const c of drag.kids) { c.wx += dx; c.wy += dy; } for (const c of [r, ...drag.kids]) { c.x = c.wx; c.y = c.wy; }
+        r.pin = true; pin.add(r.id); alpha = 0; draw();
+      }
       else { view.x = press.vx + dx; view.y = press.vy + dy; draw(); }
       return;
     }
@@ -565,7 +465,7 @@ export function createTechTree({ host, saved = {}, art = () => null, onSelect = 
     pts.delete(e.pointerId); if (pts.size < 2) pinch = null;
     const p = press; press = null; const d = drag; drag = null;
     if (!p) return;
-    if (d?.r && p.moved) { settled = false; alpha = Math.max(alpha, 0.05); kick(); return; }
+    if (d?.r && p.moved) { settled = true; saveLayout(); return; }
     if (!p.moved) tap(p.h);
   });
   cv.addEventListener("pointercancel", (e) => { pts.delete(e.pointerId); press = null; drag = null; pinch = null; });
@@ -632,7 +532,7 @@ export function createTechTree({ host, saved = {}, art = () => null, onSelect = 
       if (k === "Escape" && pick) { select(null); return true; }
       if (k === "r") { webStart(true); saveLayout(); home(); kick(); return true; }
     }
-    if (k === "y") { look = look === "poe" ? "neuron" : "poe"; onState(ui()); draw(); return true; }
+    if (k === "y") { look = look === "organic" ? "simple" : "organic"; onState(ui()); draw(); return true; }
     if (k.startsWith("Arrow")) { step(k); return true; }
     if (k === "0") { home(); return true; }
     if (k === "=" || k === "+") { zoomAt(W / 2, H / 2, 1.2); return true; }
