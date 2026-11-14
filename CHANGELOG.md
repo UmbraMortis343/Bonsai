@@ -2,6 +2,15 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.9.1 — 2026-11-14
+
+The tech tree goes dark.
+
+- Styled after the Path of Exile passive tree: near-black sky with faint stars, carved bronze paths, gold-ringed nodes, trunks as notables with a second ring, topics as ornate keystones, and a compass star at the start.
+- Ideas you know are lit and glow; ideas due for watering go dim, and ones that have dried out get a red ring.
+- Picking anything lights its path back to the start in blue: up its branches, through its topic and everything that topic builds on.
+- The bars and hover card turn dark while the tech tree is open. The web view gets the same look.
+
 ## 0.9.0 — 2026-11-14
 
 The tech tree grows from a start.

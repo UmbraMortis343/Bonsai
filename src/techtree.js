@@ -28,7 +28,7 @@ export function createTechTree({ host, saved = {}, onSelect = () => {}, onOpen =
     const rgb = /^#[0-9a-f]{6}$/i.test(ink) ? [1, 3, 5].map((i) => parseInt(ink.slice(i, i + 2), 16)).join(",") : "0,0,0";
     return { bg: v("--bg") || "#fff", ink, soft: `rgba(${rgb},.72)`, faint: `rgba(${rgb},.16)`, muted: v("--muted") || "#888", line: v("--line") || "#ddd", sap: v("--sap") || "#d97706", dark: matchMedia("(prefers-color-scheme: dark)").matches };
   }
-  const FONT = { topic: '600 13px system-ui,"Segoe UI",Roboto,sans-serif', root: '600 12px system-ui,"Segoe UI",Roboto,sans-serif', idea: '500 12px system-ui,"Segoe UI",Roboto,sans-serif' };
+  const FONT = { topic: "small-caps 600 15px Georgia,'Times New Roman',serif", root: "600 12.5px Georgia,'Times New Roman',serif", idea: "12px Georgia,'Times New Roman',serif" };
   function fit(text, kind, max) {
     const key = kind + "|" + max + "|" + text; if (widths.has(key)) return widths.get(key);
     ctx.font = FONT[kind]; let s = text, w = ctx.measureText(s).width;
@@ -46,7 +46,7 @@ export function createTechTree({ host, saved = {}, onSelect = () => {}, onOpen =
     const rec = (id, o) => { const p = old.get(id); const r = { id, kids: [], parent: null, vis: false, a: 0, ta: 0, x: 0, y: 0, tx: 0, ty: 0, wx: 0, wy: 0, vx: 0, vy: 0, desc: 0, ...o }; if (p) for (const k of ["x", "y", "a", "wx", "wy", "wplaced", "placed", "ang", "R", "drc"]) r[k] = p[k]; N.set(id, r); return r; };
     topics = d.topics.map((t) => { const isl = isles[t.isle] || isles[0], r = rec(topicKey(t.id), { kind: "topic", zoneId: t.id, title: t.name, isle: isl.i, hue: isl.hue, depth: -1, growth: t.growth || 0, mist: !!t.mist, ideas: t.ideas || 0 }); isl.topics.push(r); return r; });
     const treeOf = new Map(d.trees.map((t) => [t.id, t])), byParent = new Map();
-    for (const n of d.nodes) { const t = treeOf.get(n.treeId); if (!t || !N.has(topicKey(t.zoneId))) continue; const top = N.get(topicKey(t.zoneId)); rec(n.id, { kind: "idea", title: n.title || "Untitled", note: n.note || "", treeId: n.treeId, zoneId: t.zoneId, isle: top.isle, hue: top.hue, src: n }); }
+    for (const n of d.nodes) { const t = treeOf.get(n.treeId); if (!t || !N.has(topicKey(t.zoneId))) continue; const top = N.get(topicKey(t.zoneId)); rec(n.id, { kind: "idea", st: n.st || "ok", title: n.title || "Untitled", note: n.note || "", treeId: n.treeId, zoneId: t.zoneId, isle: top.isle, hue: top.hue, src: n }); }
     for (const n of d.nodes) { const r = N.get(n.id); if (!r) continue; const pid = n.parentId != null && N.has(n.parentId) ? n.parentId : topicKey(r.zoneId); if (!byParent.has(pid)) byParent.set(pid, []); byParent.get(pid).push(r); }
     const treeAt = new Map(d.trees.map((t, i) => [t.id, i])), by = (a, b) => (a.parentId ? 0 : treeAt.get(a.treeId) - treeAt.get(b.treeId)) || (a.order ?? 0) - (b.order ?? 0) || String(a.createdAt).localeCompare(String(b.createdAt));
     for (const [pid, kids] of byParent) { const p = N.get(pid); kids.sort((a, b) => by(a.src, b.src)); p.kids = kids; for (const k of kids) k.parent = p; }
@@ -218,98 +218,135 @@ export function createTechTree({ host, saved = {}, onSelect = () => {}, onOpen =
   }
   const kick = () => { if (active && !raf) { last = performance.now(); raf = requestAnimationFrame(frame); } };
 
-  // ---------- drawing ----------
+  // ---------- drawing: dark, after the Path of Exile passive tree ----------
+  // Carved bronze paths between gold-ringed nodes. Ideas you know are lit; ideas due for watering go dim.
+  // Picking something lights its path back to the start in blue.
+  const GOLD = "#c9a45c", GOLD_HI = "#f0d896", BRONZE = "#6b5a3a", CARVE = "#2a241a", BLUE = "#8fd8ff", FILL = "#0d1017";
+  let stars = null; const sprites = new Map();
   const X = (r) => r.x * view.k + view.x, Y = (r) => r.y * view.k + view.y;
+  function glow(colour, r, x, y, a = 1) {   // a soft light, drawn from a cached sprite so it stays cheap
+    let s = sprites.get(colour); if (!s) { s = document.createElement("canvas"); s.width = s.height = 64; const g = s.getContext("2d"), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, alphaHex(colour, 0.55)); gr.addColorStop(0.35, alphaHex(colour, 0.18)); gr.addColorStop(1, alphaHex(colour, 0)); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); sprites.set(colour, s); }
+    ctx.globalAlpha *= a; ctx.drawImage(s, x - r, y - r, r * 2, r * 2); ctx.globalAlpha /= a || 1;
+  }
+  function backdrop() {
+    const g = ctx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, Math.hypot(W, H) / 1.6); g.addColorStop(0, "#151b27"); g.addColorStop(1, "#05070b"); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    if (!stars || stars.w !== W || stars.h !== H) { let s = 11; const r = () => ((s = (s * 16807) % 2147483647) / 2147483647); stars = { w: W, h: H, p: Array.from({ length: Math.round((W * H) / 9000) }, () => [r() * W, r() * H, r() * 0.9 + 0.3, r() * 0.35 + 0.08]) }; }
+    for (const [x, y, sz, a] of stars.p) { ctx.fillStyle = `rgba(220,230,255,${a})`; ctx.fillRect(x, y, sz, sz); }
+  }
   function focusSet() {
-    const focus = N.get(hov) || N.get(sel), near = new Set();
+    const focus = N.get(hov) || N.get(sel), near = new Set(), path = new Set();
     if (focus) {
       near.add(focus); for (const p of pairs) { if (p.a === focus) near.add(p.b); if (p.b === focus) near.add(p.a); }
       if (focus.parent) near.add(focus.parent); for (const c of focus.kids) near.add(c);
       if (focus.kind === "topic" && mode === "tree") { for (const p of focus.after) near.add(p); for (const t of topics) if (t.after.includes(focus)) near.add(t); }
+      // the way back to the start: up the branches to the topic, then through everything it builds on
+      let r = focus; while (r) { path.add(r); r = r.parent; }
+      if (mode === "tree") { const up = (t) => { for (const p of t.after) if (!path.has(p)) { path.add(p); up(p); } }; up(focus.top); }
     }
-    return { focus, near };
+    return { focus, near, path };
   }
   function draw() {
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.globalAlpha = 1; backdrop();
     if (mode === "web") drawWeb(); else drawTree();
     ctx.setLineDash([]); ctx.globalAlpha = 1; ctx.textAlign = "left";
   }
+  // A path: a dark groove with a bronze line in it; gold when both ends are known; blue and glowing on the picked path.
+  function carved(x0, y0, x1, y1, how, w = 1) {
+    ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1);
+    if (how === "path") { ctx.strokeStyle = alphaHex(BLUE, 0.25); ctx.lineWidth = 7 * w; ctx.stroke(); ctx.strokeStyle = BLUE; ctx.lineWidth = 2 * w; ctx.stroke(); return; }
+    ctx.strokeStyle = CARVE; ctx.lineWidth = 4 * w; ctx.stroke();
+    ctx.strokeStyle = how === "lit" ? alphaHex(GOLD, 0.75) : alphaHex(BRONZE, 0.75); ctx.lineWidth = 1.4 * w; ctx.stroke();
+  }
   function paintLink(p, c, on, dim) {
-    const same = p.a.isle === p.b.isle, al = dim ? 0.08 : on ? 0.95 : same ? 0.42 : 0.55;
+    const same = p.a.isle === p.b.isle, al = dim ? 0.07 : on ? 0.95 : same ? 0.4 : 0.5;
     if (same) ctx.strokeStyle = alphaHex(p.a.hue, al);
     else { const g = ctx.createLinearGradient(c[0], c[1], c[6], c[7]); g.addColorStop(0, alphaHex(p.a.hue, al)); g.addColorStop(1, alphaHex(p.b.hue, al)); ctx.strokeStyle = g; }
-    ctx.lineWidth = Math.min(4.5, 1.1 + Math.log2(p.n) * 0.9) * (on ? 1.3 : 1); ctx.setLineDash(same ? [3, 4] : [7, 4]);
-    ctx.beginPath(); ctx.moveTo(c[0], c[1]); ctx.bezierCurveTo(c[2], c[3], c[4], c[5], c[6], c[7]); ctx.stroke();
-    if (on && p.direct && p.label) { const m = bez(c, 0.5); ctx.setLineDash([]); ctx.font = "italic 500 11px system-ui,sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; halo(p.label, m[0], m[1] - 7, C.sap); ctx.textAlign = "left"; }
+    ctx.lineWidth = Math.min(4.5, 1.1 + Math.log2(p.n) * 0.9) * (on ? 1.3 : 1); ctx.setLineDash(same ? [2, 5] : [6, 5]);
+    ctx.beginPath(); ctx.moveTo(c[0], c[1]); ctx.bezierCurveTo(c[2], c[3], c[4], c[5], c[6], c[7]); ctx.stroke(); ctx.setLineDash([]);
+    if (on && p.direct && p.label) { const m = bez(c, 0.5); ctx.font = "italic 500 11px Georgia,serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; halo(p.label, m[0], m[1] - 7, GOLD_HI); ctx.textAlign = "left"; }
   }
   const bowed = (ax, ay, bx, by, f = 0.14) => { const mx = (ax + bx) / 2, my = (ay + by) / 2, ox = -(by - ay) * f, oy = (bx - ax) * f; return [ax, ay, mx + ox, my + oy, mx + ox, my + oy, bx, by]; };
   const bez = (c, t) => { const u = 1 - t; return [u * u * u * c[0] + 3 * u * u * t * c[2] + 3 * u * t * t * c[4] + t * t * t * c[6], u * u * u * c[1] + 3 * u * u * t * c[3] + 3 * u * t * t * c[5] + t * t * t * c[7]]; };
   const toward = (r, x, y, gap) => { const dx = x - r.x, dy = y - r.y, d = Math.hypot(dx, dy) || 1; return [r.x + (dx / d) * gap, r.y + (dy / d) * gap]; };
+  const known = (r) => r.kind === "topic" ? !r.mist : r.st === "ok";
+  // An idea: a small passive. A trunk: a notable, with a second ring. Lit ones glow.
+  function passive(r, x, y, onPath, isSel) {
+    const R = radius(r), lit = known(r), notable = r.depth === 0;
+    if (lit || onPath) glow(onPath ? BLUE : r.hue, R * (notable ? 4.2 : 3.4), x, y, onPath ? 0.9 : 0.55);
+    ctx.fillStyle = FILL; dot(x, y, R + 1.5);
+    ctx.fillStyle = alphaHex(r.hue, lit ? 0.9 : 0.28); dot(x, y, R - (notable ? 2.2 : 1.2));
+    ctx.strokeStyle = onPath ? BLUE : lit ? GOLD : BRONZE; ctx.lineWidth = notable ? 1.6 : 1.2; ring(x, y, R + 1);
+    if (notable) { ctx.strokeStyle = alphaHex(onPath ? BLUE : lit ? GOLD_HI : BRONZE, 0.6); ctx.lineWidth = 0.8; ring(x, y, R + 3.6); }
+    if (r.st === "dry") { ctx.strokeStyle = "rgba(200,90,60,.7)"; ctx.lineWidth = 1; ring(x, y, R + (notable ? 5.6 : 3.4)); }
+    if (isSel) { ctx.strokeStyle = GOLD_HI; ctx.lineWidth = 1.4; ring(x, y, R + (notable ? 7 : 5.5)); }
+  }
+  // A topic: a keystone with an ornate frame when closed; a ringed socket holding its ideas when open.
+  function keystone(t, x, y, R, open, onPath, isSel) {
+    const c = onPath ? BLUE : GOLD;
+    if (t.mist) { ctx.setLineDash([3, 4]); ctx.strokeStyle = "rgba(160,160,170,.5)"; ctx.lineWidth = 1.2; ring(x, y, R); ctx.setLineDash([]); return; }
+    if (open) {
+      const g = ctx.createRadialGradient(x, y, 0, x, y, R); g.addColorStop(0, alphaHex(t.hue, 0.1)); g.addColorStop(0.85, alphaHex(t.hue, 0.04)); g.addColorStop(1, "rgba(0,0,0,0)"); ctx.fillStyle = g; dot(x, y, R);
+      ctx.strokeStyle = alphaHex(c, 0.55); ctx.lineWidth = 1.4; ring(x, y, R); ctx.strokeStyle = alphaHex(c, 0.22); ctx.lineWidth = 1; ring(x, y, R - 5);
+      ticks(x, y, R + 2, R + 6, Math.round(clamp((R * TAU) / 18, 24, 160)), alphaHex(c, 0.35));
+      glow(onPath ? BLUE : t.hue, 22, x, y, 0.8); ctx.fillStyle = FILL; dot(x, y, 7); ctx.strokeStyle = c; ctx.lineWidth = 1.6; ring(x, y, 7); ctx.fillStyle = t.hue; dot(x, y, 3.6);
+    } else {
+      glow(onPath ? BLUE : t.hue, R * 2.4, x, y, 0.7);
+      ctx.fillStyle = FILL; dot(x, y, R);
+      const g = ctx.createRadialGradient(x, y - R * 0.3, 0, x, y, R); g.addColorStop(0, alphaHex(t.hue, 0.55)); g.addColorStop(1, alphaHex(t.hue, 0.12)); ctx.fillStyle = g; dot(x, y, R - 4);
+      ctx.strokeStyle = c; ctx.lineWidth = 2.4; ring(x, y, R); ctx.strokeStyle = alphaHex(c, 0.5); ctx.lineWidth = 1; ring(x, y, R - 4);
+      ticks(x, y, R + 2, R + 5.5, 24, alphaHex(c, 0.55));
+    }
+    if (isSel) { ctx.strokeStyle = GOLD_HI; ctx.lineWidth = 1.4; ring(x, y, R + 9); }
+  }
+  function ticks(x, y, r0, r1, n, colour) { ctx.strokeStyle = colour; ctx.lineWidth = 1; ctx.beginPath(); for (let i = 0; i < n; i++) { const a = (i / n) * TAU, c = Math.cos(a), s = Math.sin(a); ctx.moveTo(x + c * r0, y + s * r0); ctx.lineTo(x + c * r1, y + s * r1); } ctx.stroke(); }
 
   function drawTree() {
-    const k = view.k, { focus, near } = focusSet(), ox = view.x, oy = view.y;
+    const k = view.k, { focus, near, path } = focusSet(), ox = view.x, oy = view.y;
     const sx = (x) => x * k + ox, sy = (y) => y * k + oy, inView = (x, y, m = 80) => x > -m && x < W + m && y > -m && y < H + m;
-    const rcOf = (t) => t.drc ?? t.rc, dim = (r) => !!focus && !near.has(r) && r.top !== focus.top;
-    // faint rings, and a soft glow of each island's colour around its cells
-    ctx.strokeStyle = C.faint; ctx.lineWidth = 1; ctx.setLineDash([2, 6]);
-    for (const R of rings) if (R) { ctx.beginPath(); ctx.arc(ox, oy, R * k, 0, TAU); ctx.stroke(); }
-    ctx.setLineDash([]);
-    for (const t of topics) {
-      const x = sx(t.x), y = sy(t.y), R = rcOf(t) * k * (cellLevel(t) && t.kids.length ? 1.15 : 2.4); if (!inView(x, y, R)) continue;
-      const g = ctx.createRadialGradient(x, y, 0, x, y, R); g.addColorStop(0, alphaHex(t.hue, C.dark ? 0.14 : 0.1)); g.addColorStop(1, alphaHex(t.hue, 0)); ctx.fillStyle = g; dot(x, y, R);
-    }
+    const rcOf = (t) => t.drc ?? t.rc, dim = (r) => !!focus && !near.has(r) && !path.has(r) && r.top !== focus.top;
+    // the rings, drawn like the faint arcs behind the passive tree
+    for (const R of rings) if (R) { const r = R * k; ctx.strokeStyle = "rgba(201,164,92,.09)"; ctx.lineWidth = 1; ring(ox, oy, r); ring(ox, oy, r + 4); if (r > 40) ticks(ox, oy, r + 4, r + 8, Math.round(clamp((r * TAU) / 16, 24, 400)), "rgba(201,164,92,.07)"); }
+    for (const t of topics) { const x = sx(t.x), y = sy(t.y), R = rcOf(t) * k * (cellLevel(t) && t.kids.length ? 1.25 : 3); if (inView(x, y, R)) glow(t.hue, R, x, y, 0.35); }
     // the start, and what each topic builds on
-    ctx.lineCap = "round";
     for (const t of topics) {
       for (const p of t.after.length ? t.after : [null]) {
-        const [ax, ay] = p ? toward(p, t.x, t.y, rcOf(p)) : toward({ x: 0, y: 0 }, t.x, t.y, 12), [bx, by] = toward(t, p ? p.x : 0, p ? p.y : 0, rcOf(t));
-        const on = focus && (focus === t || focus === p), off = focus && !on;
-        if (p) { const g = ctx.createLinearGradient(sx(ax), sy(ay), sx(bx), sy(by)); g.addColorStop(0, alphaHex(p.hue, off ? 0.12 : 0.75)); g.addColorStop(1, alphaHex(t.hue, off ? 0.12 : 0.75)); ctx.strokeStyle = g; ctx.lineWidth = on ? 2.4 : 1.8; }
-        else { ctx.strokeStyle = alphaHex(t.hue, off ? 0.08 : 0.3); ctx.lineWidth = 1.2; }
-        ctx.beginPath(); ctx.moveTo(sx(ax), sy(ay)); ctx.lineTo(sx(bx), sy(by)); ctx.stroke();
+        const [ax, ay] = p ? toward(p, t.x, t.y, rcOf(p) + 6) : toward({ x: 0, y: 0 }, t.x, t.y, 24), [bx, by] = toward(t, p ? p.x : 0, p ? p.y : 0, rcOf(t) + 6);
+        const lit = path.has(t) && (p ? path.has(p) : true);
+        ctx.globalAlpha = focus && !lit && !near.has(t) ? 0.35 : 1; carved(sx(ax), sy(ay), sx(bx), sy(by), lit ? "path" : known(t) && (!p || known(p)) ? "lit" : "", p ? 1.25 : 1); ctx.globalAlpha = 1;
       }
     }
-    star(ox, oy);
+    start(ox, oy, focus);
     // cells
     for (const t of topics) {
-      const x = sx(t.x), y = sy(t.y), R = rcOf(t) * k, open = cellLevel(t) && t.kids.length; if (!inView(x, y, R)) continue;
-      ctx.globalAlpha = dim(t) ? 0.4 : 1;
-      if (t.mist) { ctx.setLineDash([3, 4]); ctx.strokeStyle = C.muted; ctx.lineWidth = 1.2; ring(x, y, R); ctx.setLineDash([]); }
-      else { ctx.fillStyle = alphaHex(t.hue, open ? 0.04 : 0.16); dot(x, y, R); ctx.strokeStyle = alphaHex(t.hue, open ? 0.45 : 0.8); ctx.lineWidth = open ? 1.2 : 1.6; ring(x, y, R); }
-      if (t.id === sel) { ctx.strokeStyle = C.ink; ctx.lineWidth = 1.6; ring(x, y, R + 4); }
-      ctx.globalAlpha = 1;
+      const x = sx(t.x), y = sy(t.y), R = rcOf(t) * k; if (!inView(x, y, R)) continue;
+      ctx.globalAlpha = dim(t) ? 0.45 : 1; keystone(t, x, y, R, cellLevel(t) && t.kids.length, path.has(t), t.id === sel); ctx.globalAlpha = 1;
     }
-    // inside the cells: branches, links, dots
+    // inside the cells: paths, links, nodes
     for (const r of N.values()) {
       if (r.kind !== "idea" || r.a < 0.02) continue;
       const p = r.parent, x0 = sx(p.x), y0 = sy(p.y), x1 = sx(r.x), y1 = sy(r.y); if (!inView(x0, y0) && !inView(x1, y1)) continue;
-      ctx.globalAlpha = r.a * (dim(r) ? 0.3 : 1); ctx.strokeStyle = alphaHex(r.hue, 0.5); ctx.lineWidth = r.depth === 0 ? 1.5 : 1.1;
-      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+      const [ax, ay] = p.kind === "topic" ? [x0 + ((x1 - x0) / (Math.hypot(x1 - x0, y1 - y0) || 1)) * 8, y0 + ((y1 - y0) / (Math.hypot(x1 - x0, y1 - y0) || 1)) * 8] : [x0, y0];
+      ctx.globalAlpha = r.a * (dim(r) ? 0.35 : 1); carved(ax, ay, x1, y1, path.has(r) ? "path" : known(r) && (p.kind === "topic" || known(p)) ? "lit" : "", r.depth === 0 ? 0.9 : 0.75); ctx.globalAlpha = 1;
     }
-    ctx.globalAlpha = 1;
     for (const p of pairs) {
       if (p.a.a < 0.3 || p.b.a < 0.3) continue;
-      const on = !!focus && (p.a === focus || p.b === focus || (focus.kind === "topic" && (p.a.top === focus || p.b.top === focus))), ga = p.a.kind === "topic" ? rcOf(p.a) : 4, gb = p.b.kind === "topic" ? rcOf(p.b) : 4;
+      const on = !!focus && (p.a === focus || p.b === focus || (focus.kind === "topic" && (p.a.top === focus || p.b.top === focus))), ga = p.a.kind === "topic" ? rcOf(p.a) + 6 : 6, gb = p.b.kind === "topic" ? rcOf(p.b) + 6 : 6;
       const [ax, ay] = toward(p.a, p.b.x, p.b.y, ga), [bx, by] = toward(p.b, p.a.x, p.a.y, gb);
       paintLink(p, bowed(sx(ax), sy(ay), sx(bx), sy(by), 0.12), on, !!focus && !on);
     }
-    ctx.setLineDash([]);
     for (const r of N.values()) {
       if (r.kind !== "idea" || r.a < 0.02) continue; const x = sx(r.x), y = sy(r.y); if (!inView(x, y)) continue;
-      ctx.globalAlpha = r.a * (dim(r) ? 0.35 : 1); ctx.fillStyle = r.depth === 0 ? r.hue : alphaHex(r.hue, 0.85); dot(x, y, radius(r));
-      if (r.id === sel) { ctx.strokeStyle = C.ink; ctx.lineWidth = 1.6; ring(x, y, radius(r) + 4); }
-      ctx.globalAlpha = 1;
+      ctx.globalAlpha = r.a * (dim(r) ? 0.4 : 1); passive(r, x, y, path.has(r), r.id === sel); ctx.globalAlpha = 1;
     }
-    for (const t of topics) if (cellLevel(t) && t.kids.length) { ctx.globalAlpha = dim(t) ? 0.4 : 1; ctx.fillStyle = t.hue; dot(sx(t.x), sy(t.y), 4.5); ctx.globalAlpha = 1; }
     // words: the most important first, and none that would land on one already placed
     const boxes = [], free = (b) => boxes.every((o) => b.x1 < o.x0 || b.x0 > o.x1 || b.y1 < o.y0 || b.y0 > o.y1);
-    const rank = (r) => (r.id === sel ? 0 : r === focus ? 1 : r.kind === "topic" ? 2 : near.has(r) ? 3 : r.depth === 0 ? 4 : r.depth === 1 ? 5 : 6);
+    const rank = (r) => (r.id === sel ? 0 : r === focus ? 1 : r.kind === "topic" ? 2 : near.has(r) || path.has(r) ? 3 : r.depth === 0 ? 4 : r.depth === 1 ? 5 : 6);
     const want = (r) => r.a > 0.5 && (rank(r) <= 4 || (r.depth === 1 && k >= 0.55) || k >= 0.9);
     for (const r of shown.filter(want).sort((a, b) => rank(a) - rank(b))) {
       const x = sx(r.x), y = sy(r.y); if (!inView(x, y)) continue;
       const kind = kindOf(r), f = fit(r.title, kind, LABEL); let lx, ly = y;
-      if (r.kind === "topic") { const R = rcOf(r) * k, open = cellLevel(r) && r.kids.length; lx = x - f.w / 2; if (open) ly = y + 16; else if (f.w + 12 >= 2 * R) ly = y + R + 11; }
-      else { const out = Math.cos(Math.atan2(r.y - r.top.y, r.x - r.top.x)) >= -0.05; lx = out ? x + radius(r) + 6 : x - radius(r) - 6 - f.w; }   // words sit on the outer side of their dot
+      if (r.kind === "topic") { const R = rcOf(r) * k, open = cellLevel(r) && r.kids.length; lx = x - f.w / 2; ly = open ? y + 20 : y + R + 16; }
+      else { const out = Math.cos(Math.atan2(r.y - r.top.y, r.x - r.top.x)) >= -0.05, R = radius(r) + (r.depth === 0 ? 6 : 4); lx = out ? x + R + 4 : x - R - 4 - f.w; }   // words sit on the outer side of their node
       const b = { x0: lx - 3, y0: ly - 8, x1: lx + f.w + 3, y1: ly + 8 };
       if (rank(r) > 2 && !free(b)) continue; boxes.push(b);
       ctx.globalAlpha = dim(r) ? 0.45 : 1; label(r, f, kind, lx, ly); ctx.globalAlpha = 1;
@@ -317,50 +354,51 @@ export function createTechTree({ host, saved = {}, onSelect = () => {}, onOpen =
     // island names at the outer edge of their sector
     for (const q of isles) {
       if (!q.topics.length) continue;
-      const out = Math.max(...q.topics.map((t) => t.R + rcOf(t))) + 22, a = (q.a0 + q.a1) / 2, x = ox + Math.cos(a) * out * k, y = oy + Math.sin(a) * out * k;
-      ctx.font = "700 11px system-ui,sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; if ("letterSpacing" in ctx) ctx.letterSpacing = "1.6px";
-      ctx.globalAlpha = focus && !q.topics.includes(focus.top) && !q.topics.some((t) => near.has(t)) ? 0.4 : 1; ctx.fillStyle = q.hue; ctx.fillText(q.name.toUpperCase(), x, y); ctx.globalAlpha = 1;
+      const out = Math.max(...q.topics.map((t) => t.R + rcOf(t))) + 30, a = (q.a0 + q.a1) / 2, x = ox + Math.cos(a) * out * k, y = oy + Math.sin(a) * out * k;
+      ctx.font = "small-caps 600 15px Georgia,'Times New Roman',serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; if ("letterSpacing" in ctx) ctx.letterSpacing = "2px";
+      ctx.globalAlpha = focus && !q.topics.includes(focus.top) && !q.topics.some((t) => near.has(t) || path.has(t)) ? 0.4 : 0.9; halo(q.name.toLowerCase(), x, y, q.hue); ctx.globalAlpha = 1;
       if ("letterSpacing" in ctx) ctx.letterSpacing = "0px"; ctx.textAlign = "left";
     }
   }
-  function star(x, y) {
-    const gold = C.dark ? "#f5d78e" : "#c79a2e"; ctx.strokeStyle = alphaHex(gold, 0.9); ctx.lineWidth = 1.2;
-    for (let i = 0; i < 8; i++) { const a = (i / 8) * TAU, l = i % 2 ? 6 : 11; ctx.beginPath(); ctx.moveTo(x + Math.cos(a) * 3, y + Math.sin(a) * 3); ctx.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); ctx.stroke(); }
-    ctx.fillStyle = gold; dot(x, y, 2.6);
+  // The start: a compass star, as at the foot of the passive tree.
+  function start(x, y, focus) {
+    const lit = !!focus, c = lit ? BLUE : "#bfe6ff";
+    glow(c, 60, x, y, lit ? 0.9 : 0.6);
+    ctx.strokeStyle = alphaHex(GOLD, 0.8); ctx.lineWidth = 1.4; ring(x, y, 17); ctx.strokeStyle = alphaHex(GOLD, 0.35); ctx.lineWidth = 1; ring(x, y, 21);
+    ticks(x, y, 23, 26, 32, alphaHex(GOLD, 0.4));
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 16; i++) { const a = (i / 16) * TAU, l = i % 4 === 0 ? 34 : i % 2 ? 14 : 22; ctx.strokeStyle = alphaHex(c, i % 4 === 0 ? 0.85 : 0.5); ctx.beginPath(); ctx.moveTo(x + Math.cos(a) * 4, y + Math.sin(a) * 4); ctx.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); ctx.stroke(); }
+    ctx.fillStyle = GOLD_HI; dot(x, y, 3.2);
   }
   function label(r, f, kind, lx, ly) {
     ctx.font = FONT[kind]; ctx.textBaseline = "middle";
-    if (r.id === sel) { ctx.fillStyle = C.ink; pill(lx - 5, ly - 10, f.w + 10, 20); ctx.fillStyle = C.bg; ctx.fillText(f.s, lx, ly + 0.5); }
-    else halo(f.s, lx, ly + 0.5, r.mist ? C.muted : r.depth > 1 ? C.soft : C.ink);
+    if (r.id === sel) { ctx.fillStyle = GOLD; pill(lx - 6, ly - 10, f.w + 12, 20, 4); ctx.fillStyle = "#14100a"; ctx.fillText(f.s, lx, ly + 0.5); return; }
+    const colour = r.mist ? "#7d7a72" : r.kind === "topic" ? "#ecdcb2" : r.depth === 0 ? "#dccfae" : known(r) ? "#b7ad96" : "#7e776a";
+    halo(f.s, lx, ly + 0.5, colour);
   }
 
-  // Web: positions scale with zoom, dots and words stay the same size, words that would collide are left out.
+  // Web: the same look; positions scale with zoom, nodes and words keep their size, crowded words are left out.
   function drawWeb() {
-    const k = view.k, { focus, near } = focusSet();
+    const k = view.k, { focus, near, path } = focusSet();
     const inView = (x, y) => x > -80 && x < W + 80 && y > -40 && y < H + 40;
     for (const q of isles) {
       if (!q.members?.length) continue;
-      const x = q.mx * k + view.x, y = q.my * k + view.y, R = q.mr * k, g = ctx.createRadialGradient(x, y, 0, x, y, R);
-      g.addColorStop(0, alphaHex(q.hue, C.dark ? 0.13 : 0.1)); g.addColorStop(1, alphaHex(q.hue, 0)); ctx.fillStyle = g; dot(x, y, R);
-      ctx.font = "700 11px system-ui,sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; if ("letterSpacing" in ctx) ctx.letterSpacing = "1.4px";
-      ctx.globalAlpha = focus && ![...near].some((r) => r.isle === q.i) ? 0.45 : 1; ctx.fillStyle = q.hue; ctx.fillText(q.name.toUpperCase(), x, y - R * 0.72); ctx.globalAlpha = 1;
+      const x = q.mx * k + view.x, y = q.my * k + view.y, R = q.mr * k; glow(q.hue, R, x, y, 0.45);
+      ctx.font = "small-caps 600 15px Georgia,'Times New Roman',serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; if ("letterSpacing" in ctx) ctx.letterSpacing = "2px";
+      ctx.globalAlpha = focus && ![...near].some((r) => r.isle === q.i) ? 0.45 : 0.9; halo(q.name.toLowerCase(), x, y - R * 0.72, q.hue); ctx.globalAlpha = 1;
       if ("letterSpacing" in ctx) ctx.letterSpacing = "0px"; ctx.textAlign = "left";
     }
-    ctx.lineCap = "round";
     for (const r of N.values()) {
       if (!r.parent) continue; const p = r.parent, x0 = X(p), y0 = Y(p), x1 = X(r), y1 = Y(r);
       if (!inView(x0, y0) && !inView(x1, y1)) continue;
-      ctx.strokeStyle = alphaHex(r.hue, focus ? (near.has(r) && near.has(p) ? 0.6 : 0.07) : 0.26); ctx.lineWidth = r.depth <= 0 ? 1.4 : 1;
-      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+      ctx.globalAlpha = focus && !(near.has(r) && near.has(p)) && !path.has(r) ? 0.25 : 1; carved(x0, y0, x1, y1, path.has(r) && path.has(p) ? "path" : known(r) && known(p) ? "lit" : "", 0.7); ctx.globalAlpha = 1;
     }
     for (const p of pairs) { const on = !!focus && (p.a === focus || p.b === focus); paintLink(p, bowed(X(p.a), Y(p.a), X(p.b), Y(p.b)), on, !!focus && !on); }
-    ctx.setLineDash([]);
     const all = [...N.values()];
     for (const r of all) {
       const x = X(r), y = Y(r); if (!inView(x, y)) continue;
-      ctx.globalAlpha = focus && !near.has(r) ? (hov ? 0.22 : 0.5) : 1;
-      if (r.mist) { ctx.setLineDash([2.5, 2.5]); ctx.strokeStyle = C.muted; ctx.lineWidth = 1.2; ring(x, y, radius(r)); ctx.setLineDash([]); } else { ctx.fillStyle = r.depth > 0 ? alphaHex(r.hue, 0.85) : r.hue; dot(x, y, radius(r)); }
-      if (r.id === sel) { ctx.strokeStyle = C.ink; ctx.lineWidth = 1.6; ring(x, y, radius(r) + 4); }
+      ctx.globalAlpha = focus && !near.has(r) && !path.has(r) ? (hov ? 0.3 : 0.55) : 1;
+      if (r.kind === "topic") keystone(r, x, y, 9 + 2.5 * Math.min(2, r.growth), false, path.has(r), r.id === sel); else passive(r, x, y, path.has(r), r.id === sel);
       ctx.globalAlpha = 1;
     }
     const rank = (r) => (r.id === sel ? 0 : r === focus ? 1 : near.has(r) ? 2 : r.kind === "topic" ? 3 : r.depth === 0 ? 4 : r.depth === 1 ? 5 : 6);
@@ -368,16 +406,16 @@ export function createTechTree({ host, saved = {}, onSelect = () => {}, onOpen =
     const boxes = [], free = (b) => boxes.every((o) => b.x1 < o.x0 || b.x0 > o.x1 || b.y1 < o.y0 || b.y0 > o.y1);
     for (const r of all.filter(want).sort((a, b) => rank(a) - rank(b))) {
       const x = X(r), y = Y(r); if (!inView(x, y)) continue;
-      const kind = kindOf(r), f = fit(r.title, kind, LABEL), lx = x + radius(r) + 6, b = { x0: lx - 4, y0: y - 9, x1: lx + f.w + 4, y1: y + 9 };
+      const kind = kindOf(r), f = fit(r.title, kind, LABEL), lx = x + (r.kind === "topic" ? 18 + 2.5 * Math.min(2, r.growth) : radius(r) + 9), b = { x0: lx - 4, y0: y - 9, x1: lx + f.w + 4, y1: y + 9 };
       if (rank(r) > 1 && !free(b)) continue; boxes.push(b);
-      ctx.globalAlpha = focus && !near.has(r) ? (hov ? 0.3 : 0.6) : 1; label(r, f, kind, lx, y); ctx.globalAlpha = 1;
+      ctx.globalAlpha = focus && !near.has(r) ? (hov ? 0.35 : 0.65) : 1; label(r, f, kind, lx, y); ctx.globalAlpha = 1;
     }
   }
-  const radius = (r) => (r.kind === "topic" ? 6 + 2.2 * Math.min(2, r.growth) : r.depth === 0 ? 3.6 : 2.4);
+  const radius = (r) => (r.kind === "topic" ? 6 + 2.2 * Math.min(2, r.growth) : r.depth === 0 ? 5.5 : 3.6);
   const dot = (x, y, r) => { ctx.beginPath(); ctx.arc(x, y, Math.max(0.1, r), 0, TAU); ctx.fill(); };
   const ring = (x, y, r) => { ctx.beginPath(); ctx.arc(x, y, Math.max(0.1, r), 0, TAU); ctx.stroke(); };
   const pill = (x, y, w, h, r = h / 2) => { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, r) : ctx.rect(x, y, w, h); ctx.fill(); };
-  function halo(s, x, y, colour) { ctx.lineJoin = "round"; ctx.strokeStyle = C.bg; ctx.lineWidth = 3.5; ctx.strokeText(s, x, y); ctx.fillStyle = colour; ctx.fillText(s, x, y); }
+  function halo(s, x, y, colour) { ctx.lineJoin = "round"; ctx.strokeStyle = "rgba(5,7,11,.92)"; ctx.lineWidth = 4; ctx.strokeText(s, x, y); ctx.fillStyle = colour; ctx.fillText(s, x, y); }
 
   // ---------- view ----------
   function resize() {
@@ -415,7 +453,7 @@ export function createTechTree({ host, saved = {}, onSelect = () => {}, onOpen =
     for (const r of N.values()) {
       if (r.a < 0.5 || (mode === "tree" && !r.vis)) continue;
       const d = Math.hypot(sx - X(r), sy - Y(r)), open = cellLevel(r.top) && r.top.kids.length;
-      const reach = mode === "tree" && r.kind === "topic" ? (open ? 12 : Math.max(12, (r.drc ?? r.rc) * view.k + 2)) : radius(r) + 7;
+      const reach = r.kind === "topic" ? (mode === "web" ? 16 : open ? 12 : Math.max(12, (r.drc ?? r.rc) * view.k + 2)) : radius(r) + 7;
       if (d < reach && d < bd) { best = r; bd = d; }
     }
     if (!best && mode === "tree") for (const t of topics) if (cellLevel(t) && t.kids.length && Math.hypot(sx - X(t), sy - Y(t)) < (t.drc ?? t.rc) * view.k) return { cell: t };

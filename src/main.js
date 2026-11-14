@@ -972,7 +972,7 @@ function crossLinks() {
   return [...n].map(([k, c]) => [...k.split("|"), c]);
 }
 function showWindow(garden, flat = false) {
-  $("#stage").hidden = garden || flat; $("#isles").hidden = !garden; $("#tech").hidden = !flat; if (!flat) tech?.setActive(false); $("#gpanel").hidden = !garden; document.body.dataset.window = garden ? "garden" : "";
+  $("#stage").hidden = garden || flat; $("#isles").hidden = !garden; $("#tech").hidden = !flat; document.body.classList.toggle("dark-tech", flat); if (!flat) tech?.setActive(false); $("#gpanel").hidden = !garden; document.body.dataset.window = garden ? "garden" : "";
   if (!garden) { isles?.setActive(false); stage.resize(); }   // the stage has no size while hidden; measure it again before anything is framed
 }
 function showIsles() {
@@ -1189,7 +1189,7 @@ function techData() {
   const model = gardenModel();
   return { hubs: S.hubs.map((h) => ({ id: h.id, name: h.name })), islands: model.map((q) => ({ id: q.id, name: q.name, hub: q.hub })),
     topics: model.flatMap((q, i) => q.topics.filter((t) => t.id).map((t) => ({ id: t.id, name: t.name, isle: i, ideas: t.ideas, growth: t.growth, mist: t.mist }))),
-    trees: S.trees, nodes: S.nodes, links: S.links, after: S.prereq };
+    trees: S.trees, nodes: S.nodes.map((n) => ({ ...n, st: thirst(n) })), links: S.links, after: S.prereq };
 }
 function openTech() {
   if (S.view === "tree") { S.pendingSel = S.sel; location.hash = "#/techtree"; return; }

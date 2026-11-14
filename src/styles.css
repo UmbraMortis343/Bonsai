@@ -29,6 +29,12 @@ kbd{font:600 11px/1 var(--font);border:1px solid var(--line);border-bottom-width
 .labels{position:absolute;inset:0;overflow:hidden;pointer-events:none}
 .tech{position:absolute;inset:0;touch-action:none;user-select:none;-webkit-user-select:none;overflow:hidden}
 .tech canvas{display:block;position:absolute;inset:0}
+.tech{background:#07090d}
+/* the tech tree is always dark, after the Path of Exile passive tree: bronze and gold on near-black */
+body.dark-tech{--bg:#07090d; --card:#11141b; --card-t:rgb(17 20 27 / .94); --ink:#ecdcb2; --muted:#9a8f78; --line:#3a3226; --well:#0b0e14;
+  --accent:#c9a45c; --accent-ink:#14100a; --sap:#f0d896; --shadow:0 6px 24px rgb(0 0 0 / .6); color-scheme:dark}
+body.dark-tech .actions,body.dark-tech .top .btn,body.dark-tech #hover{border-color:#4a3e2a}
+body.dark-tech #hover b,body.dark-tech .actions .plant b{font-family:Georgia,"Times New Roman",serif;font-variant:small-caps;letter-spacing:.03em}
 .actions .seg.keys{display:inline-flex;gap:2px;padding:2px;border-radius:10px;background:var(--well)}
 .actions .seg.keys .btn{border-color:transparent;background:transparent;padding:5px 9px;font-size:13px}
 .actions .seg.keys{border:0}
