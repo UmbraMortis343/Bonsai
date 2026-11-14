@@ -2,6 +2,10 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.7.2 — 2026-11-14
+
+- Fixed: on an island with a mountain and an academy, amphitheatre or statue, the waterfall's water ran on across the ground and into the centrepiece. It now lands in a small lake at the mountain's foot.
+
 ## 0.7.1 — 2026-11-14
 
 - **Mountain on any island:** the island menu has a Mountain switch, so an island can have a mountain whatever its centrepiece. It rises on the first topic's plot, with its waterfall. The stone arches always stand under one.

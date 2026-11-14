@@ -93,6 +93,7 @@ export function buildWorld(isl, N) {
       path.forEach(([px, pz], i) => feats.push({ x: c + px * R, z: c + pz * R, r: i < 5 ? 4.2 : 1.9, level: i < enter ? W1 : W0, carve: i < 5 ? 4 : i < enter ? 6 : 3, bed: 1.5, topic: -1 }));
       feats.push({ x: c + HOL[0] * R, z: c + HOL[1] * R, r: HOLR, level: W0, carve: 3.5, bed: 2.4, topic: -1 });
     }
+    else if (isl.mountain) { const r = 3.3 * Math.sqrt(isl.size); feats.push({ x: c + pts[0][0] * R, z: c - clamp(heartR * 0.92 + r / Rw, 0.49, 0.54) * R, r, level: G + 0.9, carve: 1.8, bed: 1.3, topic: -1 }); }   // with no river to join, the waterfall lands in a small lake at the mountain's foot, set back far enough to clear the centrepiece
     if (isl.landmark === "statue") feats.push({ x: c, z: c, r: 8.4, level: G + 0.9, carve: 4, bed: 1.2, topic: -1 });   // the statue stands in a pool
     TOPICS.forEach((t, i) => {
       const a = seeds[i][2], pond = (rr, da, r) => feats.push({ x: c + Math.cos(a + da) * rr * R, z: c + Math.sin(a + da) * rr * R, r: r * Math.sqrt(isl.size), level: G + 0.9, carve: 5, bed: 1.3, topic: i });
