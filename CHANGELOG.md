@@ -2,6 +2,17 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.8.0 — 2026-11-14
+
+The tech tree.
+
+- **Tech tree (K):** a flat map of everything you know. Each island is a lane, grouped under its hub, with its topics down the left.
+- **Three depths:** 1 shows only topics, 2 opens each topic to its key ideas (every graph's trunk and main branches), 3 shows every idea. Any branch opens or folds on its own: click it, or use Space or the arrows (→ opens, ← folds).
+- **Links between whatever is open:** a link to an idea inside a folded branch is drawn to that branch, so even the topics-only view shows how topics connect, with more links making a thicker line. Links between topics on one island are dashed in the island's colour; links between subjects fade from one island's colour to the other's.
+- **Web (L):** every idea and every connection at once, gathered by island. Drag ideas to reshape it; the layout is kept. Tidy (R) lays it out afresh.
+- Enter opens the picked idea in its knowledge graph, and Back returns to the same spot. A topic opens in the garden.
+- Opened from a topic in the garden, or from an idea in a graph, the tech tree starts there.
+
 ## 0.7.3 — 2026-11-14
 
 - Fixed: on small islands a topic's pond could sit under the corner of the centrepiece. Each centrepiece is now measured from its own blocks, in every direction, and ponds, the mountain's lake and its stream are placed around that: pushed outward, made smaller if the gap is tight, or left out if there is no room. Where a mountain has no room for its lake, it has no waterfall.

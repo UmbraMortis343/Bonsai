@@ -27,6 +27,16 @@ kbd{font:600 11px/1 var(--font);border:1px solid var(--line);border-bottom-width
 .stage{position:absolute;inset:0;touch-action:none;user-select:none;-webkit-user-select:none}
 .stage canvas{display:block;width:100%;height:100%}
 .labels{position:absolute;inset:0;overflow:hidden;pointer-events:none}
+.tech{position:absolute;inset:0;touch-action:none;user-select:none;-webkit-user-select:none;overflow:hidden}
+.tech canvas{display:block;position:absolute;inset:0}
+.actions .seg.keys{display:inline-flex;gap:2px;padding:2px;border-radius:10px;background:var(--well)}
+.actions .seg.keys .btn{border-color:transparent;background:transparent;padding:5px 9px;font-size:13px}
+.actions .seg.keys{border:0}
+.actions .seg.keys .btn{color:var(--muted)}
+.actions .seg.keys .btn.on{color:var(--ink);background:var(--card);border-color:var(--line);font-weight:600;box-shadow:0 1px 2px rgb(15 23 42 / .08)}
+.actions .seg.keys kbd{padding:1px 4px;font-size:10px}
+.actions .sep{width:1px;align-self:stretch;margin:4px 2px;background:var(--line)}
+@media (max-width:700px){ .actions:has(.seg.keys){flex-wrap:wrap;justify-content:center} .actions .seg.keys kbd,#techFit kbd,#techOpen kbd,#techReset kbd{display:none} .actions:has(.seg.keys) .plant{flex-basis:100%;text-align:center} .actions:has(.seg.keys) .sep{display:none} }
 .lbl{position:absolute;left:0;top:0;pointer-events:auto;cursor:pointer;white-space:nowrap;max-width:200px;overflow:hidden;text-overflow:ellipsis;
   font-size:12px;font-weight:500;line-height:1.5;padding:0 4px;border-radius:6px;will-change:transform;
   text-shadow:0 0 2px var(--bg),0 0 4px var(--bg),0 0 7px var(--bg),0 0 10px var(--bg)}

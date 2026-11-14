@@ -23,7 +23,8 @@ Plain ES modules, no bundler. `src/` is the app; `scripts/build.mjs` copies it t
 
 | File | What |
 |---|---|
-| `src/main.js` | App state `S`, routes, views, panels, keys. Routes: `#/` garden (home), `#/forest`, `#/tree/<id>`, `#/garden` (watering with potted plants), `#/meaning[/<zoneId>]` |
+| `src/main.js` | App state `S`, routes, views, panels, keys. Routes: `#/` garden (home), `#/forest`, `#/tree/<id>`, `#/garden` (watering with potted plants), `#/meaning[/<zoneId>]`, `#/techtree[/<zoneId>]` |
+| `src/techtree.js` | The tech tree (`#/techtree[/<zoneId>]`, key K): 2D canvas. Tree mode: lanes by hub and island, rows opened per branch (`open` set; levels 1 topics, 2 key ideas, 3 all), links lifted to the nearest open ancestor (`lift`) and routed by `route`. Web mode: force layout clustered by island; dragged ideas pinned. UI state in localStorage `bonsai.tech`, web positions in `meta` key `techtree` |
 | `src/isles.js` | Draws the garden: hubs, islands, bridges, mist, animals, sky, labels, picking, camera. API `createIsles(opts)` → `setData(islands, pairs, hubs)`, `focus`, `focusHub`, `select`, `setActive`, `setNight`, `setQuality` |
 | `src/gardenmap.js` | Pure logic for Import map: `readMap`, `missing`, `mergeMap`. No browser needed |
 | `src/isles-world.js` | Builds one island's voxels and meshes: terrain, water, biomes, plants, landmarks, bones |
@@ -54,7 +55,7 @@ Garden levels: every hub → one hub → one island → one topic (`S.hub`, `S.i
 - Greenhouse prototype: artifact `2956bbd2-4c90-4a88-858a-6fa6728f5e8d`. The look-development page the garden came from.
 
 ## Agreed, not built
-- Knowledge view from his sketch: numbered nodes, a key to jump to a number, a controls bar with shortcuts, a right panel of node cards that changes only on click, hover card, notes beside it. Stays 3D. A 2D tech tree with draggable nodes.
+- Knowledge view from his sketch: numbered nodes, a key to jump to a number, a controls bar with shortcuts, a right panel of node cards that changes only on click, hover card, notes beside it. Stays 3D.
 - Notes section; nested bullets turn into a graph.
 - Review that makes you work: Recall, Feynman, Rebuild, Patch and Stitch, scored for coverage by the on-device model.
 - Exams by tier, run as a page inside Claude that exports a file for the app; topic maps drafted from syllabuses (CIE for school level) and competency frameworks for non-academic skills. Pilot: Physics and Leadership.

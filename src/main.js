@@ -10,6 +10,7 @@ import { textFor, hashText } from "./semantic.js";
 import { $, el, put, toast, dialog, menu, overlayOpen, closeTop, closeAll } from "./dom.js";
 import { createIsles, QUALITY } from "./isles.js";
 import { readMap, missing, mergeMap, ISLE_MAX } from "./gardenmap.js";
+import { createTechTree } from "./techtree.js";
 
 const PALETTE = [["Blue", "#3b82f6"], ["Violet", "#8b5cf6"], ["Pink", "#ec4899"], ["Red", "#ef4444"], ["Orange", "#f97316"], ["Amber", "#f59e0b"], ["Green", "#22c55e"], ["Teal", "#14b8a6"], ["Cyan", "#06b6d4"]];
 const SWATCHES = [["Auto", ""], ...PALETTE];
@@ -30,10 +31,10 @@ const S = {
   tree: null, sel: null, panel: null, pick: null, quick: null, review: null, cutoff: null, stitch: false, editBody: false,
   flora: null, lay: null, forest: null, fsel: null, pendingSel: null,
   scope: null, mean: null, suggest: null, aiOn: false,
-  garden: null, model: [], hubs: [], hub: -1, isle: -1, topic: -1, treeBack: "#/", meanBack: "#/", hashNow: null, water: undefined,
+  garden: null, model: [], hubs: [], hub: -1, isle: -1, topic: -1, treeBack: "#/", meanBack: "#/", techBack: "#/", hashNow: null, water: undefined,
 };
 const ideaView = () => S.view === "tree" || S.view === "meaning";
-let stage, isles, T, labelEls = new Map(), decor = [], selMesh, playTimer = 0;
+let stage, isles, tech, T, labelEls = new Map(), decor = [], selMesh, playTimer = 0;
 
 // Scene colours come from the stylesheet, so light and dark stay in step.
 function theme() {
@@ -339,16 +340,18 @@ async function go() {
   S.quick = null; S.review = null; S.cutoff = null; S.stitch = false;
   await load();
   const m = location.hash.match(/^#\/tree\/([^/?]+)/), id = m && decodeURIComponent(m[1]);
-  const mm = location.hash.match(/^#\/meaning(?:\/([^/?]+))?/);
+  const mm = location.hash.match(/^#\/meaning(?:\/([^/?]+))?/), tm = location.hash.match(/^#\/techtree(?:\/([^/?]+))?/);
   meanRun++; setStatus(""); document.body.dataset.meaning = "";
   // remember where a graph or the meaning view was opened from, so Back returns there
   const from = S.hashNow; S.hashNow = location.hash;
   const origin = from == null || /^#\/(tree|meaning)/.test(from) ? null : from || "#/";
   if (origin && mm && S.view !== "meaning") S.meanBack = origin;
   if (origin && id && S.view !== "tree") S.treeBack = origin;
-  const home = !mm && !location.hash.startsWith("#/garden") && !location.hash.startsWith("#/forest") && !(id && treeOf(id));
-  showWindow(home);
+  if (from != null && tm && !/^#\/(tree|techtree)/.test(from)) S.techBack = from || "#/";
+  const home = !mm && !tm && !location.hash.startsWith("#/garden") && !location.hash.startsWith("#/forest") && !(id && treeOf(id));
+  showWindow(home, !!tm);
   if (home) { if (id) history.replaceState(null, "", "#/"); showIsles(); }
+  else if (tm) showTech(tm[1] && decodeURIComponent(tm[1]));
   else if (mm) showMeaning(mm[1] && decodeURIComponent(mm[1]));
   else if (location.hash.startsWith("#/garden")) showGarden();
   else if (id) showTree(id);
@@ -397,6 +400,7 @@ function pickPlant(id) {
 async function refresh({ animate = false, panel = true } = {}) {
   await load();
   if (S.view === "isles") { drawIsles(); renderTop(); renderEmpty(); return; }
+  if (S.view === "tech") { tech.setData(techData()); renderTop(); renderActions(); return; }
   if (S.view === "meaning") { if (S.mean) buildMeaning(); }
   else if (S.view === "tree") {
     const t = treeOf(S.tree.id);
@@ -420,6 +424,7 @@ async function openTree(id) {
   opening = false; goTree(id);
 }
 function fitView() {
+  if (S.view === "tech") return tech.fit();
   stage.userMoved = false;
   if (S.lay) stage.flyTo({ target: vec(S.lay.center), radius: stage.fitDistance(S.lay.radius) * 0.88, phi: 1.2 });
   else if (S.forest) stage.flyTo(forestView());
@@ -471,7 +476,9 @@ function renderTop() {
   const search = ib("searchBtn", "Search", ICON.search, () => find());
   const swap = el("button", { class: "btn pill plain", id: "switchBtn", title: "Shift+Tab", onclick: toggleWindow }, S.view === "garden" || S.view === "isles" ? "Knowledge" : "Garden", S.view !== "garden" && S.view !== "isles" && due ? el("span", { class: "thirst", text: String(due) }) : null);
   const brand = el("div", { class: "brand" }, el("img", { src: "icons/icon-192.png", alt: "", width: 26, height: 26 }), el("h1", { text: "Bonsai" }));
-  if (S.view === "meaning") {
+  if (S.view === "tech") {
+    put($("#top"), ib("backBtn", "Back", ICON.back, () => { location.hash = S.techBack; }), el("div", { class: "crumb" }, el("h1", { text: "Tech tree" })), el("span", { class: "grow" }), swap, search);
+  } else if (S.view === "meaning") {
     const pick = el("select", { id: "scopeSel", "aria-label": "Show", onchange: (e) => goMeaning(e.target.value) }, el("option", { value: "", text: "Everything", selected: !S.scope }), S.zones.map((z) => el("option", { value: z.id, text: z.name, selected: z.id === S.scope })));
     put($("#top"), ib("backBtn", "Back", ICON.back, () => { location.hash = S.meanBack; }), el("div", { class: "crumb" }, el("h1", { text: "Meaning" }), pick),
       el("span", { class: "grow" }), S.mean && el("button", { class: "btn pill plain", id: "suggestBtn", text: "Suggest", onclick: openSuggest }), search);
@@ -502,6 +509,7 @@ function appMenu(anchor) {
   const archived = [...S.allZones.filter((z) => z.archived), ...S.allTrees.filter((t) => t.archived)];
   menu(anchor, [
     (S.view === "forest" || S.view === "isles") && { label: "Meaning view", key: "M", run: () => goMeaning() },
+    S.view !== "tech" && { label: "Tech tree", key: "K", run: openTech },
     S.view === "forest" && { label: "Timeline", key: "T", run: toggleTimeline },
     archived.length && { label: "Archived", run: () => menu(anchor, archived.map((x) => ({ label: `Restore ${x.name}`, run: async () => { await safely(() => (x.rootId ? store.updateTree : store.updateZone)(x.id, { archived: false })); refresh(); } }))) },
     "-", S.view === "isles" && { label: "Import map", run: importMap }, { label: "Export backup", run: exportBackup }, { label: "Restore backup", run: () => $("#importFile").click() },
@@ -516,7 +524,7 @@ function treeMenu(anchor) {
   const t = S.tree;
   menu(anchor, [
     { label: "Patches", key: "P", run: togglePatches }, { label: "Timeline", key: "T", run: toggleTimeline },
-    { label: "Meaning view", key: "M", run: () => { S.pendingSel = S.sel; goMeaning(t.zoneId); } }, { label: "Fit view", key: "0", run: fitView },
+    { label: "Meaning view", key: "M", run: () => { S.pendingSel = S.sel; goMeaning(t.zoneId); } }, { label: "Tech tree", key: "K", run: openTech }, { label: "Fit view", key: "0", run: fitView },
     "-", { label: "Rename", run: () => renameThing(t, store.updateTree, "Tree") }, { label: "Colour", run: () => colourThing(t, store.updateTree) },
     S.zones.length > 1 && { label: "Move to zone", run: async () => {
       const v = await dialog({ title: `Move ${t.name}`, fields: [{ name: "zoneId", label: "Zone", type: "select", value: t.zoneId, options: S.zones.map((z) => [z.id, z.name]) }], ok: "Move" });
@@ -576,7 +584,7 @@ async function capture() {
 function shortcuts() {
   const rows = [["↑ ↓ ← →", "Child, parent, siblings"], ["Tab", "Add a branch"], ["Enter", "Add a sibling"], ["R", "Rename"], ["Del", "Delete"], ["Space", "Notes"],
     ["L", "Link"], ["G", "Graft"], ["C", "Colour"], ["F", "Fly to idea"], ["0", "Fit view"], ["W A S D  Q E", "Fly"], ["/", "Search"], ["I", "Capture"],
-    ["1–9", "Garden: go to a hub, an island, then a topic"], ["0  Esc", "Garden: step back out"], ["W", "Garden: water"], ["D", "Garden: day or night"], ["S", "Garden: split a topic past 200%"], ["P", "Patches"], ["T", "Timeline"], ["M", "Meaning view"], ["N  Z", "New tree, new zone"], ["Shift+Tab", "Knowledge or garden"], ["Enter  V", "Garden: water the plant, water everything"], ["Esc", "Back"]];
+    ["1–9", "Garden: go to a hub, an island, then a topic"], ["0  Esc", "Garden: step back out"], ["W", "Garden: water"], ["D", "Garden: day or night"], ["S", "Garden: split a topic past 200%"], ["P", "Patches"], ["T", "Timeline"], ["M", "Meaning view"], ["K", "Tech tree"], ["1 2 3", "Tech tree: topics, key ideas, everything"], ["L", "Tech tree: tree or web"], ["Space", "Tech tree: open or fold"], ["N  Z", "New tree, new zone"], ["Shift+Tab", "Knowledge or garden"], ["Enter  V", "Garden: water the plant, water everything"], ["Esc", "Back"]];
   dialog({ title: "Shortcuts", ok: null, cancel: "Close", body: el("table", { class: "keys" }, rows.map(([k, d]) => el("tr", {}, el("td", {}, el("kbd", { text: k })), el("td", { text: d })))) });
 }
 async function exportBackup() {
@@ -608,6 +616,7 @@ function renderActions() {
     a.hidden = false; input.focus(); input.select();
     return;
   }
+  if (S.view === "tech") return techBar(a);
   const plant = S.view === "garden" && !S.review ? treeOf(S.fsel) : null;
   if (plant) {
     const nodes = S.byTree.get(plant.id) || [], dry = nodes.filter((x) => thirst(x) !== "ok");
@@ -962,8 +971,8 @@ function crossLinks() {
   for (const l of S.links) { const a = isleOf(l.fromId), b = isleOf(l.toId); if (a && b && a !== b) { const k = [a, b].sort().join("|"); n.set(k, (n.get(k) || 0) + 1); } }
   return [...n].map(([k, c]) => [...k.split("|"), c]);
 }
-function showWindow(garden) {
-  $("#stage").hidden = garden; $("#isles").hidden = !garden; $("#gpanel").hidden = !garden; document.body.dataset.window = garden ? "garden" : "";
+function showWindow(garden, flat = false) {
+  $("#stage").hidden = garden || flat; $("#isles").hidden = !garden; $("#tech").hidden = !flat; if (!flat) tech?.setActive(false); $("#gpanel").hidden = !garden; document.body.dataset.window = garden ? "garden" : "";
   if (!garden) { isles?.setActive(false); stage.resize(); }   // the stage has no size while hidden; measure it again before anything is framed
 }
 function showIsles() {
@@ -974,6 +983,7 @@ function showIsles() {
     isles.setNight(pref("night", "") === "1"); $("#isles").classList.toggle("night", isles.night);
   }
   isles.setActive(true); drawIsles(); renderChrome();
+  if (S.pendingTopic) { goTopic(S.pendingTopic); S.pendingTopic = null; }
 }
 function drawIsles() {
   const was = S.model[S.isle]?.id, wasHub = S.hubs[S.hub]?.id;
@@ -1013,7 +1023,7 @@ function renderGarden() {
       el("div", { class: "stats" }, el("span", {}, el("b", { text: String(t.ideas) }), ` idea${t.ideas === 1 ? "" : "s"}`), el("span", {}, el("b", { text: pct(t.growth) }), " grown"), el("span", {}, el("b", { text: pct(t.health) }), " healthy")),
       el("h3", { text: "Knowledge graphs" }),
       t.trees.length ? el("div", { class: "rows" }, t.trees.map((tr, k) => { const n = (S.byTree.get(tr.id) || []).length; return row(k < 9 ? String(k + 1) : "", tr.name, `${n} idea${n === 1 ? "" : "s"}`, dueList(tr.id).length, () => goTree(tr.id)); })) : el("p", { class: "muted", text: "None yet." }),
-      el("div", { class: "gacts" }, due ? act("waterTopic", `Water ${due}`, "W", () => water(t.due), true) : null, act("newGraph", "New knowledge graph", "N", () => newGraph(t.id), !due), act("topicMap", "Meaning map", "M", () => goMeaning(t.id)), t.growth >= 2 ? act("splitTopic", "Split", "S", () => splitTopic(t)) : null), foot);
+      el("div", { class: "gacts" }, due ? act("waterTopic", `Water ${due}`, "W", () => water(t.due), true) : null, act("newGraph", "New knowledge graph", "N", () => newGraph(t.id), !due), act("topicMap", "Meaning map", "M", () => goMeaning(t.id)), act("techBtn", "Tech tree", "K", openTech), t.growth >= 2 ? act("splitTopic", "Split", "S", () => splitTopic(t)) : null), foot);
   } else if (isl) {
     put(box, el("div", { class: "ph" }, ib("gBack", "Back", ICON.back, () => pickIsle(-1)), el("h2", { text: isl.name }), isleItems(S.isle).length ? ib("isleMore", "Island menu", ICON.more, (e) => isleMenu(S.isle, e.currentTarget)) : null, fold),
       el("h3", { text: "Topics" }),
@@ -1033,7 +1043,7 @@ function renderGarden() {
       thirsty.length ? el("div", { class: "rows" }, thirsty.slice(0, 6).map((q) => row("", q.name, "", q.due.length, () => goTopic(q.id)))) : el("p", { class: "muted", text: "Nothing right now." }),
       all.length ? el("h3", { text: "Knowledge spread" }) : null,
       all.length ? el("div", { class: "spread" }, all.map((q) => el("button", { class: "bar", title: `${q.name}: ${q.ideas}`, onclick: () => goTopic(q.id) }, el("span", { text: q.name }), el("i", {}, el("b", { style: `width:${Math.max(3, (100 * q.ideas) / top)}%` }))))) : null,
-      el("div", { class: "gacts" }, act("newGraph", "New knowledge graph", "N", () => newGraph(), true), act("newNote", "New note", "I", capture), act("mapBtn", "Meaning map", "M", () => goMeaning())), foot);
+      el("div", { class: "gacts" }, act("newGraph", "New knowledge graph", "N", () => newGraph(), true), act("newNote", "New note", "I", capture), act("mapBtn", "Meaning map", "M", () => goMeaning()), act("techBtn", "Tech tree", "K", openTech)), foot);
   }
 }
 // A new graph asks only for its topic and its name.
@@ -1174,6 +1184,77 @@ function renderEmpty() {
   } }, input, el("button", { class: "btn primary", text: "Add zone" })));
 }
 
+// ---------- the tech tree: a flat map of every topic and idea ----------
+function techData() {
+  const model = gardenModel();
+  return { hubs: S.hubs.map((h) => ({ id: h.id, name: h.name })), islands: model.map((q) => ({ id: q.id, name: q.name, hub: q.hub })),
+    topics: model.flatMap((q, i) => q.topics.filter((t) => t.id).map((t) => ({ id: t.id, name: t.name, isle: i, ideas: t.ideas, growth: t.growth, mist: t.mist }))),
+    trees: S.trees, nodes: S.nodes, links: S.links };
+}
+function openTech() {
+  if (S.view === "tree") { S.pendingSel = S.sel; location.hash = "#/techtree"; return; }
+  if (S.view === "meaning") { S.pendingSel = S.sel; location.hash = "#/techtree"; return; }
+  const t = S.view === "isles" ? S.model[S.isle]?.topics[S.topic] : null;
+  location.hash = "#/techtree" + (t?.id ? "/" + encodeURIComponent(t.id) : "");
+}
+async function showTech(focus) {
+  S.view = "tech"; S.tree = null; S.sel = null; S.lay = null; S.panel = null; clearScene(); hideHover();
+  if (!tech) {
+    let saved = {}; try { saved = JSON.parse(pref("tech", "{}")); } catch {}
+    Object.assign(saved, (await store.getMeta("techtree").catch(() => null)) || {});
+    tech = createTechTree({ host: $("#tech"), saved,
+      onSelect: () => renderActions(),
+      onOpen: (x) => openFromTech(x),
+      onHover: (x, cx, cy) => (x ? techHover(x, cx, cy) : hideHover()),
+      onState: (ui) => setPref("tech", JSON.stringify(ui)),
+      onLayout: (lay) => store.setMeta("techtree", lay).catch(() => {}) });
+    tech.setActive(true); tech.setData(techData());
+    if (!saved.open) tech.setLevel(1);
+    tech.fit(true);
+  }
+  tech.setActive(true); tech.setData(techData());
+  const at = S.pendingSel || focus; S.pendingSel = null;
+  if (at) tech.focus(at);
+  renderChrome();
+}
+function techHover(x, cx, cy) {
+  const h = $("#hover"), meta = x.kind === "topic" ? `${x.island} · ${x.ideas} idea${x.ideas === 1 ? "" : "s"}` : x.note || x.topic;
+  put(h, el("b", { text: x.title }), meta && el("span", { text: meta })); h.hidden = false;
+  h.style.left = Math.max(8, Math.min(innerWidth - h.offsetWidth - 8, cx + 14)) + "px";
+  h.style.top = (cy + 18 + h.offsetHeight > innerHeight ? cy - h.offsetHeight - 12 : cy + 18) + "px";
+}
+function openFromTech(x) {
+  if (!x) return;
+  if (x.kind === "topic") { S.pendingTopic = x.zoneId; location.hash = "#/"; return; }
+  S.pendingSel = x.id; goTree(x.treeId);
+}
+function techBar(a) {
+  const x = tech.selected, web = tech.mode === "web", lv = tech.level();
+  const key = (id, text, k, run, on) => el("button", { class: "btn" + (on ? " on" : ""), id, "aria-pressed": on == null ? null : String(on), onclick: run }, text, el("kbd", { text: k }));
+  put(a,
+    x ? el("div", { class: "plant" }, el("b", { text: x.title }), el("span", { class: "muted", text: x.kind === "topic" ? `${x.island} · ${x.ideas} idea${x.ideas === 1 ? "" : "s"}` : x.topic })) : null,
+    x ? key("techOpen", x.kind === "topic" ? "Garden" : "Open", "↵", () => openFromTech(x)) : null,
+    x ? el("span", { class: "sep" }) : null,
+    web ? null : el("div", { class: "seg keys", role: "group", "aria-label": "Show" }, key("lvTopics", "Topics", "1", () => techLevel(0), lv === 0), key("lvKey", "Key ideas", "2", () => techLevel(1), lv === 1), key("lvAll", "All", "3", () => techLevel(2), lv === 2)),
+    el("div", { class: "seg keys", role: "group", "aria-label": "Mode" }, key("modeTree", "Tree", "L", () => techMode("tree"), !web), key("modeWeb", "Web", "L", () => techMode("web"), web)),
+    web ? key("techReset", "Tidy", "R", () => tech.resetLayout()) : null,
+    key("techFit", "Fit", "0", () => tech.fit()));
+  a.hidden = false;
+}
+function techLevel(l) { tech.setLevel(l); renderActions(); }
+function techMode(m) { tech.setMode(m); renderActions(); }
+function techKey(k, stop) {
+  const x = tech.selected;
+  if (k.startsWith("Arrow")) { stop(); return tech.step(k); }
+  if ("123".includes(k) && k.length === 1) { stop(); return techLevel(+k - 1); }
+  if (k === "l") { stop(); return techMode(tech.mode === "web" ? "tree" : "web"); }
+  if (k === " " && x) { stop(); return tech.toggle(x.kind === "topic" ? x.zoneId : x.id); }
+  if (k === "Enter" && x) { stop(); return x.kind === "topic" && tech.mode === "tree" ? tech.toggle(x.zoneId) : openFromTech(x); }
+  if (k === "r" && tech.mode === "web") { stop(); return tech.resetLayout(); }
+  if (k === "=" || k === "+") { stop(); return tech.zoom(1.2); }
+  if (k === "-") { stop(); return tech.zoom(1 / 1.2); }
+}
+
 // ---------- input ----------
 function onTap(hit, e) {
   hideHover();
@@ -1211,7 +1292,8 @@ function back() {
   if (S.panel) { S.panel = null; return renderPanel(); }
   if (S.view === "garden" && S.fsel) return pickPlant(null);
   if (S.view === "isles") { if (S.topic >= 0) return pickTopic(-1); if (S.isle >= 0) return pickIsle(-1); if (S.hub >= 0) pickHub(-1); return; }
-  location.hash = S.view === "tree" ? S.treeBack : S.view === "meaning" ? S.meanBack : "#/";
+  if (S.view === "tech" && tech.selected) return tech.select(null);
+  location.hash = S.view === "tree" ? S.treeBack : S.view === "meaning" ? S.meanBack : S.view === "tech" ? S.techBack : "#/";
 }
 function onKey(e) {
   if (e.key === "Escape") { e.preventDefault(); return back(); }
@@ -1228,6 +1310,8 @@ function onKey(e) {
   if (k === "/") { stop(); return find(); }
   if (k === "?") { stop(); return shortcuts(); }
   if (k === "i") { stop(); return capture(); }
+  if (k === "k") { stop(); return openTech(); }
+  if (S.view === "tech") return techKey(k, stop);
   if (k === "t" && S.view !== "isles") { stop(); return toggleTimeline(); }
   if (k === "0") { stop(); return S.view === "isles" ? pickHub(-1) : fitView(); }
   if (S.cutoff != null) return;
@@ -1276,7 +1360,7 @@ async function init() {
   try { stage = new Stage($("#stage")); }
   catch { $("#empty").hidden = false; put($("#empty"), el("p", { text: "3D is turned off in this browser." })); return; }
   stage.setTheme(T);
-  stage.isPaused = () => overlayOpen() || !!S.review;
+  stage.isPaused = () => overlayOpen() || !!S.review || S.view === "tech";
   stage.onTap = onTap; stage.labelOpacity = labelOpacity;
   stage.labelRank = (L) => (L.id === S.sel ? 0 : S.near.has(L.id) ? 1 + L.depth * 0.01 : 2 + L.depth);
   stage.onHover = (hit, e) => {
@@ -1291,7 +1375,7 @@ async function init() {
   store.requestPersistence();
   S.aiOn = !!(await store.getMeta("ai").catch(() => false));
   if (S.aiOn) ai.loadCache().catch(() => {});
-  window.bonsai = { S, store, refresh, get stage() { return stage; }, get isles() { return isles; } };
+  window.bonsai = { S, store, refresh, get stage() { return stage; }, get isles() { return isles; }, get tech() { return tech; } };
   await go();
   document.body.dataset.ready = "1";
 }
