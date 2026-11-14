@@ -402,7 +402,7 @@ function pickPlant(id) {
 async function refresh({ animate = false, panel = true } = {}) {
   await load();
   if (S.view === "isles") { drawIsles(); renderTop(); renderEmpty(); return; }
-  if (S.view === "tech") { S.prereq = (await store.getMeta("prereq").catch(() => null)) || {}; tech.setData(techData()); renderTop(); renderActions(); return; }
+  if (S.view === "tech") { tech.setData(techData()); renderTop(); renderActions(); return; }
   if (S.view === "meaning") { if (S.mean) buildMeaning(); }
   else if (S.view === "tree") {
     const t = treeOf(S.tree.id);
@@ -592,7 +592,7 @@ async function capture() {
 function shortcuts() {
   const rows = [["↑ ↓ ← →", "Child, parent, siblings"], ["Tab", "Add a branch"], ["Enter", "Add a sibling"], ["R", "Rename"], ["Del", "Delete"], ["Space", "Notes"],
     ["L", "Link"], ["G", "Graft"], ["C", "Colour"], ["F", "Fly to idea"], ["0", "Fit view"], ["W A S D  Q E", "Fly"], ["/", "Search"], ["I", "Capture"],
-    ["1–9", "Garden: go to a hub, an island, then a topic"], ["0  Esc", "Garden: step back out"], ["W", "Garden: water"], ["D", "Garden: day or night"], ["S", "Garden: split a topic past 200%"], ["P", "Patches"], ["T", "Timeline"], ["M", "Meaning view"], ["K", "Tech tree"], ["1 2 3", "Tech tree: topics, key ideas, everything"], ["L", "Tech tree: tree or web"], ["Space", "Tech tree: open or close a topic"], ["B", "Tech tree: what a topic builds on"], ["N  Z", "New tree, new zone"], ["Shift+Tab", "Knowledge or garden"], ["Enter  V", "Garden: water the plant, water everything"], ["Esc", "Back"]];
+    ["1–9", "Garden: go to a hub, an island, then a topic"], ["0  Esc", "Garden: step back out"], ["W", "Garden: water"], ["D", "Garden: day or night"], ["S", "Garden: split a topic past 200%"], ["P", "Patches"], ["T", "Timeline"], ["M", "Meaning view"], ["K", "Tech tree"], ["1–9  Enter", "Tech tree: pick, then go in or open"], ["Space", "Tech tree: open or close an idea"], ["Esc", "Tech tree: let go, then step back a tier"], ["T  A  H", "Tech tree: this tier only, show all, back to the start"], ["B", "Tech tree: what an island grows from"], ["L", "Tech tree: tree or web"], ["N  Z", "New tree, new zone"], ["Shift+Tab", "Knowledge or garden"], ["Enter  V", "Garden: water the plant, water everything"], ["Esc", "Back"]];
   dialog({ title: "Shortcuts", ok: null, cancel: "Close", body: el("table", { class: "keys" }, rows.map(([k, d]) => el("tr", {}, el("td", {}, el("kbd", { text: k })), el("td", { text: d })))) });
 }
 async function exportBackup() {
@@ -981,7 +981,7 @@ function crossLinks() {
   return [...n].map(([k, c]) => [...k.split("|"), c]);
 }
 function showWindow(garden, flat = false) {
-  $("#stage").hidden = garden || flat; $("#isles").hidden = !garden; $("#tech").hidden = !flat; document.body.classList.toggle("dark-tech", flat); if (!flat) tech?.setActive(false); $("#gpanel").hidden = !garden; document.body.dataset.window = garden ? "garden" : "";
+  $("#stage").hidden = garden || flat; $("#isles").hidden = !garden; $("#tech").hidden = !flat; if (!flat) { tech?.setActive(false); document.body.classList.remove("night-ui"); } $("#gpanel").hidden = !garden; document.body.dataset.window = garden ? "garden" : "";
   if (!garden) { isles?.setActive(false); stage.resize(); }   // the stage has no size while hidden; measure it again before anything is framed
 }
 function showIsles() {
@@ -993,6 +993,7 @@ function showIsles() {
   }
   isles.setActive(true); drawIsles(); renderChrome();
   if (S.pendingTopic) { goTopic(S.pendingTopic); S.pendingTopic = null; }
+  if (S.pendingIsle) { const i = S.model.findIndex((q) => q.id === S.pendingIsle); S.pendingIsle = null; if (i >= 0) pickIsle(i); }
 }
 function drawIsles() {
   const was = S.model[S.isle]?.id, wasHub = S.hubs[S.hub]?.id;
@@ -1175,7 +1176,7 @@ async function splitTopic(t) {
   });
   isles.setActive(S.view === "isles");
   if (!made) return refresh();
-  const g = S.garden, at = g.islands.indexOf(here), rec = { id: newId(), name: t.name, landmark: CENTRES[1 + (g.islands.length % 3)][0], hubId: here.hubId, split: t.id, zoneIds: [t.id, ...made] };
+  const g = S.garden, at = g.islands.indexOf(here), rec = { id: newId(), name: t.name, landmark: CENTRES[1 + (g.islands.length % 3)][0], hubId: here.hubId, split: t.id, after: here.id, zoneIds: [t.id, ...made] };   // it grows out of the island it split from
   here.zoneIds = here.zoneIds.filter((id) => id !== t.id); g.islands.splice(at + 1, 0, rec);
   await store.setMeta("garden", g); await refresh(); pickIsle(S.model.findIndex((q) => q.id === rec.id));
   toast(`${t.name} has its own island`, { label: "Undo", run: async () => { if ((await safely(async () => { await store.importAll(before, { keepVectors: true }); return true; }))) { S.isle = -1; S.topic = -1; await refresh(); isles.focus(-1); } } });
@@ -1195,19 +1196,21 @@ function renderEmpty() {
 
 // ---------- the tech tree: a flat map of every topic and idea ----------
 function techData() {
-  const model = gardenModel();
-  return { hubs: S.hubs.map((h) => ({ id: h.id, name: h.name })), islands: model.map((q) => ({ id: q.id, name: q.name, hub: q.hub })),
+  const model = gardenModel(), rec = new Map(S.garden.islands.map((q) => [q.id, q]));
+  return { islands: model.map((q) => ({ id: q.id, name: q.name, hub: q.hub, after: rec.get(q.id)?.after || null, from: rec.get(q.id)?.from || null })),
     topics: model.flatMap((q, i) => q.topics.filter((t) => t.id).map((t) => ({ id: t.id, name: t.name, isle: i, ideas: t.ideas, growth: t.growth, mist: t.mist }))),
-    trees: S.trees, nodes: S.nodes.map((n) => ({ ...n, st: thirst(n) })), links: S.links, after: S.prereq };
+    trees: S.trees, nodes: S.nodes.map((n) => ({ ...n, st: thirst(n) })), links: S.links };
 }
 function openTech() {
-  if (S.view === "tree") { S.pendingSel = S.sel; location.hash = "#/techtree"; return; }
-  if (S.view === "meaning") { S.pendingSel = S.sel; location.hash = "#/techtree"; return; }
+  if (S.view === "tree" || S.view === "meaning") { S.pendingSel = S.sel; location.hash = "#/techtree"; return; }
   const t = S.view === "isles" ? S.model[S.isle]?.topics[S.topic] : null;
   location.hash = "#/techtree" + (t?.id ? "/" + encodeURIComponent(t.id) : "");
 }
+// The tech tree is dark when the garden is at night, or when the device is dark.
+const techNight = () => pref("night", "") === "1";
 async function showTech(focus) {
   S.view = "tech"; S.tree = null; S.sel = null; S.lay = null; S.panel = null; clearScene(); hideHover();
+  document.body.classList.toggle("night-ui", techNight());
   if (!tech) {
     let saved = {}; try { saved = JSON.parse(pref("tech", "{}")); } catch {}
     Object.assign(saved, (await store.getMeta("techtree").catch(() => null)) || {});
@@ -1215,74 +1218,73 @@ async function showTech(focus) {
       onSelect: () => renderActions(),
       onOpen: (x) => openFromTech(x),
       onHover: (x, cx, cy) => (x ? techHover(x, cx, cy) : hideHover()),
-      onState: (ui) => setPref("tech", JSON.stringify(ui)),
+      onState: (ui) => { setPref("tech", JSON.stringify(ui)); renderActions(); },
       onLayout: (lay) => store.setMeta("techtree", lay).catch(() => {}) });
-    S.prereq = (await store.getMeta("prereq").catch(() => null)) || {};
-    tech.setActive(true); tech.setData(techData());
-    tech.fit(true);
   }
-  S.prereq = (await store.getMeta("prereq").catch(() => null)) || {};
   tech.setActive(true); tech.setData(techData());
   const at = S.pendingSel || focus; S.pendingSel = null;
   if (at) tech.focus(at);
   renderChrome();
 }
 function techHover(x, cx, cy) {
-  const h = $("#hover"), meta = x.kind === "topic" ? `${x.island} · ${x.ideas} idea${x.ideas === 1 ? "" : "s"}` : x.note || x.topic;
+  const h = $("#hover"), meta = x.kind === "island" ? (x.start ? "" : `${x.topics} topic${x.topics === 1 ? "" : "s"} · ${x.ideas} key idea${x.ideas === 1 ? "" : "s"}${x.fromTitle ? " · from " + x.fromTitle : ""}`) : x.kind === "topic" ? x.island : x.note || x.topic;
   put(h, el("b", { text: x.title }), meta && el("span", { text: meta })); h.hidden = false;
   h.style.left = Math.max(8, Math.min(innerWidth - h.offsetWidth - 8, cx + 14)) + "px";
   h.style.top = (cy + 18 + h.offsetHeight > innerHeight ? cy - h.offsetHeight - 12 : cy + 18) + "px";
 }
 function openFromTech(x) {
   if (!x) return;
+  if (x.kind === "island") { if (x.start) return; S.pendingIsle = x.id; location.hash = "#/"; return; }
   if (x.kind === "topic") { S.pendingTopic = x.zoneId; location.hash = "#/"; return; }
   S.pendingSel = x.id; goTree(x.treeId);
 }
 function techBar(a) {
-  const x = tech.selected, web = tech.mode === "web", lv = tech.level;
+  const x = tech.selected, web = tech.mode === "web", f = tech.flags;
   const key = (id, text, k, run, on) => el("button", { class: "btn" + (on ? " on" : ""), id, "aria-pressed": on == null ? null : String(on), onclick: run }, text, el("kbd", { text: k }));
+  const sub = x ? (x.kind === "island" ? (x.start ? "" : x.afterName ? `from ${x.fromTitle || x.afterName}` : "") : x.kind === "topic" ? x.island : x.topic) : "";
   put(a,
-    x ? el("div", { class: "plant" }, el("b", { text: x.title }), el("span", { class: "muted", text: x.kind === "topic" ? `${x.island} · ${x.ideas} idea${x.ideas === 1 ? "" : "s"}` : x.topic })) : null,
+    x ? el("div", { class: "plant" }, el("b", { text: x.title }), sub ? el("span", { class: "muted", text: sub }) : null) : null,
+    x && x.kind === "island" && !x.centre ? key("techIn", "Go in", "↵", () => tech.goTo(x.id)) : null,
     x && x.kind === "idea" ? key("techOpen", "Open", "↵", () => openFromTech(x)) : null,
-    x && x.kind === "topic" && !web ? key("techAfter", "Builds on", "B", () => buildsOn(x)) : null,
-    x && x.kind === "topic" ? key("techGarden", "Garden", "G", () => openFromTech(x)) : null,
+    x && x.kind === "idea" && x.kids && !web ? key("techInside", x.open ? "Close" : "Inside", "Space", () => tech.key(" ")) : null,
+    x && x.kind === "island" && !x.start && !web ? key("techFrom", "Grows from", "B", () => growsFrom(x)) : null,
+    x && (x.kind === "island" && !x.start || x.kind === "topic") ? key("techGarden", "Garden", "G", () => openFromTech(x)) : null,
     x ? el("span", { class: "sep" }) : null,
-    web ? null : el("div", { class: "seg keys", role: "group", "aria-label": "Show" }, key("lvTopics", "Topics", "1", () => techLevel(0), lv === 0), key("lvKey", "Key ideas", "2", () => techLevel(1), lv === 1), key("lvAll", "All", "3", () => techLevel(2), lv === 2)),
+    web ? null : key("techBack", "Back", "Esc", () => techEsc()),
+    web ? null : key("techTier", "Tier", "T", () => tech.key("t"), f.tier),
+    web ? null : key("techAll", "All", "A", () => tech.key("a"), f.all),
+    web ? null : key("techStart", "Start", "H", () => tech.key("h")),
     el("div", { class: "seg keys", role: "group", "aria-label": "Mode" }, key("modeTree", "Tree", "L", () => techMode("tree"), !web), key("modeWeb", "Web", "L", () => techMode("web"), web)),
-    web ? key("techReset", "Tidy", "R", () => tech.resetLayout()) : null,
+    web ? key("techReset", "Tidy", "R", () => tech.key("r")) : null,
     key("techFit", "Fit", "0", () => tech.fit()));
   a.hidden = false;
 }
-// Which topics a topic builds on. It's a judgement, not a fact, so it's yours to set; a topic can't build on one that builds on it.
-async function buildsOn(x) {
-  const pre = S.prereq || {}, cur = new Set(pre[x.zoneId] || []), later = new Set();
-  const grow = (z) => { for (const [k, v] of Object.entries(pre)) if (v.includes(z) && !later.has(k)) { later.add(k); grow(k); } }; grow(x.zoneId);
-  const model = gardenModel(), boxes = [];
-  const list = model.flatMap((q) => q.topics.filter((t) => t.id && t.id !== x.zoneId && !later.has(t.id)).map((t) => {
-    const c = el("input", { type: "checkbox", value: t.id, checked: cur.has(t.id) }); boxes.push(c);
-    return el("label", { class: "check" }, c, el("b", { text: t.name }), el("span", { class: "muted", text: q.name }));
-  }));
-  const v = await dialog({ title: `${x.title} builds on`, ok: "Save", body: list.length ? el("div", { class: "checks" }, list) : el("p", { class: "muted", text: "No other topics yet." }) });
+// Which island an island grows from, and the idea on it that leads here. A judgement, not a fact, so it's yours to set.
+async function growsFrom(x) {
+  const rec = S.garden.islands.find((q) => q.id === x.id); if (!rec) return;
+  const later = new Set([x.id]); let grew = true;
+  while (grew) { grew = false; for (const q of S.garden.islands) if (q.after && later.has(q.after) && !later.has(q.id)) { later.add(q.id); grew = true; } }
+  const isl = S.garden.islands.filter((q) => !later.has(q.id));
+  const v = await dialog({ title: `${x.title} grows from`, ok: "Save", fields: [{ name: "after", label: "Island", type: "select", value: rec.after || "", options: [["", "The start"], ...isl.map((q) => [q.id, q.name])] }] });
   if (!v) return;
-  const ids = boxes.filter((c) => c.checked).map((c) => c.value);
-  if (ids.length) pre[x.zoneId] = ids; else delete pre[x.zoneId];
-  S.prereq = pre; await safely(() => store.setMeta("prereq", pre));
-  tech.setData(techData()); renderActions();
+  const prev = S.garden.islands.find((q) => q.id === v.after);
+  let from = "";
+  if (prev) {
+    const keys = prev.zoneIds.flatMap((z) => S.trees.filter((t) => t.zoneId === z).map((t) => S.byId.get(t.rootId))).filter(Boolean);
+    const w = keys.length ? await dialog({ title: `Which idea on ${prev.name} leads to ${x.title}?`, ok: "Save", fields: [{ name: "from", label: "Idea", type: "select", value: rec.after === v.after ? rec.from || "" : "", options: [["", "None in particular"], ...keys.map((n) => [n.id, n.title])] }] }) : { from: "" };
+    if (!w) return; from = w.from;
+  }
+  rec.after = v.after || null; rec.from = from || null;
+  await saveGarden();
 }
-function techLevel(l) { tech.setLevel(l); renderActions(); }
 function techMode(m) { tech.setMode(m); renderActions(); }
+function techEsc() { if (!tech.key("Escape")) location.hash = S.techBack; }
 function techKey(k, stop) {
   const x = tech.selected;
-  if (k.startsWith("Arrow")) { stop(); return tech.step(k); }
-  if ("123".includes(k) && k.length === 1) { stop(); return techLevel(+k - 1); }
   if (k === "l") { stop(); return techMode(tech.mode === "web" ? "tree" : "web"); }
-  if (k === " " && x) { stop(); return tech.toggle(x.zoneId); }
-  if (k === "Enter" && x) { stop(); return x.kind === "topic" ? (tech.mode === "tree" ? tech.toggle(x.zoneId) : openFromTech(x)) : openFromTech(x); }
-  if (k === "b" && x?.kind === "topic" && tech.mode === "tree") { stop(); return buildsOn(x); }
-  if (k === "g" && x?.kind === "topic") { stop(); return openFromTech(x); }
-  if (k === "r" && tech.mode === "web") { stop(); return tech.resetLayout(); }
-  if (k === "=" || k === "+") { stop(); return tech.zoom(1.2); }
-  if (k === "-") { stop(); return tech.zoom(1 / 1.2); }
+  if (k === "b" && x?.kind === "island" && !x.start && tech.mode === "tree") { stop(); return growsFrom(x); }
+  if (k === "g" && x && (x.kind === "topic" || (x.kind === "island" && !x.start))) { stop(); return openFromTech(x); }
+  if (tech.key(k === " " ? " " : k)) stop();
 }
 
 // ---------- input ----------
@@ -1322,7 +1324,7 @@ function back() {
   if (S.panel) { S.panel = null; return renderPanel(); }
   if (S.view === "garden" && S.fsel) return pickPlant(null);
   if (S.view === "isles") { if (S.topic >= 0) return pickTopic(-1); if (S.isle >= 0) return pickIsle(-1); if (S.hub >= 0) pickHub(-1); return; }
-  if (S.view === "tech" && tech.selected) return tech.select(null);
+  if (S.view === "tech") return techEsc();
   location.hash = S.view === "tree" ? S.treeBack : S.view === "meaning" ? S.meanBack : S.view === "tech" ? S.techBack : "#/";
 }
 function onKey(e) {

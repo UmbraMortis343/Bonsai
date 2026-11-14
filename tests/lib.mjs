@@ -46,4 +46,4 @@ export const seed = (page) => page.evaluate(async () => {
   return { ...ids, zone: z.id, zone2: z2.id, basic: basic.id, basicRoot: basic.rootId, op: op.id, opRoot: op.rootId, syn: syn.id };
 });
 export const openTree = async (page, id) => { await page.evaluate((i) => { location.hash = "#/tree/" + i; }, id); await page.waitForSelector(".lbl.trunk"); };
-export const state = (page, fn) => page.evaluate(fn);
+export const state = (page, fn, arg) => page.evaluate(fn, arg);

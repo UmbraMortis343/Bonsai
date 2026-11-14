@@ -3,21 +3,15 @@
 // A blank line starts another knowledge graph in the same topic.
 
 const HUBS = [["acad", "Academics"], ["work", "Work"], ["play", "Hobbies"]];
+// id, name, centrepiece, hub, topics, and the island and idea it grows from (the tech tree's boundary cells)
 const ISLANDS = [
   ["found", "Foundations", "arches", "acad", ["Numbers", "Reading and writing", "Shapes and space", "Patterns"]],
-  ["gensci", "General science", "academy", "acad", ["Matter", "Energy", "Living things", "Measuring"]],
-  ["maths", "Maths", "statue", "acad", ["Algebra", "Calculus", "Linear algebra"]],
-  ["phys", "Physics", "academy", "acad", ["Mechanics", "Electromagnetism", "Waves", "Thermodynamics", "Quantum"]],
+  ["gensci", "General science", "academy", "acad", ["Matter", "Energy", "Living things", "Measuring"], "found", "Patterns"],
+  ["maths", "Maths", "statue", "acad", ["Algebra", "Calculus", "Linear algebra"], "found", "Numbers"],
+  ["phys", "Physics", "academy", "acad", ["Mechanics", "Electromagnetism", "Waves", "Thermodynamics", "Quantum"], "gensci", "Energy"],
   ["lead", "Leadership", "statue", "work", ["Communication", "Coaching", "Running events"]],
   ["music", "Music", "amphitheatre", "play", ["Synthesis", "Harmony", "Rhythm"]],
 ];
-// what each topic builds on (the tech tree's B)
-const AFTER = {
-  "Reading and writing": [], Patterns: ["Numbers"], Matter: ["Numbers"], Energy: ["Numbers"], Measuring: ["Numbers", "Shapes and space"],
-  Algebra: ["Numbers", "Patterns"], Calculus: ["Algebra"], "Linear algebra": ["Algebra", "Shapes and space"],
-  Mechanics: ["Algebra", "Energy", "Measuring"], Electromagnetism: ["Mechanics", "Calculus"], Waves: ["Mechanics"], Thermodynamics: ["Energy", "Matter"], Quantum: ["Waves", "Electromagnetism", "Linear algebra"],
-  Harmony: ["Patterns"], Synthesis: ["Waves", "Harmony"], Rhythm: ["Patterns"], Coaching: ["Communication"], "Running events": ["Communication"],
-};
 const OUTLINES = {
   Numbers: `Numbers | The quantities we count, compare and measure with
   Counting | Matching things one-to-one with number words
@@ -250,7 +244,6 @@ export function demoBackup(now = Date.now()) {
   }
   for (const [a, b, label = ""] of LINKS) { const x = byTitle.get(a), y = byTitle.get(b); if (x && y && x !== y) links.push({ id: id("l"), fromId: x, toId: y, label, note: "", createdAt: made, updatedAt: made }); }
   const garden = { hubs: HUBS.map(([hid, name]) => ({ id: hid, name })), zone: {}, patron: "none",
-    islands: ISLANDS.map(([iid, name, landmark, hubId, topics]) => ({ id: iid, name, landmark, hubId, zoneIds: topics.map((t) => zoneByName.get(t).id) })) };
-  const prereq = {}; for (const [name, list] of Object.entries(AFTER)) if (list.length) prereq[zoneByName.get(name).id] = list.map((x) => zoneByName.get(x).id);
-  return { app: "bonsai", schema: 3, exportedAt: iso(now), zones, trees, nodes, links, events: [], patches: [], inbox: [], meta: [{ key: "garden", value: garden }, { key: "prereq", value: prereq }, { key: "demo", value: iso(now) }] };
+    islands: ISLANDS.map(([iid, name, landmark, hubId, topics, after, from]) => ({ id: iid, name, landmark, hubId, zoneIds: topics.map((t) => zoneByName.get(t).id), after: after || null, from: (from && byTitle.get(from)) || null })) };
+  return { app: "bonsai", schema: 3, exportedAt: iso(now), zones, trees, nodes, links, events: [], patches: [], inbox: [], meta: [{ key: "garden", value: garden }, { key: "demo", value: iso(now) }] };
 }

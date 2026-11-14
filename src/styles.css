@@ -29,13 +29,12 @@ kbd{font:600 11px/1 var(--font);border:1px solid var(--line);border-bottom-width
 .labels{position:absolute;inset:0;overflow:hidden;pointer-events:none}
 .tech{position:absolute;inset:0;touch-action:none;user-select:none;-webkit-user-select:none;overflow:hidden}
 .tech canvas{display:block;position:absolute;inset:0}
-.tech{background:#07090d}
+/* the tech tree follows the garden's day and night: at night the whole screen takes the dark colours */
+body.night-ui{--bg:#0f172a; --card:#1e293b; --card-t:rgb(30 41 59 / .92); --ink:#f1f5f9; --muted:#94a3b8; --line:#334155; --well:#111c31;
+  --accent:#34d399; --accent-ink:#052e22; --sap:#fbbf24; --danger:#f87171; --shadow:0 4px 20px rgb(0 0 0 / .45);
+  --grid:#1a2438; --limb:#55657d; --ring:#334155; --trunk:#e2e8f0; color-scheme:dark}
+body.night-ui #app{background:var(--bg)}
 .channel{position:fixed;left:10px;bottom:calc(10px + env(safe-area-inset-bottom));z-index:30;pointer-events:none;font:700 10px/1 var(--font);letter-spacing:.12em;text-transform:uppercase;color:var(--accent-ink);background:var(--sap);padding:4px 7px;border-radius:6px;opacity:.85}
-/* the tech tree is always dark, after the Path of Exile passive tree: bronze and gold on near-black */
-body.dark-tech{--bg:#07090d; --card:#11141b; --card-t:rgb(17 20 27 / .94); --ink:#ecdcb2; --muted:#9a8f78; --line:#3a3226; --well:#0b0e14;
-  --accent:#c9a45c; --accent-ink:#14100a; --sap:#f0d896; --shadow:0 6px 24px rgb(0 0 0 / .6); color-scheme:dark}
-body.dark-tech .actions,body.dark-tech .top .btn,body.dark-tech #hover{border-color:#4a3e2a}
-body.dark-tech #hover b,body.dark-tech .actions .plant b{font-family:Georgia,"Times New Roman",serif;font-variant:small-caps;letter-spacing:.03em}
 .actions .seg.keys{display:inline-flex;gap:2px;padding:2px;border-radius:10px;background:var(--well)}
 .actions .seg.keys .btn{border-color:transparent;background:transparent;padding:5px 9px;font-size:13px}
 .actions .seg.keys{border:0}
@@ -43,7 +42,8 @@ body.dark-tech #hover b,body.dark-tech .actions .plant b{font-family:Georgia,"Ti
 .actions .seg.keys .btn.on{color:var(--ink);background:var(--card);border-color:var(--line);font-weight:600;box-shadow:0 1px 2px rgb(15 23 42 / .08)}
 .actions .seg.keys kbd{padding:1px 4px;font-size:10px}
 .actions .sep{width:1px;align-self:stretch;margin:4px 2px;background:var(--line)}
-@media (max-width:700px){ .actions:has(.seg.keys){flex-wrap:wrap;justify-content:center} .actions .seg.keys kbd,#techFit kbd,#techOpen kbd,#techReset kbd{display:none} .actions:has(.seg.keys) .plant{flex-basis:100%;text-align:center} .actions:has(.seg.keys) .sep{display:none} }
+.actions>.btn.on{background:var(--well);border-color:var(--ink);font-weight:600}
+@media (max-width:700px){ .actions:has(.seg.keys){flex-wrap:wrap;justify-content:center} .actions:has(.seg.keys) kbd{display:none} .actions:has(.seg.keys) .plant{flex-basis:100%;text-align:center} .actions:has(.seg.keys) .sep{display:none} }
 .lbl{position:absolute;left:0;top:0;pointer-events:auto;cursor:pointer;white-space:nowrap;max-width:200px;overflow:hidden;text-overflow:ellipsis;
   font-size:12px;font-weight:500;line-height:1.5;padding:0 4px;border-radius:6px;will-change:transform;
   text-shadow:0 0 2px var(--bg),0 0 4px var(--bg),0 0 7px var(--bg),0 0 10px var(--bg)}

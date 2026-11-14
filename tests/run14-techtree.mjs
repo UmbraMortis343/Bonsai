@@ -1,155 +1,130 @@
-// Tech tree: a radial map of topic cells grown from a start, rings set by what each topic builds on.
-// Cells open to key ideas or everything, links are drawn between whatever shows, and the web keeps where you drag things.
+// Tech tree: a web that recentres. One island in the middle as a hex with its key ideas; the islands that grow
+// out of it sit on the ring as boundary cells. Step in, step back (the route stays lit), tier only, show all,
+// the start, Grows from, light and dark, and the web view. Runs as the beta so it has the demo islands.
 import { start, state } from "./lib.mjs";
 
-const t = await start("run14-techtree", 4314);
+const t = await start("run14-techtree", 4314, { channel: "beta" });
 const key = (page, k) => page.keyboard.press(k);
-const tt = (page) => state(page, () => bonsai.tech.state());
-const settle = (page) => page.waitForFunction(() => bonsai.tech.state().settled, null, { timeout: 60000 });
-
-// Two hubs; Physics has four topics, so links run inside Physics and out to Maths and Music.
-export const seedMap = (page) => page.evaluate(async () => {
-  const s = bonsai.store, ids = {}, zones = {};
-  const graph = async (zone, name, core, branches) => {
-    const tr = await s.createTree({ zoneId: zones[zone], name, core }); ids[core] = tr.rootId;
-    for (const [b, leaves] of branches) { const n = await s.addNode(tr.rootId, { title: b, note: b + " in short" }); ids[b] = n.id; for (const l of leaves) ids[l] = (await s.addNode(n.id, { title: l })).id; }
-    return tr;
-  };
-  for (const z of ["Mechanics", "Electromagnetism", "Waves", "Thermodynamics", "Calculus", "Linear algebra", "Synthesis", "Harmony"]) zones[z] = (await s.createZone({ name: z })).id;
-  ids.mechTree = (await graph("Mechanics", "Newtonian mechanics", "Newton's laws", [["Kinematics", ["Velocity", "Acceleration", "Projectiles"]], ["Forces", ["Friction", "Tension", "Free-body diagrams"]], ["Energy", ["Work", "Power", "Conservation of energy"]], ["Momentum", ["Impulse", "Collisions"]]])).id;
-  await graph("Mechanics", "Rotation", "Torque", [["Angular momentum", ["Moment of inertia"]], ["Circular motion", ["Centripetal force"]]]);
-  await graph("Electromagnetism", "Fields", "Maxwell's equations", [["Electric field", ["Coulomb's law", "Gauss's law"]], ["Magnetic field", ["Lorentz force", "Ampère's law"]], ["Induction", ["Faraday's law", "Lenz's law"]]]);
-  await graph("Waves", "Waves", "Wave equation", [["Superposition", ["Interference", "Standing waves"]], ["Electromagnetic waves", ["Light", "Polarisation"]], ["Fourier analysis", ["Harmonics", "Spectra"]]]);
-  await graph("Thermodynamics", "Heat", "Laws of thermodynamics", [["Entropy", ["Heat engines"]], ["Ideal gas", ["Kinetic theory"]]]);
-  await graph("Calculus", "Calculus", "Limits", [["Derivatives", ["Chain rule", "Rates of change"]], ["Integrals", ["Area under a curve", "Fundamental theorem"]], ["Differential equations", ["Harmonic oscillator"]]]);
-  await graph("Linear algebra", "Linear algebra", "Vectors", [["Matrices", ["Eigenvalues"]], ["Vector spaces", ["Basis"]]]);
-  await graph("Synthesis", "Synthesis", "Subtractive synthesis", [["Oscillators", ["Sawtooth", "Square"]], ["Filters", ["Resonance", "Cutoff"]], ["Envelopes", ["ADSR"]]]);
-  await graph("Harmony", "Harmony", "Intervals", [["Tuning", ["Just intonation", "12-TET"]], ["Chords", ["Triads"]]]);
-  const L = [["Velocity", "Derivatives", "rate of change"], ["Acceleration", "Rates of change"], ["Harmonic oscillator", "Standing waves"], ["Electromagnetic waves", "Maxwell's equations", "predicted by"],
-    ["Fourier analysis", "Oscillators"], ["Harmonics", "Just intonation"], ["Spectra", "Filters"], ["Conservation of energy", "Laws of thermodynamics"], ["Lorentz force", "Forces"], ["Free-body diagrams", "Vectors"],
-    ["Eigenvalues", "Standing waves"], ["Gauss's law", "Integrals"], ["Kinetic theory", "Collisions"], ["Sawtooth", "Harmonics"]];
-  for (const [a, b, label] of L) await s.addLink(ids[a], ids[b], { label: label || "" });
-  const isle = (id, name, landmark, hubId, zs) => ({ id, name, landmark, hubId, zoneIds: zs.map((z) => zones[z]) });
-  await s.setMeta("garden", { hubs: [{ id: "acad", name: "Academics" }, { id: "play", name: "Hobbies" }], zone: {}, patron: "none", islands: [
-    isle("phys", "Physics", "academy", "acad", ["Mechanics", "Electromagnetism", "Waves", "Thermodynamics"]), isle("maths", "Maths", "statue", "acad", ["Calculus", "Linear algebra"]), isle("music", "Music", "amphitheatre", "play", ["Synthesis", "Harmony"])] });
-  await bonsai.refresh();
-  return { ids, zones };
-});
+const snap = (page) => state(page, () => bonsai.tech.snapshot());
+const settle = (page) => page.waitForFunction(() => bonsai.tech.snapshot().settled, null, { timeout: 60000 });
+const ids = (page) => state(page, () => Object.fromEntries(bonsai.S.nodes.map((n) => [n.title, n.id])));
+const numOf = (s, k) => +Object.entries(s.nums).find(([, v]) => v === k)?.[0];
 
 const page = await t.page();
-const { ids, zones } = await seedMap(page);
+await page.waitForFunction(() => window.bonsai && bonsai.S.zones.length > 0);
+const I = await ids(page);
 
-// ----- K opens it, at the key ideas -----
+// ----- K opens it on the first island -----
 await key(page, "k");
 await page.waitForFunction(() => bonsai.S.view === "tech" && bonsai.tech && location.hash === "#/techtree");
 t.eq(await page.isVisible("#tech canvas"), true, "the tech tree shows");
-t.eq(await page.isVisible("#stage"), false, "the 3D stage is hidden");
-let s = await tt(page);
-t.eq(s.level, 1, "it opens at the key ideas");
-t.eq([s.shown.includes(ids["Newton's laws"]), s.shown.includes(ids.Kinematics), s.shown.includes(ids.Velocity)], [true, true, false], "trunks and main branches show, deeper ideas wait");
-t.eq(s.pairs.some((p) => [p.a, p.b].sort().join() === [ids.Kinematics, ids.Derivatives].sort().join()), true, "a link to a hidden idea is drawn to its branch that shows");
-t.eq(new Set(Object.values(s.topics).map((x) => x.tier)).size, 1, "with nothing built on, every topic is on the first ring");
+let s = await snap(page);
+t.eq([s.centre, s.chain], ["found", ["found"]], "Foundations is in the middle");
+t.eq(s.cells.sort(), ["gensci", "maths"], "the islands that grow out of it sit on its ring");
+t.eq(s.shown.includes(I.Numbers) && s.shown.includes(I.Patterns) && !s.shown.includes(I.Zero), true, "its key ideas show, what's inside them waits");
+t.eq(s.nums[1], I.Numbers, "key ideas are numbered");
 await settle(page);
-await page.screenshot({ path: "tests/shots/tech-key.png" });
+await page.screenshot({ path: "tests/shots/tech-centre.png" });
 
-// ----- 1: topics only, links gathered between topics -----
-await key(page, "1");
-s = await tt(page);
-t.eq(s.shown.length, 8, "only the eight topics show");
-const zk = (z) => "z:" + zones[z], pair = (a, b) => s.pairs.find((p) => [p.a, p.b].sort().join() === [zk(a), zk(b)].sort().join());
-t.eq(pair("Mechanics", "Calculus")?.n, 2, "two links between Mechanics and Calculus become one thicker line");
-t.eq(!!pair("Electromagnetism", "Waves"), true, "links between topics inside Physics show");
-t.eq(!!pair("Waves", "Synthesis"), true, "links between subjects show");
+// ----- a number picks a boundary cell, Enter steps into it -----
+await key(page, String(numOf(s, "i:gensci"))); await key(page, "Enter");
+s = await snap(page);
+t.eq([s.centre, s.cells], ["gensci", ["phys"]], "General science takes the middle, Physics on its ring");
+await key(page, String(numOf(s, "i:phys"))); await key(page, "Enter");
+s = await snap(page);
+t.eq(s.centre, "phys", "then Physics");
+t.eq(s.shown.includes(I["Newton's laws"]) && s.shown.includes(I.Kinematics), true, "Physics' key ideas show");
 
-// ----- B: what a topic builds on sets its ring -----
-const builds = async (topic, on) => {
-  const at = await page.evaluate((z) => bonsai.tech.screenOf(z), zones[topic]);
-  await page.mouse.click(at.x, at.y);
-  await page.waitForFunction((z) => bonsai.tech.state().sel === "z:" + z, zones[topic]);
-  await key(page, "b"); await page.waitForSelector(".dialog .checks");
-  for (const o of on) await page.click(`.dialog label.check:has-text("${o}")`);
-  await page.click(".dialog button.primary"); await page.waitForFunction(() => !document.querySelector(".dialog"));
-};
-await builds("Mechanics", ["Calculus", "Linear algebra"]);
-await key(page, "1");   // closes Mechanics again
-await builds("Electromagnetism", ["Mechanics"]);
-await key(page, "1");
-s = await tt(page);
-t.eq([s.topics[zones.Calculus].tier, s.topics[zones.Mechanics].tier, s.topics[zones.Electromagnetism].tier], [1, 2, 3], "a topic sits one ring past what it builds on");
-t.eq(s.topics[zones.Electromagnetism].R > s.topics[zones.Mechanics].R && s.topics[zones.Mechanics].R > s.topics[zones.Calculus].R, true, "further rings are further out");
-t.eq(await state(page, () => bonsai.store.getMeta("prereq")), { [zones.Mechanics]: [zones.Calculus, zones["Linear algebra"]], [zones.Electromagnetism]: [zones.Mechanics] }, "it is kept");
+// ----- Space opens a key idea -----
+await key(page, String(numOf(s, I["Newton's laws"]))); await key(page, " ");
+s = await snap(page);
+t.eq([s.shown.includes(I["2nd law"]), s.shown.includes(I.Acceleration)], [true, true], "opening Newton's laws shows the laws and what comes out of them");
 await settle(page);
-await page.screenshot({ path: "tests/shots/tech-topics.png" });
+await page.screenshot({ path: "tests/shots/tech-open.png" });
 
-// ----- tapping a cell opens it and pushes the rest out -----
-const before = (await tt(page)).topics[zones.Electromagnetism].R;
-let at = await page.evaluate((z) => bonsai.tech.screenOf(z), zones.Mechanics);
-await page.mouse.click(at.x, at.y);
-s = await tt(page);
-t.eq([s.cells[zk("Mechanics")], s.shown.includes(ids.Velocity)], [2, true], "tapping a topic opens its cell to everything");
-t.eq(s.topics[zones.Electromagnetism].R > before, true, "the ring outside is pushed out to make room");
+// ----- Esc in layers: let go of the pick, then step back a tier with the route lit -----
+await key(page, "Escape");
+t.eq((await snap(page)).pick, null, "Esc lets go of the pick first");
+await key(page, "Escape");
+s = await snap(page);
+t.eq([s.centre, s.chain, s.hl], ["gensci", ["gensci", "phys"], true], "then steps back: General science in the middle, Physics out on its ring");
+t.eq([s.lit.includes(I["Newton's laws"]), s.lit.includes(I.Energy), s.lit.includes(I["Living things"])], [true, true, false], "the route from the middle to Physics stays lit, the rest dims");
 await settle(page);
-await page.screenshot({ path: "tests/shots/tech-cell.png" });
-at = await page.evaluate((z) => bonsai.tech.screenOf(z), zones.Mechanics);
-await page.mouse.click(at.x, at.y);
-t.eq((await tt(page)).shown.includes(ids.Velocity), false, "tapping it again closes it");
+await page.screenshot({ path: "tests/shots/tech-back.png" });
+await page.mouse.click(1240, 120);
+t.eq((await snap(page)).hl, false, "clicking away shows the whole web");
 
-// ----- keys -----
-await key(page, "ArrowRight");
-t.eq(!!(await tt(page)).sel, true, "arrows move the pick");
-t.eq(await page.isVisible("#techAfter"), true, "the bar offers Builds on for a topic");
+// ----- T: this tier only -----
+await key(page, "t");
+s = await snap(page);
+t.eq([s.tier, s.shown.includes(I["Newton's laws"]), s.cells.includes("phys")], [true, false, true], "tier only hides what grows beyond the boundary cells");
+await key(page, "t");
 
-// ----- 3: everything -----
-await key(page, "3");
-s = await tt(page);
-t.eq(s.shown.length, await state(page, () => bonsai.S.nodes.length + 8), "every idea shows");
-t.eq(s.pairs.length, 14, "every link is drawn between its own two ideas");
+// ----- H: back to the start -----
+await key(page, "h");
+s = await snap(page);
+t.eq([s.centre, s.chain], ["start", ["start", "found", "gensci", "phys"]], "H puts the start in the middle");
+t.eq(s.cells.includes("found") && s.cells.includes("lead") && s.cells.includes("music"), true, "islands that grow from nothing sit on the start's ring");
+t.eq(s.links.length > 0, true, "links between islands are drawn between whatever shows");
+await page.mouse.click(1240, 120);
 await settle(page);
-await page.screenshot({ path: "tests/shots/tech-all.png" });
+await page.screenshot({ path: "tests/shots/tech-start.png" });
 
-// ----- an idea: pick it, Enter opens it in its graph, Back returns -----
-await page.evaluate((id) => bonsai.tech.select(id), ids.Forces);
-t.eq(await page.isVisible("#techOpen"), true, "the bar offers to open an idea");
+// ----- B: what an island grows from -----
+await key(page, String(numOf(s, "i:music")));
+t.eq(await page.isVisible("#techFrom"), true, "the bar offers Grows from for an island");
+await key(page, "b"); await page.waitForSelector(".dialog select");
+await page.selectOption(".dialog select", "found"); await page.click(".dialog button.primary");
+await page.waitForFunction(() => document.querySelector(".dialog h2, .dialog .title")?.textContent.includes("Which idea"));
+await page.selectOption(".dialog select", I.Patterns); await page.click(".dialog button.primary");
+await page.waitForFunction(() => !document.querySelector(".dialog"));
+await page.waitForFunction(async () => (await bonsai.store.getMeta("garden")).islands.find((q) => q.id === "music").after === "found");
+const music = await state(page, async () => (await bonsai.store.getMeta("garden")).islands.find((q) => q.id === "music"));
+t.eq([music.after, music.from], ["found", I.Patterns], "Music now grows from Foundations' Patterns");
+
+// ----- an idea opens in its graph, and Back returns -----
+await state(page, (id) => bonsai.tech.focus(id), I.Acceleration);
+s = await snap(page);
+t.eq([s.centre, s.pick, s.shown.includes(I.Acceleration)], ["phys", I.Acceleration, true], "opening on an idea puts its island in the middle and opens its key idea");
 await key(page, "Enter");
-await page.waitForFunction((id) => bonsai.S.view === "tree" && bonsai.S.sel === id, ids.Forces);
+await page.waitForFunction((id) => bonsai.S.view === "tree" && bonsai.S.sel === id, I.Acceleration);
 await key(page, "Escape");
 await page.waitForFunction(() => bonsai.S.view === "tech" && bonsai.tech);
-t.eq((await tt(page)).sel, ids.Forces, "back from the graph returns to the same spot");
+t.eq((await snap(page)).centre, "phys", "back from the graph returns to the same island");
 
-// ----- L: the web of every connection -----
+// ----- A: show everything -----
+await key(page, "a");
+s = await snap(page);
+t.eq(s.shown.includes(I.Inertia) && s.shown.includes(I["Coulomb's law"]), true, "show all opens every key idea");
+await key(page, "a");
+
+// ----- night: follows the garden -----
+await state(page, () => localStorage.setItem("bonsai-beta.night", "1"));
+await page.evaluate(() => { location.hash = "#/forest"; }); await page.waitForFunction(() => bonsai.S.view === "forest");
+await page.evaluate(() => { location.hash = "#/techtree"; }); await page.waitForFunction(() => bonsai.S.view === "tech");
+t.eq(await state(page, () => document.body.classList.contains("night-ui")), true, "at night the tech tree is dark");
+await settle(page);
+await page.screenshot({ path: "tests/shots/tech-night.png" });
+await state(page, () => localStorage.removeItem("bonsai-beta.night"));
+
+// ----- L: the web -----
 await key(page, "l");
-s = await tt(page);
-t.eq(s.mode, "web", "L switches to the web");
-t.eq(s.pairs.length, 14, "the web draws every link");
-t.eq(await page.isVisible("#lvTopics"), false, "the web has no levels");
-await settle(page);
+t.eq((await snap(page)).mode, "web", "L switches to the web");
+await page.waitForFunction(() => bonsai.tech.snapshot().settled, null, { timeout: 90000 });
 await page.screenshot({ path: "tests/shots/tech-web.png" });
-const p0s = await page.evaluate((id) => bonsai.tech.screenOf(id), ids.Harmonics);
-await page.mouse.move(p0s.x, p0s.y); await page.mouse.down(); await page.mouse.move(p0s.x + 60, p0s.y + 50, { steps: 6 }); await page.mouse.up();
-await settle(page);
-const lay = await state(page, () => bonsai.store.getMeta("techtree"));
-t.eq(lay?.pin?.length, 1, "a dragged idea stays where it was put");
+const p0 = await state(page, (id) => bonsai.tech.screenOf(id), I.Harmonics);
+await page.mouse.move(p0.x, p0.y); await page.mouse.down(); await page.mouse.move(p0.x + 60, p0.y + 50, { steps: 6 }); await page.mouse.up();
+await page.waitForFunction(() => bonsai.tech.snapshot().settled, null, { timeout: 90000 });
+t.eq((await state(page, () => bonsai.store.getMeta("techtree")))?.pin?.length, 1, "a dragged idea stays where it was put");
+await key(page, "l");
 
-// ----- kept across a reload -----
-await page.reload(); await page.waitForSelector("body[data-ready]");
-await page.evaluate(() => { location.hash = "#/techtree"; });
-await page.waitForFunction(() => bonsai.S.view === "tech" && bonsai.tech);
-s = await tt(page);
-t.eq([s.mode, s.level], ["web", 2], "the mode and level are kept");
-const again = await state(page, () => bonsai.store.getMeta("techtree"));
-t.eq(again.pos[ids.Harmonics], lay.pos[ids.Harmonics], "positions are kept");
-await key(page, "l"); await key(page, "1");
-
-// ----- from a topic in the garden, it opens on that topic -----
-await page.evaluate((z) => { location.hash = "#/techtree/" + z; }, zones.Waves);
-await page.waitForFunction(() => location.hash.startsWith("#/techtree/"));
-await page.waitForFunction((z) => bonsai.tech.state().sel === "z:" + z, zones.Waves);
-s = await tt(page);
-t.eq(s.cells[zk("Waves")], 2, "a topic opened from the garden is picked and opened");
+// ----- Esc at the start, with nothing picked, leaves -----
+await key(page, "h"); await page.mouse.click(1240, 120); await key(page, "Escape");
+await page.waitForFunction(() => bonsai.S.view !== "tech");
 
 // ----- phone -----
 const phone = await t.page({ viewport: { width: 390, height: 780 }, hasTouch: true, isMobile: true });
-await seedMap(phone);
+await phone.waitForFunction(() => window.bonsai && bonsai.S.zones.length > 0);
 await phone.evaluate(() => { location.hash = "#/techtree"; });
 await phone.waitForFunction(() => bonsai.S.view === "tech" && bonsai.tech);
 await settle(phone);
