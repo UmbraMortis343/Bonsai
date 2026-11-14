@@ -372,6 +372,29 @@ export function createIsles(opts) {
     if (HUBS.length > 1) for (const hub of HUBS) { v3.set(hub.pos[0], 29 + (hub.list[0] ? hub.list[0].R + 22 : BANK), hub.pos[2]).project(cam); at(hub.tag, v3, "-120%"); }
     raf = requestAnimationFrame(frame);
   }
+  // A still picture of one island, or of one topic's plot on it, on a clear background: for the tech tree.
+  const snapCam = new THREE.OrthographicCamera(-1, 1, 1, -1, -900, 1400), snapSize = new THREE.Vector2();
+  function snap(id, { topic = -1, size = 160, night: n = night, yaw: y = 0.62, pitch: p = 0.6 } = {}) {
+    const k = ISLANDS.findIndex((q) => q.id === id), isl = ISLANDS[k]; if (!isl) return null;
+    if (!isl.world || isl.sig !== sigOf(isl, k)) { const at = queue.indexOf(isl); if (at >= 0) queue.splice(at, 1); isl.sig = sigOf(isl, k); make(k); }
+    const anchor = topic >= 0 && isl.world.anchors[topic];
+    const c = anchor ? v3.copy(anchor).add(isl.group.position) : v3.set(isl.pos[0], isl.pos[1] + 26, isl.pos[2]), half = anchor ? isl.R * 0.36 + 5 : isl.R * 1.02 + 4;
+    snapCam.left = -half; snapCam.right = half; snapCam.top = half; snapCam.bottom = -half; snapCam.updateProjectionMatrix();
+    snapCam.position.set(c.x + Math.sin(y) * Math.cos(p) * 400, c.y + Math.sin(p) * 400, c.z + Math.cos(y) * Math.cos(p) * 400); snapCam.lookAt(c.x, c.y, c.z);
+    const shown = scene.children.map((o) => o.visible), was = night, pr = renderer.getPixelRatio(); renderer.getSize(snapSize);
+    for (const o of scene.children) if (o.isGroup && o !== isl.group) o.visible = false;
+    if (n !== was) setNight(n);
+    const ex = renderer.toneMappingExposure; if (n) renderer.toneMappingExposure = ex * 2.1;   // small pictures need more light than the sky at night gives
+    if (isl.aurora) isl.aurora.visible = false;
+    renderer.setPixelRatio(1); renderer.setSize(size, size, false); renderer.shadowMap.needsUpdate = true;
+    renderer.render(scene, snapCam);
+    const out = document.createElement("canvas"); out.width = out.height = size; out.getContext("2d").drawImage(renderer.domElement, 0, 0);
+    scene.children.forEach((o, i) => { o.visible = shown[i]; });
+    if (n !== was) setNight(was);
+    renderer.toneMappingExposure = ex; renderer.setPixelRatio(pr); renderer.setSize(snapSize.x, snapSize.y, false); renderer.shadowMap.needsUpdate = true;
+    if (!queue.length && linksStale) buildLinks();
+    return out;
+  }
   const wake = () => { if (active && !raf) { last = performance.now(); raf = requestAnimationFrame(frame); } };
 
   // ---------- pointer: drag to turn, right-drag or two fingers to pan, wheel or pinch to zoom, tap to choose ----------
@@ -428,6 +451,8 @@ export function createIsles(opts) {
     focus(i) { if (i == null || i < 0) overview(); else flyTo(i); wake(); },
     focusHub(h) { if (h == null || h < 0) overview(); else flyHub(h); wake(); },
     // turn the camera to a set angle: yaw, and pitch up to straight down (for pictures and checks; dragging stops short of that)
+    snap,
+    get hasData() { return ISLANDS.length > 0; },
     look(y, p) { yaw = y; pitch = clamp(p, 0.2, Math.PI / 2 - 0.004); idle = 0; wake(); },
     select(k) { selTopic = k; showTags(); },
     setActive(on) { active = on; if (on) { renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, QUALITY[quality].dpr)); resize(); wake(); } },

@@ -98,6 +98,22 @@ s = await snap(page);
 t.eq(s.shown.includes(I.Inertia) && s.shown.includes(I["Coulomb's law"]), true, "show all opens every key idea");
 await key(page, "a");
 
+// ----- Y: the look; the map stays the same -----
+const before = await snap(page);
+t.eq(before.look, "neuron", "it starts looking like a nerve cell");
+t.eq(before.shown.some((k) => k.startsWith("z:")), true, "topics sit between the island and its key ideas");
+await key(page, "y");
+let after = await snap(page);
+t.eq([after.look, await page.getAttribute("#lookPoe", "aria-pressed")], ["poe", "true"], "Y switches to the carved look");
+t.eq([after.shown, after.nums, after.centre], [before.shown, before.nums, before.centre], "the look changes nothing else");
+t.eq(await state(page, () => JSON.parse(localStorage.getItem("bonsai-beta.tech")).look), "poe", "the look is kept");
+await page.click("#lookNeuron");
+t.eq((await snap(page)).look, "neuron", "and back");
+// pictures of the islands come from the garden's renderer, made on demand
+await page.waitForFunction(() => bonsai.isles && bonsai.isles.hasData, null, { timeout: 60000 });
+t.eq(await state(page, () => { const c = bonsai.isles.snap("found", { size: 64 }); const d = c.getContext("2d").getImageData(0, 0, 64, 64).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++; return n > 400; }), true, "an island's picture has the island in it");
+t.eq(await state(page, () => bonsai.S.view), "tech", "taking pictures leaves the tech tree where it was");
+
 // ----- night: follows the garden -----
 await state(page, () => localStorage.setItem("bonsai-beta.night", "1"));
 await page.evaluate(() => { location.hash = "#/forest"; }); await page.waitForFunction(() => bonsai.S.view === "forest");

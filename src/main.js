@@ -592,7 +592,7 @@ async function capture() {
 function shortcuts() {
   const rows = [["↑ ↓ ← →", "Child, parent, siblings"], ["Tab", "Add a branch"], ["Enter", "Add a sibling"], ["R", "Rename"], ["Del", "Delete"], ["Space", "Notes"],
     ["L", "Link"], ["G", "Graft"], ["C", "Colour"], ["F", "Fly to idea"], ["0", "Fit view"], ["W A S D  Q E", "Fly"], ["/", "Search"], ["I", "Capture"],
-    ["1–9", "Garden: go to a hub, an island, then a topic"], ["0  Esc", "Garden: step back out"], ["W", "Garden: water"], ["D", "Garden: day or night"], ["S", "Garden: split a topic past 200%"], ["P", "Patches"], ["T", "Timeline"], ["M", "Meaning view"], ["K", "Tech tree"], ["1–9  Enter", "Tech tree: pick, then go in or open"], ["Space", "Tech tree: open or close an idea"], ["Esc", "Tech tree: let go, then step back a tier"], ["T  A  H", "Tech tree: this tier only, show all, back to the start"], ["B", "Tech tree: what an island grows from"], ["L", "Tech tree: tree or web"], ["N  Z", "New tree, new zone"], ["Shift+Tab", "Knowledge or garden"], ["Enter  V", "Garden: water the plant, water everything"], ["Esc", "Back"]];
+    ["1–9", "Garden: go to a hub, an island, then a topic"], ["0  Esc", "Garden: step back out"], ["W", "Garden: water"], ["D", "Garden: day or night"], ["S", "Garden: split a topic past 200%"], ["P", "Patches"], ["T", "Timeline"], ["M", "Meaning view"], ["K", "Tech tree"], ["1–9  Enter", "Tech tree: pick, then go in or open"], ["Space", "Tech tree: open or close an idea"], ["Esc", "Tech tree: let go, then step back a tier"], ["T  A  H", "Tech tree: this tier only, show all, back to the start"], ["B", "Tech tree: what an island grows from"], ["L", "Tech tree: tree or web"], ["Y", "Tech tree: neuron or PoE look"], ["N  Z", "New tree, new zone"], ["Shift+Tab", "Knowledge or garden"], ["Enter  V", "Garden: water the plant, water everything"], ["Esc", "Back"]];
   dialog({ title: "Shortcuts", ok: null, cancel: "Close", body: el("table", { class: "keys" }, rows.map(([k, d]) => el("tr", {}, el("td", {}, el("kbd", { text: k })), el("td", { text: d })))) });
 }
 async function exportBackup() {
@@ -984,13 +984,17 @@ function showWindow(garden, flat = false) {
   $("#stage").hidden = garden || flat; $("#isles").hidden = !garden; $("#tech").hidden = !flat; if (!flat) { tech?.setActive(false); document.body.classList.remove("night-ui"); } $("#gpanel").hidden = !garden; document.body.dataset.window = garden ? "garden" : "";
   if (!garden) { isles?.setActive(false); stage.resize(); }   // the stage has no size while hidden; measure it again before anything is framed
 }
+// The garden's renderer, made when first needed: by the garden, or by the tech tree for its pictures.
+function ensureIsles() {
+  if (isles) return isles;
+  try { isles = createIsles({ canvas: $("#igl"), sky: $("#sky"), tags: $("#tags"), quality: pref("detail", matchMedia("(pointer: coarse)").matches ? "low" : "medium"), onIsland: (i) => pickIsle(i), onHub: (h) => pickHub(h), onTopic: (i, k) => { if (S.isle !== i) pickIsle(i); pickTopic(k); }, onReady: () => { document.body.dataset.isles = "ready"; } }); }
+  catch { return null; }
+  isles.setNight(pref("night", "") === "1"); $("#isles").classList.toggle("night", isles.night);
+  return isles;
+}
 function showIsles() {
   S.view = "isles"; S.tree = null; S.sel = null; S.lay = null; S.panel = null; clearScene();
-  if (!isles) {
-    try { isles = createIsles({ canvas: $("#igl"), sky: $("#sky"), tags: $("#tags"), quality: pref("detail", matchMedia("(pointer: coarse)").matches ? "low" : "medium"), onIsland: (i) => pickIsle(i), onHub: (h) => pickHub(h), onTopic: (i, k) => { if (S.isle !== i) pickIsle(i); pickTopic(k); }, onReady: () => { document.body.dataset.isles = "ready"; } }); }
-    catch { location.hash = "#/forest"; return; }
-    isles.setNight(pref("night", "") === "1"); $("#isles").classList.toggle("night", isles.night);
-  }
+  if (!ensureIsles()) { location.hash = "#/forest"; return; }
   isles.setActive(true); drawIsles(); renderChrome();
   if (S.pendingTopic) { goTopic(S.pendingTopic); S.pendingTopic = null; }
   if (S.pendingIsle) { const i = S.model.findIndex((q) => q.id === S.pendingIsle); S.pendingIsle = null; if (i >= 0) pickIsle(i); }
@@ -1197,9 +1201,31 @@ function renderEmpty() {
 // ---------- the tech tree: a flat map of every topic and idea ----------
 function techData() {
   const model = gardenModel(), rec = new Map(S.garden.islands.map((q) => [q.id, q]));
+  artSig = new Map(model.map((q) => [q.id, JSON.stringify([q.landmark, q.mountain, q.topics.map((t) => [t.biome, t.mark, Math.round(t.health * 10), Math.round(t.growth * 10), !!t.mist])])])); artFresh = false;
   return { islands: model.map((q) => ({ id: q.id, name: q.name, hub: q.hub, after: rec.get(q.id)?.after || null, from: rec.get(q.id)?.from || null })),
     topics: model.flatMap((q, i) => q.topics.filter((t) => t.id).map((t) => ({ id: t.id, name: t.name, isle: i, ideas: t.ideas, growth: t.growth, mist: t.mist }))),
     trees: S.trees, nodes: S.nodes.map((n) => ({ ...n, st: thirst(n) })), links: S.links };
+}
+// Pictures of islands and topics for the tech tree, taken by the garden's renderer one at a time between frames.
+const arts = new Map(), artWant = []; let artSig = new Map(), artFresh = false, artTimer = 0;
+function techArt(id, slot, night) {
+  const key = `${id}|${slot}|${night ? 1 : 0}|${artSig.get(id) || ""}`;
+  if (arts.has(key)) return arts.get(key);
+  if (!artWant.some((w) => w.key === key)) artWant.push({ key, id, slot, night });
+  if (!artTimer) artTimer = setTimeout(takeArt, 30);
+  return null;
+}
+function takeArt() {
+  artTimer = 0; if (S.view !== "tech") { artWant.length = 0; return; }
+  const w = artWant.shift(); if (!w) return;
+  let img = null;
+  if (ensureIsles()) {
+    if (!artFresh) { S.model = gardenModel(); isles.setData(S.model, crossLinks(), S.hubs); artFresh = true; }
+    try { img = isles.snap(w.id, { topic: w.slot, size: w.slot >= 0 ? 112 : 176, night: w.night }); } catch { img = null; }
+  }
+  if (arts.size > 300) arts.clear();
+  arts.set(w.key, img); tech?.redraw();
+  if (artWant.length) artTimer = setTimeout(takeArt, 30);
 }
 function openTech() {
   if (S.view === "tree" || S.view === "meaning") { S.pendingSel = S.sel; location.hash = "#/techtree"; return; }
@@ -1214,7 +1240,7 @@ async function showTech(focus) {
   if (!tech) {
     let saved = {}; try { saved = JSON.parse(pref("tech", "{}")); } catch {}
     Object.assign(saved, (await store.getMeta("techtree").catch(() => null)) || {});
-    tech = createTechTree({ host: $("#tech"), saved,
+    tech = createTechTree({ host: $("#tech"), saved, art: techArt,
       onSelect: () => renderActions(),
       onOpen: (x) => openFromTech(x),
       onHover: (x, cx, cy) => (x ? techHover(x, cx, cy) : hideHover()),
@@ -1256,6 +1282,7 @@ function techBar(a) {
     web ? null : key("techStart", "Start", "H", () => tech.key("h")),
     el("div", { class: "seg keys", role: "group", "aria-label": "Mode" }, key("modeTree", "Tree", "L", () => techMode("tree"), !web), key("modeWeb", "Web", "L", () => techMode("web"), web)),
     web ? key("techReset", "Tidy", "R", () => tech.key("r")) : null,
+    el("div", { class: "seg keys", role: "group", "aria-label": "Look" }, key("lookNeuron", "Neuron", "Y", () => techLook("neuron"), f.look !== "poe"), key("lookPoe", "PoE", "Y", () => techLook("poe"), f.look === "poe")),
     key("techFit", "Fit", "0", () => tech.fit()));
   a.hidden = false;
 }
@@ -1277,6 +1304,7 @@ async function growsFrom(x) {
   rec.after = v.after || null; rec.from = from || null;
   await saveGarden();
 }
+function techLook(m) { if (tech.flags.look !== m) tech.key("y"); }
 function techMode(m) { tech.setMode(m); renderActions(); }
 function techEsc() { if (!tech.key("Escape")) location.hash = S.techBack; }
 function techKey(k, stop) {
