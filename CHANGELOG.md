@@ -2,6 +2,18 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.7.0 — 2026-11-14
+
+Hubs, and a garden laid out from a map.
+
+- **Hubs:** islands now gather into hubs, all in one sky. Each hub has an island in the middle and the rest in a ring around it, with bridges inside a hub and between neighbouring hubs.
+- **Import map:** Menu → Import map takes a layout of hubs, islands and topics as pasted text or a file, and builds the garden from it. Topics you already have are matched by name. Importing again follows what changed on the map; a topic you moved by hand stays where you put it until it moves on the map.
+- **Mist:** a topic with no ideas yet lies under mist, and a hub with no islands is only a bank of it. Mist appears once a map has been imported.
+- **Keys:** with more than one hub, 1–9 goes to a hub, then an island, then a topic. Arrows step along the level you are on. 0 goes back out to everything.
+- **Split (S):** a topic past 200% can move onto an island of its own. Its graphs are read as one graph under the trunk you pick, and its largest main branches become the topics there, each still linked to the trunk. Can be undone.
+- Once a map is imported, islands are added, named and given their centrepiece on the map, so those controls leave the garden. Without a map they work as before.
+- A new topic joins the island or hub you are looking at.
+
 ## 0.6.0 — 2026-11-12
 
 The garden is the home screen.

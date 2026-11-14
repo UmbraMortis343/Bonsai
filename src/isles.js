@@ -1,5 +1,6 @@
 // The garden: floating islands drawn from isles-world.js, with bridges, animals,
-// weather and labels. One island per field; a biome on it per topic.
+// weather and labels. One island per field; a biome on it per topic. Islands
+// gather into hubs, and what a map has named but nobody has charted lies under mist.
 import * as THREE from "./vendor/three.module.min.js";
 import { buildWorld, hash2, lerp, clamp } from "./isles-world.js";
 
@@ -9,9 +10,9 @@ export const QUALITY = {
   high: { n: 200, shadow: 4096, dpr: 2, motes: 320 },
 };
 
-// opts: { canvas, sky, tags, quality, onIsland(i), onTopic(i, k), onReady() }
+// opts: { canvas, sky, tags, quality, onHub(h), onIsland(i), onTopic(i, k), onReady() }
 export function createIsles(opts) {
-  let ISLANDS = [], LINKS = [];
+  let ISLANDS = [], LINKS = [], HUBS = [], PAIRS = [];
   // ---------- stage ----------
   const canvas = opts.canvas;
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
@@ -24,7 +25,7 @@ export function createIsles(opts) {
 
   const hemi = new THREE.HemisphereLight(0xcfe0ff, 0x4a4466, 1.25);
   scene.add(sun, sun.target, hemi);
-  let foc = -1, yaw = 0.45, pitch = 0.6, zoom = 60, panX = 0, panZ = 0, tgtY = 30, goal = null, parts = null, fauna = null, night = false, world = null, TOPICS = [], quality = opts.quality || "medium", active = false, raf = 0;
+  let foc = -1, fhub = -1, tick = 0, ALL = 100, yaw = 0.45, pitch = 0.6, zoom = 60, panX = 0, panZ = 0, tgtY = 30, goal = null, parts = null, fauna = null, night = false, world = null, TOPICS = [], quality = opts.quality || "medium", active = false, raf = 0;
   const still = false;
   const NIGHT = { value: 0.1 }, TIME = { value: 0 }, PULSE = { value: 0.3 }, AUR = { value: 0 };
   const landMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0 });
@@ -34,6 +35,7 @@ export function createIsles(opts) {
   // each light breathes at its own pace and phase, like fireflies
   glowMat.onBeforeCompile = (sh) => { sh.uniforms.uTime = TIME; sh.uniforms.uPulse = PULSE; sh.vertexShader = "attribute vec3 aGlow;\nuniform float uTime;\nuniform float uPulse;\n" + sh.vertexShader.replace("#include <color_vertex>", "#include <color_vertex>\n float pw = 0.5 + 0.5 * sin(uTime * (0.6 + fract(aGlow.x * 7.31) * 2.6) + aGlow.x * 6.2832);\n vColor.rgb *= mix(1.0, 0.22 + 1.05 * pw * pw, uPulse);"); };
   const waterMat = new THREE.MeshStandardMaterial({ color: 0x49b6e6, roughness: 0.18, metalness: 0.05, transparent: true, opacity: 0.8 });
+  const hazeMat = new THREE.MeshBasicMaterial({ color: 0xf4f8ff, transparent: true, opacity: 0.23, depthWrite: false });   // mist over land that is named but not yet charted
   const BOX = new THREE.BoxGeometry(1, 1, 1), dummy = new THREE.Object3D(), tint = new THREE.Color();
 
   function setNight(on) {
@@ -41,6 +43,7 @@ export function createIsles(opts) {
     sun.intensity = on ? 0.55 : 2.7; sun.color.set(on ? 0x8fa8ff : 0xfff0d6);
     hemi.intensity = on ? 0.6 : 1.25; hemi.color.set(on ? 0x6f80c8 : 0xcfe0ff); hemi.groundColor.set(on ? 0x2a2850 : 0x4a4466);
     waterMat.color.set(on ? 0x2f7fc0 : 0x49b6e6); NIGHT.value = on ? 0.8 : 0.06; PULSE.value = on ? 0.9 : 0.3;
+    hazeMat.color.set(on ? 0x8fa2d8 : 0xf4f8ff); hazeMat.opacity = on ? 0.13 : 0.23;
 
   }
 
@@ -164,13 +167,27 @@ export function createIsles(opts) {
     if (paint) { if (fauna.lit.instanceColor) fauna.lit.instanceColor.needsUpdate = true; if (fauna.glow.instanceColor) fauna.glow.instanceColor.needsUpdate = true; }
   }
 
+  // ---------- mist: a hub with no islands yet is only a bank of it ----------
+  const BANK = 30;
+  function bank(hub) {
+    const g = new THREE.Group(), n = 170, m = new THREE.InstancedMesh(BOX, hazeMat, n); m.frustumCulled = false; g.add(m);
+    let seed = 0; for (const ch of String(hub.id)) seed = (seed * 31 + ch.charCodeAt(0)) % 97;
+    g.userData = { mesh: m, at: Array.from({ length: n }, (_, j) => { const a = hash2(j, seed, 301) * 6.2832, r = BANK * Math.sqrt(hash2(j, seed, 302)), up = hash2(j, seed, 303); return { x: Math.cos(a) * r, y: 20 + up * up * 20 * (1 - (r / BANK) ** 2 * 0.75), z: Math.sin(a) * r, ph: hash2(j, seed, 304) * 6.2832, w: 0.7 + hash2(j, seed, 305) * 0.8 }; }) };
+    return g;
+  }
+  function drawBank(g, t) {
+    const { mesh, at } = g.userData;
+    at.forEach((p, j) => { dummy.position.set(p.x + Math.sin(t * 0.05 + p.ph) * 3, p.y + Math.sin(t * 0.09 + p.ph * 2) * 0.7, p.z + Math.cos(t * 0.04 + p.ph) * 3); dummy.rotation.set(0, p.ph, 0); dummy.scale.set(6.4 * p.w, 2 * p.w, 5.2 * p.w); dummy.updateMatrix(); mesh.setMatrixAt(j, dummy.matrix); });
+    mesh.instanceMatrix.needsUpdate = true;
+  }
+
   const use = (isl) => { TOPICS = isl.topics; world = isl.world; parts = isl.parts; fauna = isl.fauna; };
   function make(i) {
     const isl = ISLANDS[i], Q = QUALITY[quality], t0 = performance.now(), group = isl.group;
     for (const ch of [...group.children]) { ch.traverse((o) => { if (o.geometry && o.geometry !== BOX && o.geometry !== RIBBON) o.geometry.dispose(); }); group.remove(ch); }
     TOPICS = isl.topics;
     isl.E = Math.round((1 + 0.3 * clamp(Math.max(...isl.topics.map((t) => t.growth)) - 1, 0, 1)) * 20) / 20;   // a topic that outgrows its plot pushes the whole shoreline out
-    world = isl.world = buildWorld(isl, Math.max(40, Math.round(Q.n * isl.size * isl.E * (i === foc ? 1 : 0.62) / 2) * 2));
+    world = isl.world = buildWorld(isl, Math.max(40, Math.round(Q.n * isl.size * isl.E * detail(isl, i) / 2) * 2));
 
     const land = new THREE.Mesh(world.land, landMat), glow = new THREE.Mesh(world.glow, glowMat), wet = new THREE.Mesh(world.wet, waterMat);
     land.castShadow = land.receiveShadow = true; glow.castShadow = true; wet.receiveShadow = true;
@@ -184,6 +201,12 @@ export function createIsles(opts) {
     parts = isl.parts = { fall: inst(nF * 3 + (world.exit ? 24 : 0), basic(0xf2fbff, 0.9)), mist: inst(world.mists.length ? 60 : 0, basic(0xffffff, 0.32)), glint: inst(nGlint, basic(0xd8f4ff, 0.75)), fly: inst(nFly, new THREE.MeshBasicMaterial({ color: 0xfff0a0, toneMapped: false })), cloud: inst(15, basic(0xffffff, 0.8)),
       fallAt: Array.from({ length: nF }, (_, k) => world.falls[Math.floor((k + 0.5) * world.falls.length / nF)]),
       flyAt: Array.from({ length: nFly }, (_, k) => all[Math.floor(hash2(k, 7, 31) * all.length)]) };
+    const haze = [], wedge = (Math.PI * 2) / isl.topics.length;
+    isl.topics.forEach((t, k) => {
+      if (!t.mist) return; const sd = world.seeds[k], a0 = Math.atan2(sd.z, sd.x), m = Math.round(170 / isl.topics.length) + 24;
+      for (let j = 0; j < m; j++) { const a = a0 + (hash2(j, k, 61) - 0.5) * wedge * 0.94, r = world.radius * (0.17 + 0.7 * Math.sqrt(hash2(j, k, 62))), x = Math.cos(a) * r, z = Math.sin(a) * r; haze.push({ x, z, y: world.heightAt(x, z) + 1.2 + hash2(j, k, 63) ** 2 * 6.5, ph: hash2(j, k, 64) * 6.2832, w: 0.75 + hash2(j, k, 65) * 0.65 }); }
+    });
+    parts.haze = inst(haze.length, hazeMat); parts.hazeAt = haze;
     const list = populate(); let nl = 0, ng = 0; for (const a of list) { nl += PARTS[a.k][0]; ng += PARTS[a.k][1]; }
     fauna = isl.fauna = { list, lit: inst(nl, new THREE.MeshStandardMaterial({ roughness: 0.9 })), glow: inst(ng, new THREE.MeshBasicMaterial({ toneMapped: false })) };
     drawFauna(0, true);
@@ -203,7 +226,8 @@ export function createIsles(opts) {
     for (let j = 0; j < n; j++) { const u = ((t * 0.03 + j / n) % 1) * (R.length - 1), a = R[Math.floor(u)], b = R[Math.min(R.length - 1, Math.floor(u) + 1)], f = u % 1, off = (hash2(j, 9, 47) - 0.5) * 2.6; place(P.glint, j, lerp(a.x, b.x, f) + off * 0.6, a.y, lerp(a.z, b.z, f) + off * 0.6, 0.12, 0.04, 0.8 + hash2(j, 2, 47), Math.atan2(b.x - a.x, b.z - a.z)); }
     P.flyAt.forEach((p, j) => { const a = t * (0.4 + hash2(j, 1, 53) * 0.5) + j, bl = 0.5 + 0.5 * Math.sin(t * (0.9 + hash2(j, 3, 53) * 2.4) + hash2(j, 4, 53) * 6.28), sz = (night ? 0.26 : 0.13) * (0.25 + 0.9 * bl * bl); place(P.fly, j, p.x + Math.sin(a) * 1.4, p.y + 1.2 + Math.sin(a * 1.7 + j) * 1 + hash2(j, 2, 53) * 3, p.z + Math.cos(a * 0.8) * 1.4, sz, sz, sz); });
     for (let cI = 0; cI < 3; cI++) { const a = t * 0.025 + cI * 2.2 + 0.6, r = (16 + cI * 7) * sc, cy = world.top + Math.sqrt(world.radius ** 2 - r * r) - (7 + cI * 2) * sc; PUFF.forEach((u, j) => place(P.cloud, cI * 5 + j, Math.cos(a) * r + u[0] * sc, cy + u[1] * sc, Math.sin(a) * r + u[2] * sc, u[3] * sc, u[4] * sc, u[5] * sc)); }
-    for (const m of [P.fall, P.mist, P.glint, P.fly, P.cloud]) m.instanceMatrix.needsUpdate = true;
+    P.hazeAt.forEach((p, j) => place(P.haze, j, p.x + Math.sin(t * 0.06 + p.ph) * 2.4 * sc, p.y + Math.sin(t * 0.1 + p.ph * 2) * 0.5, p.z + Math.cos(t * 0.05 + p.ph) * 2.4 * sc, 7.4 * p.w * sc, 1.5 * p.w * sc, 6 * p.w * sc, p.ph));
+    for (const m of [P.fall, P.mist, P.glint, P.fly, P.cloud, P.haze]) m.instanceMatrix.needsUpdate = true;
     P.cloud.material.opacity = night ? 0.25 : 0.8;
     drawFauna(t, false);
   }
@@ -230,14 +254,24 @@ export function createIsles(opts) {
 
   // ---------- camera ----------
   const v3 = new THREE.Vector3(), tagsEl = opts.tags;
-  function overview() { goal = { x: MID.x, z: MID.z, y: 30, zoom: SPAN }; setFocus(-1); }
-  function flyTo(i) { const isl = ISLANDS[i]; if (!isl) return overview(); goal = { x: isl.pos[0], z: isl.pos[2], y: isl.pos[1] + 34, zoom: 8 + isl.R * 0.88 }; setFocus(i); }
-  // the island being looked at is built fine, the rest coarser
-  function setFocus(i) { if (i === foc) return; foc = i; for (const isl of ISLANDS) check(isl); showTags(); }
+  function overview() { goal = { x: MID.x, z: MID.z, y: 30, zoom: SPAN }; setFocus(-1, -1); }
+  function flyHub(h) { const hub = HUBS[h]; if (!hub || HUBS.length < 2) return overview(); goal = { x: hub.pos[0], z: hub.pos[2], y: 30, zoom: hub.R * 1.12 + 10 }; setFocus(-1, h); }
+  function flyTo(i) { const isl = ISLANDS[i]; if (!isl) return overview(); goal = { x: isl.pos[0], z: isl.pos[2], y: isl.pos[1] + 34, zoom: 8 + isl.R * 0.88 }; setFocus(i, isl.hub); }
+  // the island being looked at is built fine, the rest coarser; shadows are fitted to the hub being looked at
+  function setFocus(i, h) { if (i === foc && h === fhub) return; const hubWas = fhub; foc = i; fhub = h; for (const isl of ISLANDS) check(isl); if (hubWas !== fhub) fitShadow(); showTags(); }
+  function fitShadow() {
+    const hub = HUBS.length > 1 ? HUBS[fhub] : null, cx = hub ? hub.pos[0] : MID.x, cz = hub ? hub.pos[2] : MID.z, half = hub ? hub.R + 36 : ALL, sc = sun.shadow.camera;
+    sun.position.set(cx - half * 0.56, MID.y + half * 1.12, cz + half * 0.52); sun.target.position.set(cx, MID.y, cz);
+    sc.left = -half; sc.right = half; sc.top = half; sc.bottom = -half; sc.near = 10; sc.far = half * 3.2; sc.updateProjectionMatrix();
+    renderer.shadowMap.needsUpdate = true;
+  }
+  // with many islands in the sky the ones not being looked at are built coarser still, and land wholly under mist coarsest
+  const far = () => (ISLANDS.length <= 6 ? 0.62 : ISLANDS.length <= 12 ? 0.5 : 0.42);
+  const detail = (isl, k) => (k === foc ? 1 : isl.topics.every((t) => t.mist) ? Math.min(far(), 0.42) : far());
 
   // ---------- building: one island a frame, so the page never freezes for long ----------
   const queue = []; let ready = false;
-  const sigOf = (isl, k) => JSON.stringify([quality, k === foc, isl.landmark, isl.patron, isl.mountain, isl.topics.map((t) => [t.biome, Math.round(t.health * 20), Math.round(Math.min(2, t.growth) * 20), t.mark, t.color, t.color2, t.color3])]);
+  const sigOf = (isl, k) => JSON.stringify([quality, detail(isl, k), isl.landmark, isl.patron, isl.mountain, isl.topics.map((t) => [t.biome, Math.round(t.health * 20), Math.round(Math.min(2, t.growth) * 20), t.mark, t.color, t.color2, t.color3, !!t.mist])]);
   function check(isl) { const k = ISLANDS.indexOf(isl), sig = sigOf(isl, k); if (isl.sig !== sig && !queue.includes(isl)) { if (k === foc) queue.unshift(isl); else queue.push(isl); } }
   function buildNext() {
     const isl = queue.shift(); if (!isl) return; const k = ISLANDS.indexOf(isl); if (k < 0) return;
@@ -245,20 +279,48 @@ export function createIsles(opts) {
     if (!queue.length) { if (linksStale) buildLinks(); if (!ready) { ready = true; opts.onReady?.(); } }
   }
 
-  // ---------- where the islands sit: the first in the middle, the rest in a ring around it ----------
+  // ---------- where the islands sit: in each hub the first in the middle and the rest in a ring around it; the hubs in a ring of their own ----------
   function place() {
-    const n = ISLANDS.length; if (!n) return;
     ISLANDS.forEach((isl) => { isl.size = Math.sqrt(Math.max(3, isl.topics.length) / 6); isl.R ||= 96 * isl.size * 0.455; });   // at least three topics' worth of land, so the centrepiece fits
-    const R0 = ISLANDS[0].R * 1.3, rest = ISLANDS.slice(1), maxR = Math.max(0, ...rest.map((q) => q.R * 1.3)), ring = Math.max(R0 + maxR + 30, rest.reduce((a, q) => a + q.R * 2.6 + 16, 0) / (2 * Math.PI));
-    ISLANDS[0].pos = [0, 0, 0];
-    rest.forEach((isl, k) => { const a = 0.35 + (k / rest.length) * Math.PI * 2; isl.pos = [Math.cos(a) * ring, [12, -8, 8, -12, 4, -4][k % 6], Math.sin(a) * ring]; });
-    for (const isl of ISLANDS) isl.group.position.set(...isl.pos);
-    let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9; for (const q of ISLANDS) { const r = q.R * 1.35; x0 = Math.min(x0, q.pos[0] - r); x1 = Math.max(x1, q.pos[0] + r); z0 = Math.min(z0, q.pos[2] - r); z1 = Math.max(z1, q.pos[2] + r); }
+    for (const hub of HUBS) {
+      const list = hub.list; if (!list.length) { hub.R = BANK + 6; continue; }
+      const R0 = list[0].R * 1.3, rest = list.slice(1), maxR = Math.max(0, ...rest.map((q) => q.R * 1.3)), ring = Math.max(R0 + maxR + 30, rest.reduce((a, q) => a + q.R * 2.6 + 16, 0) / (2 * Math.PI));
+      list[0].off = [0, 0, 0];
+      rest.forEach((isl, k) => { const a = 0.35 + (k / rest.length) * Math.PI * 2; isl.off = [Math.cos(a) * ring, [12, -8, 8, -12, 4, -4][k % 6], Math.sin(a) * ring]; });
+      hub.R = rest.length ? ring + maxR : R0;
+    }
+    // each hub gets a share of the circle to match its size, and the circle is wide enough that neighbours never touch
+    const n = HUBS.length, w = HUBS.map((h) => h.R + 16), W = w.reduce((a, b) => a + b, 0), span = w.map((x) => (x / W) * Math.PI * 2); let ring = 0, a = -Math.PI / 2;
+    const angle = HUBS.map((_, k) => { if (k) a += (span[k - 1] + span[k]) / 2; return a; });
+    if (n > 1) HUBS.forEach((_, k) => { const j = (k + 1) % n, gap = n === 2 ? Math.PI : (span[k] + span[j]) / 2; ring = Math.max(ring, (w[k] + w[j]) / (2 * Math.max(0.2, Math.sin(Math.min(gap, Math.PI * 2 - gap) / 2 + 1e-9)))); });
+    HUBS.forEach((hub, k) => {
+      hub.pos = [Math.cos(angle[k]) * ring, 0, Math.sin(angle[k]) * ring];
+      for (const isl of hub.list) { isl.pos = [hub.pos[0] + isl.off[0], isl.off[1], hub.pos[2] + isl.off[2]]; isl.group.position.set(...isl.pos); }
+      if (!hub.list.length) { if (!hub.bank) { hub.bank = bank(hub); scene.add(hub.bank); } hub.bank.position.set(...hub.pos); }
+      else if (hub.bank) { scene.remove(hub.bank); hub.bank.userData.mesh.dispose(); hub.bank = null; }
+    });
+    let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9; const grow = (p, r) => { x0 = Math.min(x0, p[0] - r); x1 = Math.max(x1, p[0] + r); z0 = Math.min(z0, p[2] - r); z1 = Math.max(z1, p[2] + r); };
+    for (const q of ISLANDS) grow(q.pos, q.R * 1.35);
+    for (const h of HUBS) if (!h.list.length) grow(h.pos, BANK * 1.2);
+    if (x0 > x1) { x0 = z0 = -60; x1 = z1 = 60; }
     MID.set((x0 + x1) / 2, 26, (z0 + z1) / 2); SPAN = Math.max(x1 - x0, z1 - z0) * 0.44 + 6;
-    const half = Math.max(x1 - x0, z1 - z0) / 2 + 30, sc = sun.shadow.camera;
-    sun.position.set(MID.x - half * 0.56, MID.y + half * 1.12, MID.z + half * 0.52); sun.target.position.copy(MID);
-    sc.left = -half; sc.right = half; sc.top = half; sc.bottom = -half; sc.near = 10; sc.far = half * 3.2; sc.updateProjectionMatrix();
+    ALL = Math.max(x1 - x0, z1 - z0) / 2 + 30; fitShadow();
     linksStale = true;
+  }
+  // Bridges: in a hub every island to the one in the middle; neighbouring hubs by their two nearest islands; then any two islands whose ideas are linked.
+  function wire() {
+    const idx = new Map(ISLANDS.map((q, i) => [q.id, i])), n = new Map(), key = (i, j) => (i < j ? i + "|" + j : j + "|" + i), out = [];
+    for (const [a, b, c] of PAIRS) if (idx.has(a) && idx.has(b)) n.set(key(idx.get(a), idx.get(b)), c);
+    const take = (p, q) => { const i = ISLANDS.indexOf(p), j = ISLANDS.indexOf(q), k = key(i, j), c = n.get(k) || 0; n.delete(k); out.push([i, j, 1 + Math.min(3, c)]); };
+    for (const hub of HUBS) hub.list.slice(1).forEach((q) => take(hub.list[0], q));
+    const full = HUBS.filter((h) => h.list.length);
+    for (let a = 0; a < (full.length > 2 ? full.length : full.length - 1); a++) {
+      const A = full[a], B = full[(a + 1) % full.length]; let best = null, bd = 1e9;
+      for (const p of A.list) for (const q of B.list) { const d = Math.hypot(p.pos[0] - q.pos[0], p.pos[2] - q.pos[2]) - p.R - q.R; if (d < bd) { bd = d; best = [p, q]; } }
+      take(...best);
+    }
+    for (const [k, c] of n) out.push([...k.split("|").map(Number), Math.min(4, c)]);
+    return out;
   }
 
   // ---------- labels: every island and topic has a tag with the key that jumps to it ----------
@@ -266,14 +328,24 @@ export function createIsles(opts) {
   const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
   function makeTags() {
     tagsEl.replaceChildren();
+    HUBS.forEach((hub, h) => { hub.tag = mk("button", "tag hub"); hub.tag.append(mk("kbd", "", String(h + 1)), mk("span", "", hub.name)); hub.tag.dataset.hub = h; hub.tag.addEventListener("click", () => opts.onHub?.(h)); tagsEl.append(hub.tag); });
     ISLANDS.forEach((isl, i) => {
-      isl.tag = mk("button", "tag isle"); isl.tag.append(mk("kbd", "", String(i + 1)), mk("span", "", isl.name)); isl.tag.dataset.isle = i; isl.tag.addEventListener("click", () => opts.onIsland?.(i));
-      isl.tags = isl.topics.map((t, k) => { const e = mk("button", "tag topic"); e.dataset.isle = i; e.dataset.topic = k; const bar = mk("i"); bar.append(mk("b")); bar.firstChild.style.width = Math.round(t.health * 100) + "%"; e.append(mk("kbd", "", String(k + 1)), mk("span", "", t.name), bar); e.addEventListener("click", () => opts.onTopic?.(i, k)); if (!t.name) e.hidden = true; return e; });
+      isl.tag = mk("button", "tag isle"); isl.tag.append(mk("kbd", "", String(isl.nth + 1)), mk("span", "", isl.name)); isl.tag.dataset.isle = i; isl.tag.addEventListener("click", () => opts.onIsland?.(i));
+      isl.tags = isl.topics.map((t, k) => { const e = mk("button", "tag topic" + (t.mist ? " mist" : "")); e.dataset.isle = i; e.dataset.topic = k; const bar = mk("i"); bar.append(mk("b")); bar.firstChild.style.width = Math.round(t.health * 100) + "%"; e.append(mk("kbd", "", String(k + 1)), mk("span", "", t.name), bar); e.addEventListener("click", () => opts.onTopic?.(i, k)); if (!t.name) e.hidden = true; return e; });
       tagsEl.append(isl.tag, ...isl.tags);
     });
     showTags();
   }
-  function showTags() { ISLANDS.forEach((isl, i) => { isl.tag?.classList.toggle("on", i === foc); isl.tag?.classList.toggle("keys", foc < 0 && i < 9); isl.tags?.forEach((e, k) => { e.classList.toggle("show", i === foc); e.classList.toggle("sel", i === foc && k === selTopic); }); }); }
+  // With several hubs: from far off only the hubs are named; inside a hub, its islands; on an island, its topics.
+  function showTags() {
+    const many = HUBS.length > 1;
+    HUBS.forEach((hub, h) => { hub.tag?.classList.toggle("off", !many || h === fhub); hub.tag?.classList.toggle("keys", fhub < 0 && h < 9); });
+    ISLANDS.forEach((isl, i) => {
+      const near = !many || isl.hub === fhub;
+      isl.tag?.classList.toggle("off", !near); isl.tag?.classList.toggle("on", i === foc); isl.tag?.classList.toggle("keys", foc < 0 && near && isl.nth < 9);
+      isl.tags?.forEach((e, k) => { e.classList.toggle("show", i === foc); e.classList.toggle("sel", i === foc && k === selTopic); });
+    });
+  }
 
   // ---------- drawing ----------
   let last = performance.now(), idle = 9;
@@ -285,7 +357,9 @@ export function createIsles(opts) {
     if (goal) { const k = 1 - Math.pow(0.002, dt); panX = lerp(panX, goal.x, k); panZ = lerp(panZ, goal.z, k); tgtY = lerp(tgtY, goal.y, k); zoom = lerp(zoom, goal.zoom, k); resize(); if (Math.abs(zoom - goal.zoom) < 0.05 && Math.abs(panX - goal.x) < 0.05) goal = null; }
     cam.position.set(panX + Math.sin(yaw) * Math.cos(pitch) * 400, Math.sin(pitch) * 400 + tgtY, panZ + Math.cos(yaw) * Math.cos(pitch) * 400); cam.lookAt(panX, tgtY, panZ);
     const t = now / 1000; TIME.value = t; waterMat.opacity = 0.78 + Math.sin(t * 1.3) * 0.03;
-    for (const isl of ISLANDS) if (isl.world) { use(isl); animate(t); }
+    // far-off land moves at half pace when the sky is crowded, and other hubs hold still while one is being looked at
+    tick++; ISLANDS.forEach((isl, i) => { if (isl.world && (fhub >= 0 && HUBS.length > 1 ? isl.hub === fhub : ISLANDS.length <= 8 || (i + tick) % 2 === 0)) { use(isl); animate(t); } });
+    for (const hub of HUBS) if (hub.bank) drawBank(hub.bank, t);
     if (links.flames) drawLinks(t);
     drawSky(t, dt);
     renderer.render(scene, cam);
@@ -295,6 +369,7 @@ export function createIsles(opts) {
       if (i === foc) isl.tags.forEach((e, k) => { v3.copy(isl.world.anchors[k]).add(isl.group.position).project(cam); at(e, v3, "-100%"); });
       v3.set(isl.pos[0], isl.pos[1] + 29 + isl.R, isl.pos[2]).project(cam); at(isl.tag, v3, "-120%");
     });
+    if (HUBS.length > 1) for (const hub of HUBS) { v3.set(hub.pos[0], 29 + (hub.list[0] ? hub.list[0].R + 22 : BANK), hub.pos[2]).project(cam); at(hub.tag, v3, "-120%"); }
     raf = requestAnimationFrame(frame);
   }
   const wake = () => { if (active && !raf) { last = performance.now(); raf = requestAnimationFrame(frame); } };
@@ -306,7 +381,8 @@ export function createIsles(opts) {
     const r = canvas.getBoundingClientRect(); ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1); ray.setFromCamera(ndc, cam);
     let best = -1, bd = 1e9;
     ISLANDS.forEach((isl, i) => { plane.constant = -(isl.pos[1] + 30); if (!ray.ray.intersectPlane(plane, hit)) return; const d = Math.hypot(hit.x - isl.pos[0], hit.z - isl.pos[2]); if (d < isl.R * 1.05 && d < bd) { bd = d; best = i; } });
-    if (best < 0) return;
+    if (best < 0) { HUBS.forEach((hub, h) => { if (hub.list.length) return; plane.constant = -(hub.pos[1] + 30); if (ray.ray.intersectPlane(plane, hit) && Math.hypot(hit.x - hub.pos[0], hit.z - hub.pos[2]) < BANK * 1.1) best = h; }); if (best >= 0) opts.onHub?.(best); return; }
+    if (HUBS.length > 1 && ISLANDS[best].hub !== fhub) return opts.onHub?.(ISLANDS[best].hub);
     if (best !== foc) return opts.onIsland?.(best);
     const isl = ISLANDS[best]; plane.constant = -(isl.pos[1] + 30); ray.ray.intersectPlane(plane, hit);
     let k = -1, kd = 1e9; isl.world.seeds.forEach((sd, q) => { const d = Math.hypot(hit.x - isl.pos[0] - sd.x, hit.z - isl.pos[2] - sd.z); if (d < kd) { kd = d; k = q; } });
@@ -330,25 +406,31 @@ export function createIsles(opts) {
 
   return {
     // islands: [{ id, name, landmark, patron, mountain, topics: [{ name, biome, health, growth, mark, color, color2, color3 }] }]; pairs: [[idA, idB, links]]
-    setData(islands, pairs = []) {
-      const old = new Map(ISLANDS.map((q) => [q.id, q])), shape = ISLANDS.map((q) => q.id + ":" + q.topics.length).join();
-      ISLANDS = islands.map((d) => { const isl = old.get(d.id) || { group: new THREE.Group() }; old.delete(d.id); if (!isl.group.parent) scene.add(isl.group); Object.assign(isl, d); let h = 0; for (const ch of String(d.id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0; isl.seed = d.seed ?? h % 40; return isl; });
+    // hubs: [{ id, name }]; each island names its hub by position in that list. With no hubs given, everything is one hub.
+    setData(islands, pairs = [], hubs = null) {
+      const shapeOf = () => HUBS.map((h) => h.id + "[" + h.list.map((q) => q.id + ":" + q.topics.length).join() + "]").join("|");
+      const old = new Map(ISLANDS.map((q) => [q.id, q])), oldHubs = new Map(HUBS.map((h) => [h.id, h])), shape = ISLANDS.length || HUBS.length ? shapeOf() : "";
+      HUBS = (hubs && hubs.length ? hubs : [{ id: "", name: "" }]).map((d) => { const hub = oldHubs.get(d.id) || {}; oldHubs.delete(d.id); return Object.assign(hub, { id: d.id, name: d.name, list: [] }); });
+      for (const gone of oldHubs.values()) if (gone.bank) { scene.remove(gone.bank); gone.bank.userData.mesh.dispose(); }
+      ISLANDS = islands.map((d) => { const isl = old.get(d.id) || { group: new THREE.Group() }; old.delete(d.id); if (!isl.group.parent) scene.add(isl.group); Object.assign(isl, d); isl.hub = HUBS[d.hub] ? d.hub : 0; isl.nth = HUBS[isl.hub].list.push(isl) - 1; let h = 0; for (const ch of String(d.id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0; isl.seed = d.seed ?? h % 40; return isl; });
       for (const gone of old.values()) { gone.group.traverse((o) => { if (o.geometry && o.geometry !== BOX && o.geometry !== RIBBON) o.geometry.dispose(); }); scene.remove(gone.group); }
-      const first = !shape, changed = shape !== ISLANDS.map((q) => q.id + ":" + q.topics.length).join();
-      if (changed) { for (const isl of ISLANDS) isl.R = 0; place(); if (foc >= ISLANDS.length) foc = -1; }
-      const idx = new Map(ISLANDS.map((q, i) => [q.id, i])), next = pairs.filter(([a, b]) => idx.has(a) && idx.has(b)).map(([a, b, c]) => [idx.get(a), idx.get(b), c]);
+      const first = !shape, changed = shape !== shapeOf();
+      if (changed) { for (const isl of ISLANDS) isl.R = 0; if (foc >= ISLANDS.length) foc = -1; if (fhub >= HUBS.length || HUBS.length < 2) fhub = foc >= 0 ? ISLANDS[foc].hub : -1; place(); }
+      PAIRS = pairs; const next = wire();
       if (JSON.stringify(next) !== JSON.stringify(LINKS)) { LINKS = next; linksStale = true; }
       for (const isl of ISLANDS) check(isl);
       makeTags();
-      if (first) { panX = MID.x; panZ = MID.z; zoom = SPAN; resize(); } else if (changed && foc < 0) goal = { x: MID.x, z: MID.z, y: 30, zoom: SPAN };
+      if (first) { panX = MID.x; panZ = MID.z; zoom = SPAN; resize(); } else if (changed && foc < 0 && fhub < 0) goal = { x: MID.x, z: MID.z, y: 30, zoom: SPAN };
       if (!queue.length && linksStale && ISLANDS.every((q) => q.world)) buildLinks();
+      if (!ISLANDS.length && !ready) { ready = true; opts.onReady?.(); }
       wake();
     },
     focus(i) { if (i == null || i < 0) overview(); else flyTo(i); wake(); },
+    focusHub(h) { if (h == null || h < 0) overview(); else flyHub(h); wake(); },
     select(k) { selTopic = k; showTags(); },
     setActive(on) { active = on; if (on) { renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, QUALITY[quality].dpr)); resize(); wake(); } },
     setNight(on) { setNight(on); },
     setQuality(q) { if (!QUALITY[q] || q === quality) return; quality = q; renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, QUALITY[q].dpr)); resize(); for (const isl of ISLANDS) check(isl); wake(); },
-    get focused() { return foc; }, get night() { return night; }, get quality() { return quality; }, get ready() { return ready && !queue.length; }, get faces() { return ISLANDS.reduce((a, q) => a + (q.world ? q.world.quads : 0), 0); },
+    get focused() { return foc; }, get hub() { return fhub; }, get spots() { return { hubs: HUBS.map((h) => ({ pos: h.pos, R: h.R, mist: !!h.bank })), islands: ISLANDS.map((q) => ({ pos: q.pos, R: q.R, hub: q.hub })), links: LINKS }; }, get night() { return night; }, get quality() { return quality; }, get ready() { return ready && !queue.length; }, get faces() { return ISLANDS.reduce((a, q) => a + (q.world ? q.world.quads : 0), 0); },
   };
 }

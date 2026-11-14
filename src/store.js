@@ -382,12 +382,12 @@ export async function exportAll() {
   return { app: "bonsai", schema: SCHEMA_VERSION, exportedAt: now(), ...data };
 }
 // Replaces everything on this device with a backup.
-export async function importAll(backup) {
+export async function importAll(backup, { keepVectors = false } = {}) {
   if (!backup || backup.app !== "bonsai") throw new Error("That file isn't a Bonsai backup.");
   if (backup.schema > SCHEMA_VERSION) throw new Error("This backup is from a newer Bonsai. Update the app first.");
   await tx([...STORES, "vectors"], "readwrite", async (s) => {
     for (const n of STORES) { await reqP(s[n].clear()); for (const row of backup[n] || []) s[n].put(row); }
-    await reqP(s.vectors.clear());
+    if (!keepVectors) await reqP(s.vectors.clear());
   });
 }
 export async function counts() {

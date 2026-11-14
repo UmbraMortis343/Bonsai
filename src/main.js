@@ -9,6 +9,7 @@ import * as ai from "./ai.js";
 import { textFor, hashText } from "./semantic.js";
 import { $, el, put, toast, dialog, menu, overlayOpen, closeTop, closeAll } from "./dom.js";
 import { createIsles, QUALITY } from "./isles.js";
+import { readMap, missing, mergeMap, ISLE_MAX } from "./gardenmap.js";
 
 const PALETTE = [["Blue", "#3b82f6"], ["Violet", "#8b5cf6"], ["Pink", "#ec4899"], ["Red", "#ef4444"], ["Orange", "#f97316"], ["Amber", "#f59e0b"], ["Green", "#22c55e"], ["Teal", "#14b8a6"], ["Cyan", "#06b6d4"]];
 const SWATCHES = [["Auto", ""], ...PALETTE];
@@ -29,7 +30,7 @@ const S = {
   tree: null, sel: null, panel: null, pick: null, quick: null, review: null, cutoff: null, stitch: false, editBody: false,
   flora: null, lay: null, forest: null, fsel: null, pendingSel: null,
   scope: null, mean: null, suggest: null, aiOn: false,
-  garden: null, model: [], isle: -1, topic: -1, treeBack: "#/", meanBack: "#/", hashNow: null, water: undefined,
+  garden: null, model: [], hubs: [], hub: -1, isle: -1, topic: -1, treeBack: "#/", meanBack: "#/", hashNow: null, water: undefined,
 };
 const ideaView = () => S.view === "tree" || S.view === "meaning";
 let stage, isles, T, labelEls = new Map(), decor = [], selMesh, playTimer = 0;
@@ -503,7 +504,7 @@ function appMenu(anchor) {
     (S.view === "forest" || S.view === "isles") && { label: "Meaning view", key: "M", run: () => goMeaning() },
     S.view === "forest" && { label: "Timeline", key: "T", run: toggleTimeline },
     archived.length && { label: "Archived", run: () => menu(anchor, archived.map((x) => ({ label: `Restore ${x.name}`, run: async () => { await safely(() => (x.rootId ? store.updateTree : store.updateZone)(x.id, { archived: false })); refresh(); } }))) },
-    "-", { label: "Export backup", run: exportBackup }, { label: "Restore backup", run: () => $("#importFile").click() },
+    "-", S.view === "isles" && { label: "Import map", run: importMap }, { label: "Export backup", run: exportBackup }, { label: "Restore backup", run: () => $("#importFile").click() },
     "-", { label: "Shortcuts", key: "?", run: shortcuts },
     { label: "Check for updates", run: async () => { const r = await shell.check(); if (r !== "update") toast(r === "latest" ? "Up to date" : "Offline"); } },
     { label: "What's new", run: () => window.open("https://github.com/UmbraMortis343/Bonsai/releases", "_blank", "noopener") },
@@ -575,7 +576,7 @@ async function capture() {
 function shortcuts() {
   const rows = [["↑ ↓ ← →", "Child, parent, siblings"], ["Tab", "Add a branch"], ["Enter", "Add a sibling"], ["R", "Rename"], ["Del", "Delete"], ["Space", "Notes"],
     ["L", "Link"], ["G", "Graft"], ["C", "Colour"], ["F", "Fly to idea"], ["0", "Fit view"], ["W A S D  Q E", "Fly"], ["/", "Search"], ["I", "Capture"],
-    ["1–9", "Garden: go to an island, then a topic"], ["0  Esc", "Garden: step back out"], ["W", "Garden: water"], ["D", "Garden: day or night"], ["P", "Patches"], ["T", "Timeline"], ["M", "Meaning view"], ["N  Z", "New tree, new zone"], ["Shift+Tab", "Knowledge or garden"], ["Enter  V", "Garden: water the plant, water everything"], ["Esc", "Back"]];
+    ["1–9", "Garden: go to a hub, an island, then a topic"], ["0  Esc", "Garden: step back out"], ["W", "Garden: water"], ["D", "Garden: day or night"], ["S", "Garden: split a topic past 200%"], ["P", "Patches"], ["T", "Timeline"], ["M", "Meaning view"], ["N  Z", "New tree, new zone"], ["Shift+Tab", "Knowledge or garden"], ["Enter  V", "Garden: water the plant, water everything"], ["Esc", "Back"]];
   dialog({ title: "Shortcuts", ok: null, cancel: "Close", body: el("table", { class: "keys" }, rows.map(([k, d]) => el("tr", {}, el("td", {}, el("kbd", { text: k })), el("td", { text: d })))) });
 }
 async function exportBackup() {
@@ -914,41 +915,52 @@ const pref = (k, d) => { try { return localStorage.getItem("bonsai." + k) || d; 
 const setPref = (k, v) => { try { localStorage.setItem("bonsai." + k, v); } catch {} };
 const newId = () => "g" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
-// Which island each topic sits on is kept beside the data; topics new to it join the last island with room.
+// Which island each topic sits on, and which hub each island belongs to, is kept beside the data.
+// A topic new to it joins the island being looked at, else the last island with room in the hub being looked at.
+const hubsOf = (g) => (g.hubs?.length ? g.hubs : [{ id: "", name: "" }]), hubKey = (isl) => isl.hubId ?? "";
 async function loadGarden() {
   const g = (await store.getMeta("garden").catch(() => null)) || { islands: [], zone: {}, patron: "none" };
-  g.zone ||= {}; const live = new Set(S.zones.map((z) => z.id)), seen = new Set(); let dirty = false;
-  for (const isl of g.islands) { const keep = isl.zoneIds.filter((id) => live.has(id) && !seen.has(id) && seen.add(id)); if (keep.length !== isl.zoneIds.length) { isl.zoneIds = keep; dirty = true; } }
-  if (!g.islands.length) { g.islands.push({ id: "home", name: "Home", landmark: "arches", zoneIds: [] }); dirty = true; }
+  g.zone ||= {}; const live = new Set(S.zones.map((z) => z.id)), seen = new Set(), hubs = hubsOf(g), known = new Set(hubs.map((h) => h.id)); let dirty = false;
+  const here = S.model[S.isle]?.id, hubNow = S.model[S.isle] ? hubs[S.model[S.isle].hub]?.id : hubs[S.hub]?.id;
+  for (const isl of g.islands) {
+    const keep = isl.zoneIds.filter((id) => live.has(id) && !seen.has(id) && seen.add(id)); if (keep.length !== isl.zoneIds.length) { isl.zoneIds = keep; dirty = true; }
+    if (!known.has(hubKey(isl))) { isl.hubId = hubs[0].id; dirty = true; }
+  }
+  if (!g.islands.length && !g.mapAt) { g.islands.push({ id: "home", name: "Home", landmark: "arches", hubId: hubs[0].id, zoneIds: [] }); dirty = true; }
   for (const z of S.zones) if (!seen.has(z.id)) {
-    let isl = [...g.islands].reverse().find((q) => q.zoneIds.length < 6);
-    if (!isl) { isl = { id: newId(), name: `Island ${g.islands.length + 1}`, landmark: CENTRES[1 + ((g.islands.length - 1) % 3)][0], zoneIds: [] }; g.islands.push(isl); }
+    const hub = known.has(hubNow) ? hubNow : hubs[0].id, inHub = g.islands.filter((q) => hubKey(q) === hub), free = (q) => q.zoneIds.length < ISLE_MAX;
+    let isl = g.islands.find((q) => q.id === here && free(q)) || [...inHub].reverse().find(free) || (g.hubs?.length ? null : [...g.islands].reverse().find(free));
+    if (!isl) { isl = { id: newId(), name: inHub.length ? `Island ${g.islands.length + 1}` : hubs.find((h) => h.id === hub).name || "Home", landmark: CENTRES[inHub.length ? 1 + ((g.islands.length - 1) % 3) : 0][0], hubId: hub, zoneIds: [] }; g.islands.push(isl); }
     isl.zoneIds.push(z.id); dirty = true;
   }
+  const at = new Map(hubs.map((h, k) => [h.id, k])), sorted = g.islands.map((q, k) => [q, k]).sort((a, b) => at.get(hubKey(a[0])) - at.get(hubKey(b[0])) || a[1] - b[1]).map((x) => x[0]);
+  if (sorted.some((q, k) => q !== g.islands[k])) { g.islands = sorted; dirty = true; }
   S.garden = g;
   if (dirty) await store.setMeta("garden", g).catch(() => {});
 }
 const saveGarden = async () => { await safely(() => store.setMeta("garden", S.garden)); await refresh(); };
 // What the garden draws: growth is how full a topic's plot is, health is the share of its ideas not waiting to be watered.
+// A topic with no ideas yet is uncharted, and lies under mist.
 function gardenModel() {
-  const zone = new Map(S.zones.map((z) => [z.id, z])), now = Date.now();
-  return S.garden.islands.map((isl, i) => {
+  const zone = new Map(S.zones.map((z) => [z.id, z])), now = Date.now(), hubs = hubsOf(S.garden), at = new Map(hubs.map((h, k) => [h.id, k]));
+  const model = S.garden.islands.map((isl, i) => {
     const topics = isl.zoneIds.map((id) => zone.get(id)).filter(Boolean).map((z, k) => {
       const trees = S.trees.filter((t) => t.zoneId === z.id), nodes = trees.flatMap((t) => S.byTree.get(t.id) || []), rev = nodes.filter((n) => srs.reviewable(n, kidsOf(n.id).length)), due = rev.filter((n) => srs.isDue(n, now)), o = S.garden.zone[z.id] || {};
-      return { id: z.id, name: z.name, biome: o.biome || BIOMES[k % 6][0], mark: o.mark || "kit", growth: Math.min(2, Math.pow(nodes.length / FULL_PLOT, 0.6)), health: rev.length ? 1 - due.length / rev.length : 1, ideas: nodes.length, due: due.map((n) => n.id), trees };
+      return { id: z.id, name: z.name, biome: o.biome || BIOMES[k % 6][0], mark: o.mark || "kit", growth: Math.min(2, Math.pow(nodes.length / FULL_PLOT, 0.6)), health: rev.length ? 1 - due.length / rev.length : 1, ideas: nodes.length, mist: !nodes.length && charted(), due: due.map((n) => n.id), trees };
     });
-    if (!topics.length) topics.push({ id: null, name: "", biome: "bloom", mark: "kit", growth: 0.04, health: 1, ideas: 0, due: [], trees: [] });
-    return { id: isl.id, name: isl.name, landmark: isl.landmark, patron: i === 0 && isl.landmark === "arches" ? S.garden.patron || "none" : undefined, mountain: isl.landmark === "arches", topics };
+    if (!topics.length) topics.push({ id: null, name: "", biome: "bloom", mark: "kit", growth: 0.04, health: 1, ideas: 0, mist: charted(), due: [], trees: [] });
+    return { id: isl.id, name: isl.name, hub: at.get(hubKey(isl)) || 0, landmark: isl.landmark, patron: i === 0 && isl.landmark === "arches" ? S.garden.patron || "none" : undefined, mountain: isl.landmark === "arches", topics };
   });
+  S.hubs = hubs.map((h, k) => ({ id: h.id, name: h.name, isles: model.map((q, i) => (q.hub === k ? i : -1)).filter((i) => i >= 0) }));
+  return model;
 }
-// Every island is bridged to the first; links between ideas on two islands widen their bridge.
-function gardenLinks() {
+const multi = () => (S.garden?.hubs?.length || 0) > 1, charted = () => !!S.garden?.mapAt;   // mist only means something once a map says what should be there
+// How many links run between ideas on two different islands; the garden widens those bridges.
+function crossLinks() {
   const where = new Map(); S.model.forEach((isl) => isl.topics.forEach((t) => where.set(t.id, isl.id)));
   const isleOf = (nodeId) => where.get(treeOf(S.byId.get(nodeId)?.treeId)?.zoneId), n = new Map();
   for (const l of S.links) { const a = isleOf(l.fromId), b = isleOf(l.toId); if (a && b && a !== b) { const k = [a, b].sort().join("|"); n.set(k, (n.get(k) || 0) + 1); } }
-  const home = S.model[0]?.id, out = S.model.slice(1).map((isl) => { const k = [home, isl.id].sort().join("|"), c = n.get(k) || 0; n.delete(k); return [home, isl.id, 1 + Math.min(3, c)]; });
-  for (const [k, c] of n) out.push([...k.split("|"), Math.min(4, c)]);
-  return out;
+  return [...n].map(([k, c]) => [...k.split("|"), c]);
 }
 function showWindow(garden) {
   $("#stage").hidden = garden; $("#isles").hidden = !garden; $("#gpanel").hidden = !garden; document.body.dataset.window = garden ? "garden" : "";
@@ -957,19 +969,29 @@ function showWindow(garden) {
 function showIsles() {
   S.view = "isles"; S.tree = null; S.sel = null; S.lay = null; S.panel = null; clearScene();
   if (!isles) {
-    try { isles = createIsles({ canvas: $("#igl"), sky: $("#sky"), tags: $("#tags"), quality: pref("detail", matchMedia("(pointer: coarse)").matches ? "low" : "medium"), onIsland: (i) => pickIsle(i), onTopic: (i, k) => { if (S.isle !== i) pickIsle(i); pickTopic(k); }, onReady: () => { document.body.dataset.isles = "ready"; } }); }
+    try { isles = createIsles({ canvas: $("#igl"), sky: $("#sky"), tags: $("#tags"), quality: pref("detail", matchMedia("(pointer: coarse)").matches ? "low" : "medium"), onIsland: (i) => pickIsle(i), onHub: (h) => pickHub(h), onTopic: (i, k) => { if (S.isle !== i) pickIsle(i); pickTopic(k); }, onReady: () => { document.body.dataset.isles = "ready"; } }); }
     catch { location.hash = "#/forest"; return; }
     isles.setNight(pref("night", "") === "1"); $("#isles").classList.toggle("night", isles.night);
   }
   isles.setActive(true); drawIsles(); renderChrome();
 }
 function drawIsles() {
+  const was = S.model[S.isle]?.id, wasHub = S.hubs[S.hub]?.id;
   S.model = gardenModel();
+  if (was != null && S.model[S.isle]?.id !== was) { S.isle = S.model.findIndex((q) => q.id === was); if (S.isle < 0) S.topic = -1; }
+  if (wasHub != null && S.hubs[S.hub]?.id !== wasHub) S.hub = S.hubs.findIndex((h) => h.id === wasHub);
   if (S.isle >= S.model.length) { S.isle = -1; S.topic = -1; }
   if (S.isle >= 0 && S.topic >= S.model[S.isle].topics.length) S.topic = -1;
-  isles.setData(S.model, gardenLinks()); isles.select(S.topic); renderGarden();
+  if (!multi() || S.hub >= S.hubs.length) S.hub = -1;
+  if (S.isle >= 0) S.hub = multi() ? S.model[S.isle].hub : -1;
+  isles.setData(S.model, crossLinks(), S.hubs); isles.select(S.topic); renderGarden();
 }
-function pickIsle(i) { S.isle = S.model[i] ? i : -1; S.topic = -1; isles.focus(S.isle); isles.select(-1); renderGarden(); }
+// Stepping in: every hub, then one hub, then one island, then one topic. A garden with a single hub skips the hub step.
+function pickHub(h) { S.hub = multi() && S.hubs[h] ? h : -1; S.isle = -1; S.topic = -1; isles.focusHub(S.hub); isles.select(-1); renderGarden(); }
+function pickIsle(i) {
+  if (!S.model[i]) { S.isle = -1; S.topic = -1; if (S.hub >= 0) isles.focusHub(S.hub); else isles.focus(-1); isles.select(-1); return renderGarden(); }
+  S.isle = i; S.hub = multi() ? S.model[i].hub : -1; S.topic = -1; isles.focus(i); isles.select(-1); renderGarden();
+}
 function pickTopic(k) { const t = S.model[S.isle]?.topics[k]; S.topic = t && t.id ? k : -1; isles.select(S.topic); renderGarden(); }
 const goTopic = (zoneId) => { const i = S.model.findIndex((isl) => isl.topics.some((t) => t.id === zoneId)); if (i < 0) return; if (S.isle !== i) pickIsle(i); pickTopic(S.model[i].topics.findIndex((t) => t.id === zoneId)); };
 function water(ids, treeId) { S.water = { ids: ids || dueList(null).map((n) => n.id), treeId }; location.hash = "#/garden"; }
@@ -991,15 +1013,21 @@ function renderGarden() {
       el("div", { class: "stats" }, el("span", {}, el("b", { text: String(t.ideas) }), ` idea${t.ideas === 1 ? "" : "s"}`), el("span", {}, el("b", { text: pct(t.growth) }), " grown"), el("span", {}, el("b", { text: pct(t.health) }), " healthy")),
       el("h3", { text: "Knowledge graphs" }),
       t.trees.length ? el("div", { class: "rows" }, t.trees.map((tr, k) => { const n = (S.byTree.get(tr.id) || []).length; return row(k < 9 ? String(k + 1) : "", tr.name, `${n} idea${n === 1 ? "" : "s"}`, dueList(tr.id).length, () => goTree(tr.id)); })) : el("p", { class: "muted", text: "None yet." }),
-      el("div", { class: "gacts" }, due ? act("waterTopic", `Water ${due}`, "W", () => water(t.due), true) : null, act("newGraph", "New knowledge graph", "N", () => newGraph(t.id), !due), act("topicMap", "Meaning map", "M", () => goMeaning(t.id))), foot);
+      el("div", { class: "gacts" }, due ? act("waterTopic", `Water ${due}`, "W", () => water(t.due), true) : null, act("newGraph", "New knowledge graph", "N", () => newGraph(t.id), !due), act("topicMap", "Meaning map", "M", () => goMeaning(t.id)), t.growth >= 2 ? act("splitTopic", "Split", "S", () => splitTopic(t)) : null), foot);
   } else if (isl) {
-    put(box, el("div", { class: "ph" }, ib("gBack", "Back", ICON.back, () => pickIsle(-1)), el("h2", { text: isl.name }), ib("isleMore", "Island menu", ICON.more, (e) => isleMenu(S.isle, e.currentTarget)), fold),
+    put(box, el("div", { class: "ph" }, ib("gBack", "Back", ICON.back, () => pickIsle(-1)), el("h2", { text: isl.name }), isleItems(S.isle).length ? ib("isleMore", "Island menu", ICON.more, (e) => isleMenu(S.isle, e.currentTarget)) : null, fold),
       el("h3", { text: "Topics" }),
       isl.topics[0].id ? el("div", { class: "rows" }, isl.topics.map((q, k) => row(String(k + 1), q.name, pct(q.growth), q.due.length, () => pickTopic(k)))) : el("p", { class: "muted", text: "No topics here yet." }),
       el("div", { class: "gacts" }, act("newTopic", "New topic", "Z", newZone, true)), foot);
+  } else if (S.hub >= 0) {
+    const hub = S.hubs[S.hub];
+    put(box, el("div", { class: "ph" }, ib("gBack", "Back", ICON.back, () => pickHub(-1)), el("h2", { text: hub.name }), fold),
+      el("h3", { text: "Islands" }),
+      hub.isles.length ? el("div", { class: "rows" }, hub.isles.map((i, k) => { const q = S.model[i], n = q.topics.filter((x) => x.id).length; return row(k < 9 ? String(k + 1) : "", q.name, `${n} topic${n === 1 ? "" : "s"}`, q.topics.reduce((a, x) => a + x.due.length, 0), () => pickIsle(i)); })) : el("p", { class: "muted", text: "No islands yet." }),
+      el("div", { class: "gacts" }, act("newTopic", "New topic", "Z", newZone, true)), foot);
   } else {
     const all = S.model.flatMap((q) => q.topics).filter((q) => q.id), thirsty = all.filter((q) => q.due.length).sort((a, b) => b.due.length - a.due.length), top = Math.max(1, ...all.map((q) => q.ideas));
-    put(box, el("div", { class: "ph" }, el("h2", { text: "Garden" }), ib("isleAdd", "New island", ICON.plus, newIsle), fold),
+    put(box, el("div", { class: "ph" }, el("h2", { text: "Garden" }), S.garden.mapAt ? null : ib("isleAdd", "New island", ICON.plus, newIsle), fold),
       el("div", { class: "stats" }, el("span", {}, el("b", { text: String(S.nodes.filter((n) => treeOf(n.treeId)).length) }), " ideas"), el("span", {}, el("b", { text: String(S.trees.length) }), " graphs"), el("span", {}, el("b", { text: String(all.length) }), " topics")),
       el("h3", { text: "Needs watering" }),
       thirsty.length ? el("div", { class: "rows" }, thirsty.slice(0, 6).map((q) => row("", q.name, "", q.due.length, () => goTopic(q.id)))) : el("p", { class: "muted", text: "Nothing right now." }),
@@ -1023,20 +1051,22 @@ async function newGraph(zoneId) {
   const t = await safely(() => store.createTree({ zoneId: zid, name: v.name }));
   if (t) { await load(); goTree(t.id); }
 }
-function isleMenu(i, anchor) {
-  const rec = S.garden.islands[i]; if (!rec) return;
-  menu(anchor, [
-    { label: "Rename", run: async () => { const v = await dialog({ title: "Rename island", fields: [{ name: "name", label: "Island", value: rec.name, max: 40 }] }); if (v) { rec.name = v.name; saveGarden(); } } },
-    { label: "Centrepiece", run: () => menu(anchor, CENTRES.map(([v, text]) => ({ label: (rec.landmark === v ? "✓ " : "") + text, run: () => { rec.landmark = v; saveGarden(); } }))) },
-    i === 0 && rec.landmark === "arches" && { label: "Figure under the arches", run: () => menu(anchor, [["none", "None"], ["athena", "Athena"], ["saraswati", "Saraswati"]].map(([v, text]) => ({ label: ((S.garden.patron || "none") === v ? "✓ " : "") + text, run: () => { S.garden.patron = v; saveGarden(); } }))) },
-    "-", { label: "New island", run: newIsle },
-    i > 0 && !rec.zoneIds.length && { label: "Remove island", danger: true, run: () => { S.garden.islands.splice(i, 1); S.isle = -1; isles.focus(-1); saveGarden(); } },
-  ]);
+// Once a map has been imported, islands are made, named and given their centrepiece there, not here.
+function isleItems(i) {
+  const rec = S.garden.islands[i]; if (!rec) return [];
+  return [
+    !rec.mapId && { label: "Rename", run: async () => { const v = await dialog({ title: "Rename island", fields: [{ name: "name", label: "Island", value: rec.name, max: 40 }] }); if (v) { rec.name = v.name; saveGarden(); } } },
+    !rec.mapId && { label: "Centrepiece", run: (anchor) => menu(anchor, CENTRES.map(([v, text]) => ({ label: (rec.landmark === v ? "✓ " : "") + text, run: () => { rec.landmark = v; saveGarden(); } }))) },
+    i === 0 && rec.landmark === "arches" && { label: "Figure under the arches", run: (anchor) => menu(anchor, [["none", "None"], ["athena", "Athena"], ["saraswati", "Saraswati"]].map(([v, text]) => ({ label: ((S.garden.patron || "none") === v ? "✓ " : "") + text, run: () => { S.garden.patron = v; saveGarden(); } }))) },
+    !S.garden.mapAt && "-", !S.garden.mapAt && { label: "New island", run: newIsle },
+    i > 0 && !rec.mapId && !rec.zoneIds.length && { label: "Remove island", danger: true, run: () => { S.garden.islands.splice(i, 1); S.isle = -1; isles.focus(-1); saveGarden(); } },
+  ].filter(Boolean);
 }
+function isleMenu(i, anchor) { menu(anchor, isleItems(i).map((it) => (it === "-" ? it : { ...it, run: () => it.run(anchor) }))); }
 async function newIsle() {
   const v = await dialog({ title: "New island", ok: "Add", fields: [{ name: "name", label: "Island", max: 40 }, { name: "landmark", label: "Centrepiece", type: "select", value: "academy", options: CENTRES }] });
   if (!v) return;
-  S.garden.islands.push({ id: newId(), name: v.name, landmark: v.landmark, zoneIds: [] }); await saveGarden(); pickIsle(S.garden.islands.length - 1);
+  S.garden.islands.push({ id: newId(), name: v.name, landmark: v.landmark, hubId: hubsOf(S.garden)[0].id, zoneIds: [] }); await saveGarden(); pickIsle(S.garden.islands.length - 1);
 }
 function topicMenu(t, anchor) {
   const z = S.zones.find((q) => q.id === t.id), o = (S.garden.zone[t.id] ||= {}), here = S.garden.islands[S.isle];
@@ -1046,21 +1076,89 @@ function topicMenu(t, anchor) {
     { label: "Rename", run: () => renameThing(z, store.updateZone, "Topic") },
     { label: "Biome", run: choose(BIOMES, t.biome, (v) => { o.biome = v; }) },
     { label: "Landmark", run: choose(MARKS, t.mark, (v) => { o.mark = v; }) },
-    { label: "Move to island", run: () => menu(anchor, [...S.garden.islands.filter((q) => q !== here && q.zoneIds.length < 6).map((q) => ({ label: q.name, run: () => move(q) })),
-      { label: "New island…", run: async () => { const v = await dialog({ title: "New island", ok: "Move", fields: [{ name: "name", label: "Island", max: 40 }] }); if (!v) return; const q = { id: newId(), name: v.name, landmark: "academy", zoneIds: [] }; S.garden.islands.push(q); move(q); } }]) },
+    { label: "Move to island", run: () => menu(anchor, [...S.garden.islands.filter((q) => q !== here && q.zoneIds.length < ISLE_MAX).map((q) => ({ label: (multi() ? hubsOf(S.garden).find((h) => h.id === q.hubId).name + " › " : "") + q.name, run: () => move(q) })),
+      !S.garden.mapAt && { label: "New island…", run: async () => { const v = await dialog({ title: "New island", ok: "Move", fields: [{ name: "name", label: "Island", max: 40 }] }); if (!v) return; const q = { id: newId(), name: v.name, landmark: "academy", hubId: here.hubId, zoneIds: [] }; S.garden.islands.push(q); move(q); } }].filter(Boolean)) },
   ]);
 }
 function islesKey(k, stop) {
-  const isl = S.model[S.isle], t = isl?.topics[S.topic];
-  if (/^[1-9]$/.test(k)) { stop(); const i = +k - 1; if (t) { const tr = t.trees[i]; if (tr) goTree(tr.id); } else if (isl) pickTopic(i); else pickIsle(i); return; }
-  if (k === "ArrowRight" || k === "ArrowLeft") { stop(); const d = k === "ArrowRight" ? 1 : -1; if (isl && S.topic >= 0) { const n = isl.topics.length; pickTopic((S.topic + d + n) % n); } else { const n = S.model.length; pickIsle(((S.isle < 0 ? (d > 0 ? -1 : 0) : S.isle) + d + n) % n); } return; }
-  if (k === "ArrowDown" || k === "Enter") { stop(); if (t) { if (t.trees[0]) goTree(t.trees[0].id); else newGraph(t.id); } else if (isl) pickTopic(0); else pickIsle(0); return; }
+  const isl = S.model[S.isle], t = isl?.topics[S.topic], hub = S.hub >= 0 ? S.hubs[S.hub] : null, list = hub ? hub.isles : S.model.map((_, i) => i);
+  if (/^[1-9]$/.test(k)) { stop(); const i = +k - 1; if (t) { const tr = t.trees[i]; if (tr) goTree(tr.id); } else if (isl) pickTopic(i); else if (multi() && !hub) pickHub(i); else if (list[i] != null) pickIsle(list[i]); return; }
+  if (k === "ArrowRight" || k === "ArrowLeft") {
+    stop(); const d = k === "ArrowRight" ? 1 : -1, step = (n, at) => ((at < 0 ? (d > 0 ? -1 : 0) : at) + d + n) % n;
+    if (isl && S.topic >= 0) pickTopic(step(isl.topics.length, S.topic));
+    else if (isl || !multi()) { if (list.length) pickIsle(list[step(list.length, list.indexOf(S.isle))]); }
+    else pickHub(step(S.hubs.length, S.hub));
+    return;
+  }
+  if (k === "ArrowDown" || k === "Enter") { stop(); if (t) { if (t.trees[0]) goTree(t.trees[0].id); else newGraph(t.id); } else if (isl) pickTopic(0); else if (multi() && !hub) pickHub(0); else if (list.length) pickIsle(list[0]); return; }
   if (k === "ArrowUp") { stop(); return back(); }
   if (k === "n") { stop(); return newGraph(t?.id); }
   if (k === "z") { stop(); return newZone(); }
   if (k === "m") { stop(); return goMeaning(t?.id); }
+  if (k === "s" && t && t.growth >= 2) { stop(); return splitTopic(t); }
   if (k === "w" || k === "v") { stop(); return t ? (t.due.length ? water(t.due) : toast("Nothing to water")) : water(null); }
   if (k === "d") { stop(); $("#gpanel .seg button[aria-pressed=false]")?.click(); }
+}
+
+// ---------- the map: hubs, islands and topics laid out elsewhere and brought in as text or a file ----------
+function importMap() {
+  const file = el("input", { type: "file", accept: "application/json,.json,text/plain", hidden: true, onchange: async (e) => { const f = e.target.files[0]; if (!f) return; const text = await f.text(); closeTop(); applyMap(text); } });
+  dialog({ title: "Import map", ok: "Import", fields: [{ name: "text", label: "Map", type: "textarea", placeholder: "Paste" }], body: el("div", { class: "row" }, file, el("button", { type: "button", class: "btn", id: "mapFile", text: "Choose file", onclick: () => file.click() })) })
+    .then((v) => { if (v) applyMap(v.text); });
+}
+async function applyMap(text) {
+  let map; try { map = readMap(text); } catch (e) { return toast(e.message); }
+  const g = S.garden, zones = S.allZones.map((z) => ({ id: z.id, name: z.name, trees: S.allTrees.filter((t) => t.zoneId === z.id).length }));
+  isles.setActive(false);   // many small writes: the garden stops drawing until they are done
+  const done = await safely(async () => {
+    for (const m of missing(g, map, zones)) { const z = await store.createZone({ name: m.name }); g.zone[z.id] = { mapId: m.mapId, fromMap: true }; zones.push({ id: z.id, name: z.name, trees: 0 }); }
+    const r = mergeMap(g, map, zones);
+    for (const x of r.rename) await store.updateZone(x.id, { name: x.name });
+    for (const id of r.drop) await store.deleteZone(id);
+    await store.setMeta("garden", r.garden);
+    return r.garden;
+  });
+  isles.setActive(S.view === "isles");
+  if (!done) return;
+  S.hub = -1; S.isle = -1; S.topic = -1; await refresh(); isles.focus(-1);
+  const n = done.islands.length; toast(`${done.hubs.length} hub${done.hubs.length === 1 ? "" : "s"}, ${n} island${n === 1 ? "" : "s"}`);
+}
+
+// ---------- a topic past 200% moves onto an island of its own ----------
+// Its graphs are read as one graph under the trunk picked, and the biggest main branches of that graph become the topics there.
+const SPLIT_MAX = ISLE_MAX - 1;
+function splitPlan(t, intoId) {
+  const into = t.trees.find((x) => x.id === intoId) || t.trees[0], nodes = S.byTree.get(into.id) || [];
+  const own = kidsOf(into.rootId).map((n) => ({ name: n.wasTree?.name || n.title, size: store.subtreeIds(nodes, n.id).length, nodeId: n.id }));
+  const rest = t.trees.filter((x) => x !== into).map((x) => ({ name: x.name, size: (S.byTree.get(x.id) || []).length, nodeId: x.rootId }));
+  return { into, parts: [...own, ...rest].filter((p) => p.size > 1).sort((a, b) => b.size - a.size).slice(0, SPLIT_MAX) };
+}
+async function splitTopic(t) {
+  const here = S.garden.islands[S.isle]; if (!here || !t.trees.length) return;
+  const big = [...t.trees].sort((a, b) => (S.byTree.get(b.id) || []).length - (S.byTree.get(a.id) || []).length)[0];
+  const list = el("div", { class: "rows", id: "splitParts" }), show = (id) => put(list, splitPlan(t, id).parts.map((p) => el("div", { class: "grow-row" }, el("b", { text: p.name }), el("span", { class: "muted", text: String(p.size) }))));
+  show(big.id);
+  const ask = dialog({ title: `Split ${t.name}`, ok: "Split", fields: t.trees.length > 1 ? [{ name: "into", label: "Trunk", type: "select", value: big.id, options: t.trees.map((x) => [x.id, x.name]) }] : [], body: list });
+  $("#f-into")?.addEventListener("change", (e) => show(e.target.value));
+  const v = await ask; if (!v) return;
+  const plan = splitPlan(t, v.into || big.id); if (!plan.parts.length) return toast("Nothing to split");
+  const before = await safely(() => store.exportAll()); if (!before) return;
+  isles.setActive(false);
+  const made = await safely(async () => {
+    if (t.trees.length > 1) await store.mergeZone(t.id, plan.into.id);
+    const ids = [];
+    for (const p of plan.parts) {
+      const z = await store.createZone({ name: p.name }); await store.splitToTree(p.nodeId, { zoneId: z.id, name: p.name });
+      await store.addLink(plan.into.rootId, p.nodeId); ids.push(z.id);
+    }
+    return ids;
+  });
+  isles.setActive(S.view === "isles");
+  if (!made) return refresh();
+  const g = S.garden, at = g.islands.indexOf(here), rec = { id: newId(), name: t.name, landmark: CENTRES[1 + (g.islands.length % 3)][0], hubId: here.hubId, split: t.id, zoneIds: [t.id, ...made] };
+  here.zoneIds = here.zoneIds.filter((id) => id !== t.id); g.islands.splice(at + 1, 0, rec);
+  await store.setMeta("garden", g); await refresh(); pickIsle(S.model.findIndex((q) => q.id === rec.id));
+  toast(`${t.name} has its own island`, { label: "Undo", run: async () => { if ((await safely(async () => { await store.importAll(before, { keepVectors: true }); return true; }))) { S.isle = -1; S.topic = -1; await refresh(); isles.focus(-1); } } });
 }
 
 function renderEmpty() {
@@ -1111,7 +1209,7 @@ function back() {
   if (S.cutoff != null) return toggleTimeline();
   if (S.panel) { S.panel = null; return renderPanel(); }
   if (S.view === "garden" && S.fsel) return pickPlant(null);
-  if (S.view === "isles") { if (S.topic >= 0) return pickTopic(-1); if (S.isle >= 0) pickIsle(-1); return; }
+  if (S.view === "isles") { if (S.topic >= 0) return pickTopic(-1); if (S.isle >= 0) return pickIsle(-1); if (S.hub >= 0) pickHub(-1); return; }
   location.hash = S.view === "tree" ? S.treeBack : S.view === "meaning" ? S.meanBack : "#/";
 }
 function onKey(e) {
@@ -1130,7 +1228,7 @@ function onKey(e) {
   if (k === "?") { stop(); return shortcuts(); }
   if (k === "i") { stop(); return capture(); }
   if (k === "t" && S.view !== "isles") { stop(); return toggleTimeline(); }
-  if (k === "0") { stop(); return S.view === "isles" ? pickIsle(-1) : fitView(); }
+  if (k === "0") { stop(); return S.view === "isles" ? pickHub(-1) : fitView(); }
   if (S.cutoff != null) return;
   if (S.view === "isles") return islesKey(k, stop);
   if (S.view === "garden") {
@@ -1192,7 +1290,7 @@ async function init() {
   store.requestPersistence();
   S.aiOn = !!(await store.getMeta("ai").catch(() => false));
   if (S.aiOn) ai.loadCache().catch(() => {});
-  window.bonsai = { S, store, refresh, get stage() { return stage; } };
+  window.bonsai = { S, store, refresh, get stage() { return stage; }, get isles() { return isles; } };
   await go();
   document.body.dataset.ready = "1";
 }
