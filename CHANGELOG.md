@@ -2,6 +2,16 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.10.0 — 2026-11-15
+
+- Tech tree, rebuilt as a web that recentres: one island in the middle as a hexagon with its key ideas around it; the islands that grow out of it sit on its ring. Step in on one, step back with Esc or the hexagon, and the way back stays lit. T shows this tier only, A shows everything, H goes back to the start, 1–9 pick, Enter goes in, Space opens a key idea.
+- B sets which island an island grows from, and the idea on it that leads there.
+- The middle and the ring show pictures of their islands.
+- Two looks, Y to switch: organic (tapered arms) and simple (straight lines).
+- Web view: J holds everything still while you drag, so only what you drag moves.
+- Only the little ideas under the one you pick are labelled.
+- Stepping back no longer zooms out.
+
 ## 0.9.2 — 2026-11-15
 
 A beta to test with.
