@@ -30,6 +30,7 @@ kbd{font:600 11px/1 var(--font);border:1px solid var(--line);border-bottom-width
 .tech{position:absolute;inset:0;touch-action:none;user-select:none;-webkit-user-select:none;overflow:hidden}
 .tech canvas{display:block;position:absolute;inset:0}
 .tech{background:#07090d}
+.channel{position:fixed;left:10px;bottom:calc(10px + env(safe-area-inset-bottom));z-index:30;pointer-events:none;font:700 10px/1 var(--font);letter-spacing:.12em;text-transform:uppercase;color:var(--accent-ink);background:var(--sap);padding:4px 7px;border-radius:6px;opacity:.85}
 /* the tech tree is always dark, after the Path of Exile passive tree: bronze and gold on near-black */
 body.dark-tech{--bg:#07090d; --card:#11141b; --card-t:rgb(17 20 27 / .94); --ink:#ecdcb2; --muted:#9a8f78; --line:#3a3226; --well:#0b0e14;
   --accent:#c9a45c; --accent-ink:#14100a; --sap:#f0d896; --shadow:0 6px 24px rgb(0 0 0 / .6); color-scheme:dark}

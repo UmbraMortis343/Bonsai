@@ -4,9 +4,9 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { serve } from "../scripts/serve.mjs";
 
-export async function start(name, port) {
+export async function start(name, port, { channel = "" } = {}) {
   const dir = `tests/.out/${name}`;
-  execFileSync("node", ["scripts/build.mjs", dir], { stdio: "ignore" });
+  execFileSync("node", ["scripts/build.mjs", dir, "", channel], { stdio: "ignore" });
   mkdirSync("tests/shots", { recursive: true });
   const server = await serve(() => dir, port), browser = await chromium.launch();
   const t = {

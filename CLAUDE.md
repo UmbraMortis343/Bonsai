@@ -46,6 +46,12 @@ Garden levels: every hub → one hub → one island → one topic (`S.hub`, `S.i
 - In the cloud workspace: `export PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers` and `mkdir -p tests/.out` first. Drawing is in software there and very slow, so a test that makes hundreds of writes should pause the garden (`bonsai.isles.setActive(false)`) around them. `run07` sometimes times out for that reason; run it again on its own.
 - Pictures for him: `bonsai.isles.look(yaw, pitch)` sets the camera angle; `look(0, 2)` looks straight down, which is the view to use when checking whether anything overlaps (the mountain is then at the top).
 
+## Beta
+- Branch `beta` is published to https://umbramortis343.github.io/Bonsai/beta/ (Bonsai Beta): work in progress goes there for him to try before it is merged to `main` and released.
+- Pushing `beta` runs `.github/workflows/beta.yml`, which starts the Release workflow on `main`; that builds the site with `scripts/site.sh` (main at the root, the beta branch under `beta/`). A main release also rebuilds the beta, so keep `beta` building.
+- `node scripts/build.mjs <dir> <version> beta` builds the beta copy: `src/channel.js` gives `CHANNEL = "beta"`, so it uses database `bonsai-beta`, localStorage prefix `bonsai-beta.`, cache `bonsai-beta-*`, the name Bonsai Beta, and a beta tag. The main worker ignores `/beta/`.
+- First open with an empty database loads `src/demo.js` (indented outlines per topic, links, garden and `prereq` meta); Menu → Reset demo data reloads it. Add to the demo when a feature needs data to try. `tests/run15-beta.mjs` covers it; `start(name, port, { channel: "beta" })` builds a test as the beta.
+
 ## Landmarks
 `tools/landmarks/`: `BRIEF.md` (give this to whoever makes landmarks), `kit.mjs`, `render.mjs` (`node tools/landmarks/render.mjs <file.mjs> <out.png>`), and `library/` with the approved ones. Bell tower and gear tower are to be redone. Agreed route: Opus 5.5 on high, two renders per landmark, several landmarks per run. Not yet wired into the app: the app still draws its own built-in landmarks in `isles-world.js`.
 

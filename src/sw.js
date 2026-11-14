@@ -1,7 +1,9 @@
 // Bonsai service worker. A new version = new cache. The new worker waits until
 // the person taps Update, then takes over and the page reloads.
 const VERSION = "__VERSION__";
-const CACHE = "bonsai-" + VERSION;
+const CHANNEL = "__CHANNEL__" === "beta" ? "beta" : "";   // the beta lives at /beta/ with its own worker and cache
+const CACHE = "bonsai-" + (CHANNEL ? CHANNEL + "-" : "") + VERSION;
+const MINE = CHANNEL ? new RegExp("^bonsai-" + CHANNEL + "-") : /^bonsai-\d/;
 const SHELL = __FILES__;
 
 self.addEventListener("install", (e) => {
@@ -10,7 +12,7 @@ self.addEventListener("install", (e) => {
 
 self.addEventListener("activate", (e) => {
   e.waitUntil((async () => {
-    for (const k of await caches.keys()) if (k.startsWith("bonsai-") && k !== CACHE) await caches.delete(k);
+    for (const k of await caches.keys()) if (MINE.test(k) && k !== CACHE) await caches.delete(k);
     await self.clients.claim();
   })());
 });
@@ -25,6 +27,7 @@ self.addEventListener("fetch", (e) => {
   if (req.method !== "GET") return;
   const url = new URL(req.url);
   if (url.origin !== location.origin) return;
+  if (!CHANNEL && url.pathname.includes("/beta/")) return;   // the beta copy answers for itself
   // Always ask the network for the version file, so update checks are fresh.
   if (url.pathname.endsWith("/version.json")) return;
   // The model runtime is big and optional: fetched on first use, then kept across updates.

@@ -11,6 +11,8 @@ import { $, el, put, toast, dialog, menu, overlayOpen, closeTop, closeAll } from
 import { createIsles, QUALITY } from "./isles.js";
 import { readMap, missing, mergeMap, ISLE_MAX } from "./gardenmap.js";
 import { createTechTree } from "./techtree.js";
+import { CHANNEL } from "./channel.js";
+import { demoBackup } from "./demo.js";
 
 const PALETTE = [["Blue", "#3b82f6"], ["Violet", "#8b5cf6"], ["Pink", "#ec4899"], ["Red", "#ef4444"], ["Orange", "#f97316"], ["Amber", "#f59e0b"], ["Green", "#22c55e"], ["Teal", "#14b8a6"], ["Cyan", "#06b6d4"]];
 const SWATCHES = [["Auto", ""], ...PALETTE];
@@ -505,6 +507,11 @@ function renderTop() {
       ib("moreBtn", "Menu", ICON.more, (e) => appMenu(e.currentTarget)));
   }
 }
+// Beta only: put the demo islands back, as they were when the beta first opened.
+async function resetDemo() {
+  if (!(await dialog({ title: "Put the beta back to the demo islands?", ok: "Reset", danger: true }))) return;
+  await safely(() => store.importAll(demoBackup())); await load(); location.hash = "#/"; refresh();
+}
 function appMenu(anchor) {
   const archived = [...S.allZones.filter((z) => z.archived), ...S.allTrees.filter((t) => t.archived)];
   menu(anchor, [
@@ -513,11 +520,12 @@ function appMenu(anchor) {
     S.view === "forest" && { label: "Timeline", key: "T", run: toggleTimeline },
     archived.length && { label: "Archived", run: () => menu(anchor, archived.map((x) => ({ label: `Restore ${x.name}`, run: async () => { await safely(() => (x.rootId ? store.updateTree : store.updateZone)(x.id, { archived: false })); refresh(); } }))) },
     "-", S.view === "isles" && { label: "Import map", run: importMap }, { label: "Export backup", run: exportBackup }, { label: "Restore backup", run: () => $("#importFile").click() },
+    CHANNEL && { label: "Reset demo data", run: resetDemo },
     "-", { label: "Shortcuts", key: "?", run: shortcuts },
     { label: "Check for updates", run: async () => { const r = await shell.check(); if (r !== "update") toast(r === "latest" ? "Up to date" : "Offline"); } },
     { label: "What's new", run: () => window.open("https://github.com/UmbraMortis343/Bonsai/releases", "_blank", "noopener") },
     shell.canInstall() && { label: "Install app", run: () => shell.install() },
-    { label: `Bonsai ${shell.version}`, disabled: true },
+    { label: `Bonsai ${CHANNEL ? CHANNEL + " " : ""}${shell.version}`, disabled: true },
   ]);
 }
 function treeMenu(anchor) {
@@ -920,8 +928,9 @@ const BIOMES = [["highland", "Highlands"], ["tropical", "Jungle"], ["bloom", "Bl
 const CENTRES = [["arches", "Stone arches"], ["academy", "Academy"], ["amphitheatre", "Amphitheatre"], ["statue", "Statue"]];
 const MARKS = [["kit", "Monument"], ["observatory", "Observatory"], ["pipes", "Organ pipes"], ["lighthouse", "Lighthouse"], ["windmill", "Windmill"], ["coil", "Coil mast"], ["solids", "Pyramid"], ["colonnade", "Colonnade"], ["circle", "Standing stones"]];
 const FULL_PLOT = 150;   // ideas that fill a topic's plot; past this the island grows
-const pref = (k, d) => { try { return localStorage.getItem("bonsai." + k) || d; } catch { return d; } };
-const setPref = (k, v) => { try { localStorage.setItem("bonsai." + k, v); } catch {} };
+const PREF = CHANNEL ? `bonsai-${CHANNEL}.` : "bonsai.";   // the beta keeps its own settings
+const pref = (k, d) => { try { return localStorage.getItem(PREF + k) || d; } catch { return d; } };
+const setPref = (k, v) => { try { localStorage.setItem(PREF + k, v); } catch {} };
 const newId = () => "g" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
 // Which island each topic sits on, and which hub each island belongs to, is kept beside the data.
@@ -1396,6 +1405,11 @@ async function init() {
   store.requestPersistence();
   S.aiOn = !!(await store.getMeta("ai").catch(() => false));
   if (S.aiOn) ai.loadCache().catch(() => {});
+  if (CHANNEL) {   // the beta starts with demo islands to test against
+    document.body.dataset.channel = CHANNEL; document.body.append(el("div", { class: "channel", text: CHANNEL }));
+    const c = await store.counts().catch(() => null);
+    if (c && !c.zones && !(await store.getMeta("demo").catch(() => null))) await store.importAll(demoBackup());
+  }
   window.bonsai = { S, store, refresh, get stage() { return stage; }, get isles() { return isles; }, get tech() { return tech; } };
   await go();
   document.body.dataset.ready = "1";

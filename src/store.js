@@ -14,10 +14,11 @@
 // inbox {id, text, createdAt}  Quick-captured thoughts waiting to be filed.
 // vector {id, model, hash, v}  An idea's embedding. Recomputable, so not in backups.
 
+import { CHANNEL } from "./channel.js";
 import { rate } from "./srs.js";
 
 export const SCHEMA_VERSION = 3;
-const DB_NAME = "bonsai";
+const DB_NAME = CHANNEL ? "bonsai-" + CHANNEL : "bonsai";   // the beta never sees the real garden
 const STORES = ["zones", "trees", "nodes", "links", "events", "meta", "patches", "inbox"];   // what a backup holds
 
 let dbPromise = null;

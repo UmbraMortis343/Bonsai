@@ -3,6 +3,8 @@ name: Release
 # Publishes Bonsai when package.json has a version that hasn't been released yet
 # (no git tag v<version>). Each release: build, publish to GitHub Pages, then tag
 # the commit and create a GitHub release with that version's CHANGELOG notes.
+# Run by hand (or by the beta workflow) it republishes the site without a release,
+# picking up the beta branch under /beta/.
 on:
   push:
     branches: [main]
@@ -35,7 +37,8 @@ jobs:
 
   deploy:
     needs: check
-    if: needs.check.outputs.release == 'true'
+    # a new version, or a run started by hand or by the beta workflow to republish the site
+    if: needs.check.outputs.release == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -49,7 +52,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node scripts/build.mjs dist
+      - run: scripts/site.sh dist   # the app, plus the beta branch under /beta/
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
@@ -59,6 +62,7 @@ jobs:
 
   tag:
     needs: [check, deploy]
+    if: needs.check.outputs.release == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write

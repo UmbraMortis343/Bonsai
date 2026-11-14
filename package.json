@@ -1,6 +1,6 @@
 {
   "name": "bonsai",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "private": true,
   "description": "Bonsai: grow a forest of linked notes. Zones are subjects, trees are topics.",
   "type": "module",

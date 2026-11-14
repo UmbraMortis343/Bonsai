@@ -1,0 +1,19 @@
+name: Beta
+
+# When the beta branch changes, republish the site so /beta/ shows it
+# (https://<owner>.github.io/Bonsai/beta/). The publishing itself is the Release
+# workflow on main, which builds the app at the root and the beta branch under /beta/.
+on:
+  push:
+    branches: [beta]
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - run: gh workflow run release.yml --ref main -R "$GITHUB_REPOSITORY"
+        env:
+          GH_TOKEN: ${{ github.token }}

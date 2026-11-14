@@ -2,6 +2,14 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.9.2 — 2026-11-15
+
+A beta to test with.
+
+- **Bonsai Beta** at /Bonsai/beta/: a second copy of the app built from the `beta` branch, for trying new work before it reaches the real app. It installs as its own app.
+- The beta keeps its own data and settings, so nothing in it touches your real garden, and the real app never touches it.
+- It opens with demo islands: Foundations, General science, Maths, Physics, Leadership and Music, about 190 ideas with links between subjects, some due for watering. Menu → Reset demo data puts them back.
+
 ## 0.9.1 — 2026-11-14
 
 The tech tree goes dark.
