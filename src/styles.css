@@ -369,13 +369,17 @@ time{font-size:12px;color:var(--muted)}
 .fb:hover{background:var(--hover)}
 .f-bold{font-weight:700}.f-italic{font-style:italic}.f-underline{text-decoration:underline}.f-strikethrough{text-decoration:line-through}.f-code{font-family:ui-monospace,monospace;font-size:12px}
 
-/* the notes drawer beside a graph, docked on the left */
-.panel.nside{left:0;right:auto;width:var(--drawer);border-left:0;border-right:1px solid var(--line);background:var(--bg);padding:0 14px 14px}
-.panel.nside .ph{position:sticky;top:0;z-index:3;background:var(--bg);margin:0 -14px;padding:8px 10px;border-bottom:1px solid var(--line)}
-.panel.nside .ph select{flex:1;min-width:0;font-weight:600;background:transparent;border-color:transparent}
-.panel.nside .ph h2{font-size:14px;color:var(--muted);font-weight:600}
-.panel.nside .page{width:100%;padding-top:14px}
-.panel.nside .ptitle{font-size:26px}
+/* the notes drawer beside a graph, docked on the left: the notes sidebar, and a page beside it once one is open */
+.panel.nside{left:0;right:auto;width:var(--dl);display:grid;grid-template-columns:250px minmax(0,1fr);gap:0;padding:0;overflow:hidden;border-left:0;border-right:1px solid var(--line);background:var(--bg)}
+body[data-nside="list"]{--dl:250px}
+body[data-nside="page"]{--dl:min(760px,62vw)}
+.panel.nside .nside-bar{min-height:0;border-right:1px solid var(--line)}
+.panel.nside .nsearch{display:flex;gap:4px;align-items:center}
+.panel.nside .nsearch .ib{width:30px;height:30px;flex:none}
+.panel.nside .nmain{min-height:0}
+.panel.nside .nedit{padding:18px 18px 40px}
+.panel.nside .page{width:100%}
+.panel.nside .ptitle{font-size:28px}
 .panel.nside .prow{grid-template-columns:120px 1fr}
 .panel.nside .blocks{font-size:15px;padding-bottom:40px}
 .panel.nside .blk{margin-left:-6px;padding-left:calc(24px + var(--i,0) * 24px)}
@@ -421,7 +425,8 @@ a.btn{text-decoration:none;color:var(--ink)}
   .ptitle{font-size:30px}
   .blk{margin-left:0;padding-left:calc(22px + var(--i,0) * 20px)}
   .blk .hdl{left:calc(var(--i,0) * 20px - 2px)}
-  .panel.nside{left:0;right:0;top:var(--top);bottom:0;width:auto;max-height:none;border-width:0}
+  .panel.nside{left:0;right:0;top:var(--top);bottom:0;width:auto;max-height:none;border-width:0;grid-template-columns:1fr}
+  body[data-nside="page"] .panel.nside .nside-bar{display:none}
   body[data-nside="1"] .actions{display:none}
   .ws .wl{display:none}
   .ws{padding:5px 9px}

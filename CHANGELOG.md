@@ -12,7 +12,8 @@ Notes, a third window, and a cleaner look everywhere.
 - Status follows a note from Raw to Tidied to Grown; growing a page into a knowledge graph marks it Grown by itself. The sidebar can show just Raw, Tidied or Grown notes, newest first.
 - Type @ for a date tag (today, tomorrow, next Monday or any day); click it to change the day.
 - Writing as in Notion: / for blocks, Markdown shortcuts, Tab to indent, Ctrl+B, I, U, E, K, a toolbar over selected text, drag blocks by ⋮⋮ or Ctrl+Shift+↑ ↓, and block colours.
-- In a knowledge graph, O opens your notes beside it.
+- In a knowledge graph, O opens the notes sidebar beside it (search, filter, folders and pages); pick a page and it opens next to the graph.
+- G in the garden (or Knowledge graphs in its panel) opens just the knowledge graphs of the hub, island or topic you've picked.
 - Grow into a knowledge graph, from a page's menu: pick the topic, copy the page for Claude, paste its reply back and see what it adds. Undo, or take the last grow back later.
 - One look: white, black and an earth green, with warm greys, in light and dark. Corners are only slightly rounded; no pills.
 - The garden panel puts the name first: click it to rename. Biome, landmark, centrepiece and mountain sit at the foot of the panel instead of in menus. Tech tree from a topic or an island opens at that island's tier.

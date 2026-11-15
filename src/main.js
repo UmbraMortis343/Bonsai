@@ -176,10 +176,19 @@ function treeSpot(id) {
 }
 // Draws every tree on the floor: the knowledge forest, or (garden) the same
 // trees as plants coloured by how thirsty they are, with roots and pots.
+// The knowledge view can show just a hub, an island or a topic (#/forest/<id>), opened from the garden with G.
+function scopeOf(id) {
+  if (!id || !S.garden) return null;
+  const z = S.zones.find((x) => x.id === id); if (z) return { id, name: z.name, zones: new Set([id]) };
+  const isl = S.garden.islands.find((q) => q.id === id); if (isl) return { id, name: isl.name, zones: new Set(isl.zoneIds) };
+  const hub = (S.garden.hubs || []).find((h) => h.id === id); if (hub) return { id, name: hub.name, zones: new Set(S.garden.islands.filter((q) => hubKey(q) === id).flatMap((q) => q.zoneIds)) };
+  return null;
+}
+const openScope = (id) => { location.hash = "#/forest" + (id ? "/" + encodeURIComponent(id) : ""); };
 function buildForest(garden = S.view === "garden") {
   clearScene();
   const cut = garden ? null : S.cutoff, born = (x) => cut == null || Date.parse(x.createdAt) <= cut;
-  const groups = S.zones.filter(born).map((z) => ({ z, trees: S.trees.filter((t) => t.zoneId === z.id && (born(t) || shownNodes(t).length > 1)) }));
+  const groups = S.zones.filter((z) => garden || !S.fscope || S.fscope.zones.has(z.id)).filter(born).map((z) => ({ z, trees: S.trees.filter((t) => t.zoneId === z.id && (born(t) || shownNodes(t).length > 1)) }));
   const lays = new Map();
   for (const g of groups) for (const t of g.trees) lays.set(t.id, layoutTree(S.byTree.get(t.id) || [], t.rootId));
   const fl = layoutForest(groups.map((g) => ({ id: g.z.id, trees: g.trees.map((t) => ({ id: t.id, footprint: lays.get(t.id).footprint })) })));
@@ -355,6 +364,8 @@ async function go() {
   if (origin && mm && S.view !== "meaning") S.meanBack = origin;
   if (origin && id && S.view !== "tree") S.treeBack = origin;
   if (from != null && tm && !/^#\/(tree|techtree)/.test(from)) S.techBack = from || "#/";
+  const fm = location.hash.match(/^#\/forest(?:\/([^/?]+))?/);
+  if (fm) { S.fscope = scopeOf(fm[1] && decodeURIComponent(fm[1])); if (from != null && !/^#\/(tree|forest)/.test(from)) S.forestBack = from || "#/"; }
   const home = !mm && !tm && !nm && !location.hash.startsWith("#/garden") && !location.hash.startsWith("#/forest") && !(id && treeOf(id));
   showWindow(home, !!tm, !!nm);
   if (home) { if (id) history.replaceState(null, "", "#/"); showIsles(); }
@@ -509,6 +520,9 @@ function renderTop() {
   } else if (S.view === "garden") {
     put($("#top"), back("#/", "Garden"), el("div", { class: "crumb" }, el("h1", { text: "Watering" })), beta, el("span", { class: "grow" }),
       waterBtn(() => startReview(null)), swap, more());
+  } else if (S.fscope) {
+    put($("#top"), back(S.forestBack || "#/"), el("div", { class: "crumb" }, el("h1", { text: S.fscope.name }), el("button", { class: "link", id: "scopeAll", type: "button", text: "Show all", onclick: () => openScope() })), beta, el("span", { class: "grow" }),
+      swap, search, add([{ label: "New tree", key: "N", run: () => newTree() }, { label: "New zone", key: "Z", run: newZone }, { label: "Capture a thought", key: "I", run: capture }]), more());
   } else {
     put($("#top"), brand, beta, el("span", { class: "grow" }),
       S.inbox.length ? el("button", { class: "btn", id: "inboxBtn", onclick: () => { S.panel = S.panel === "inbox" ? null : "inbox"; renderPanel(); } }, "Inbox", el("span", { class: "thirst", text: String(S.inbox.length) })) : null,
@@ -601,7 +615,7 @@ async function capture() {
 function shortcuts() {
   const rows = [["↑ ↓ ← →", "Child, parent, siblings"], ["Tab", "Add a branch"], ["Enter", "Add a sibling"], ["R", "Rename"], ["Del", "Delete"], ["Space", "Notes"],
     ["L", "Link"], ["G", "Graft"], ["C", "Colour"], ["F", "Fly to idea"], ["0", "Fit view"], ["W A S D  Q E", "Fly"], ["/", "Search"], ["I", "Capture"],
-    ["1–9", "Garden: go to a hub, an island, then a topic"], ["0  Esc", "Garden: step back out"], ["W", "Garden: water"], ["D", "Garden: day or night"], ["S", "Garden: split a topic past 200%"], ["P", "Patches"], ["T", "Timeline"], ["M", "Meaning view"], ["K", "Tech tree"], ["1–9  Enter", "Tech tree: pick, then go in or open"], ["Space", "Tech tree: open or close an idea"], ["Esc", "Tech tree: let go, then step back a tier"], ["T  A  H", "Tech tree: this tier only, show all, back to the start"], ["B", "Tech tree: what an island grows from"], ["L", "Tech tree: tree or web"], ["Y", "Tech tree: simple or organic look"], ["J", "Tech tree web: jiggle while dragging, or hold still"], ["N  Z", "New tree, new zone"], ["O", "Notes; in a graph, notes beside it"], ["N  G", "Notes: new page, grow with Claude"], ["1–9  ↑ ↓", "Notes: pick a page"], ["← →", "Notes: topics"], ["A", "Notes: attach the page to a graph"], ["/", "Notes, while writing: blocks"], ["Tab  Shift+Tab", "Notes, while writing: indent a block"], ["Ctrl+B I U E K", "Notes, while writing: bold, italic, underline, code, link"], ["Ctrl+Shift+↑ ↓", "Notes, while writing: move a block"], ["Shift+Tab", "Garden, knowledge, notes"], ["Enter  V", "Garden: water the plant, water everything"], ["Esc", "Back"]];
+    ["1–9", "Garden: go to a hub, an island, then a topic"], ["0  Esc", "Garden: step back out"], ["W", "Garden: water"], ["D", "Garden: day or night"], ["S", "Garden: split a topic past 200%"], ["P", "Patches"], ["T", "Timeline"], ["M", "Meaning view"], ["K", "Tech tree"], ["1–9  Enter", "Tech tree: pick, then go in or open"], ["Space", "Tech tree: open or close an idea"], ["Esc", "Tech tree: let go, then step back a tier"], ["T  A  H", "Tech tree: this tier only, show all, back to the start"], ["B", "Tech tree: what an island grows from"], ["L", "Tech tree: tree or web"], ["Y", "Tech tree: simple or organic look"], ["J", "Tech tree web: jiggle while dragging, or hold still"], ["N  Z", "New tree, new zone"], ["G", "Garden: the knowledge graphs of what's picked"], ["O", "Notes; in a graph, notes beside it"], ["N  G", "Notes: new page, grow with Claude"], ["1–9  ↑ ↓", "Notes: pick a page"], ["← →", "Notes: topics"], ["A", "Notes: attach the page to a graph"], ["/", "Notes, while writing: blocks"], ["Tab  Shift+Tab", "Notes, while writing: indent a block"], ["Ctrl+B I U E K", "Notes, while writing: bold, italic, underline, code, link"], ["Ctrl+Shift+↑ ↓", "Notes, while writing: move a block"], ["Shift+Tab", "Garden, knowledge, notes"], ["Enter  V", "Garden: water the plant, water everything"], ["Esc", "Back"]];
   dialog({ title: "Shortcuts", ok: null, cancel: "Close", body: el("table", { class: "keys" }, rows.map(([k, d]) => el("tr", {}, el("td", {}, el("kbd", { text: k })), el("td", { text: d })))) });
 }
 async function exportBackup() {
@@ -991,7 +1005,7 @@ function crossLinks() {
   return [...n].map(([k, c]) => [...k.split("|"), c]);
 }
 function showWindow(garden, flat = false, notes = false) {
-  $("#notes").hidden = !notes; flat ||= notes;
+  $("#notes").hidden = !notes; if (!notes) $("#notes").replaceChildren(); flat ||= notes;
   $("#stage").hidden = garden || flat; $("#isles").hidden = !garden; $("#tech").hidden = !flat || notes; if (!flat || notes) { tech?.setActive(false); document.body.classList.remove("night-ui"); } $("#gpanel").hidden = !garden; document.body.dataset.window = garden ? "garden" : notes ? "notes" : "";
   if (!garden) { isles?.setActive(false); stage.resize(); }   // the stage has no size while hidden; measure it again before anything is framed
 }
@@ -1061,7 +1075,7 @@ function renderGarden() {
   if (t) {
     const due = t.due.length, o = (S.garden.zone[t.id] ||= {});
     put(box, head(() => pickTopic(-1), name(t.name, async (v) => { if (await safely(() => store.updateZone(t.id, { name: v }))) refresh(); }), ib("topicMore", "Move to island", ICON.more, (e) => topicMenu(t, e.currentTarget))),
-      el("div", { class: "gtop" }, ctl, el("div", { class: "gacts" }, due ? act("waterTopic", `Water ${due}`, "W", () => water(t.due), true) : null, act("newGraph", "New knowledge graph", "N", () => newGraph(t.id), !due), act("topicMap", "Meaning map", "M", () => goMeaning(t.id)), act("techBtn", "Tech tree", "K", openTech), t.growth >= 2 ? act("splitTopic", "Split", "S", () => splitTopic(t)) : null)),
+      el("div", { class: "gtop" }, ctl, el("div", { class: "gacts" }, due ? act("waterTopic", `Water ${due}`, "W", () => water(t.due), true) : null, act("newGraph", "New knowledge graph", "N", () => newGraph(t.id), !due), act("scopeGraphs", "Knowledge graphs", "G", () => openScope(t.id)), act("topicMap", "Meaning map", "M", () => goMeaning(t.id)), act("techBtn", "Tech tree", "K", openTech), t.growth >= 2 ? act("splitTopic", "Split", "S", () => splitTopic(t)) : null)),
       el("div", { class: "stats" }, el("span", {}, el("b", { text: String(t.ideas) }), ` idea${t.ideas === 1 ? "" : "s"}`), el("span", {}, el("b", { text: pct(t.growth) }), " grown"), el("span", {}, el("b", { text: pct(t.health) }), " healthy")),
       el("h3", { text: "Knowledge graphs" }),
       t.trees.length ? el("div", { class: "rows" }, t.trees.map((tr, k) => { const n = (S.byTree.get(tr.id) || []).length; return row(k < 9 ? String(k + 1) : "", tr.name, `${n} idea${n === 1 ? "" : "s"}`, dueList(tr.id).length, () => goTree(tr.id)); })) : el("p", { class: "muted", text: "None yet." }),
@@ -1069,7 +1083,7 @@ function renderGarden() {
   } else if (isl) {
     const rec = S.garden.islands[S.isle], items = isleItems(S.isle);
     put(box, head(() => pickIsle(-1), name(isl.name, rec.mapId ? null : (v) => { rec.name = v; saveGarden(); }), items.length ? ib("isleMore", "Island menu", ICON.more, (e) => isleMenu(S.isle, e.currentTarget)) : null),
-      el("div", { class: "gtop" }, ctl, el("div", { class: "gacts" }, act("newTopic", "New topic", "Z", newZone, true), act("isleTech", "Tech tree", "K", openTech))),
+      el("div", { class: "gtop" }, ctl, el("div", { class: "gacts" }, act("newTopic", "New topic", "Z", newZone, true), act("scopeGraphs", "Knowledge graphs", "G", () => openScope(isl.id)), act("isleTech", "Tech tree", "K", openTech))),
       el("h3", { text: "Topics" }),
       isl.topics[0].id ? el("div", { class: "rows" }, isl.topics.map((q, k) => row(String(k + 1), q.name, pct(q.growth), q.due.length, () => pickTopic(k)))) : el("p", { class: "muted", text: "No topics here yet." }),
       el("div", { class: "gset" },
@@ -1079,13 +1093,13 @@ function renderGarden() {
   } else if (S.hub >= 0) {
     const hub = S.hubs[S.hub];
     put(box, head(() => pickHub(-1), name(hub.name, null)),
-      el("div", { class: "gtop" }, ctl, el("div", { class: "gacts" }, act("newTopic", "New topic", "Z", newZone, true), act("techBtn", "Tech tree", "K", openTech))),
+      el("div", { class: "gtop" }, ctl, el("div", { class: "gacts" }, act("newTopic", "New topic", "Z", newZone, true), act("scopeGraphs", "Knowledge graphs", "G", () => openScope(hub.id)), act("techBtn", "Tech tree", "K", openTech))),
       el("h3", { text: "Islands" }),
       hub.isles.length ? el("div", { class: "rows" }, hub.isles.map((i, k) => { const q = S.model[i], n = q.topics.filter((x) => x.id).length; return row(k < 9 ? String(k + 1) : "", q.name, `${n} topic${n === 1 ? "" : "s"}`, q.topics.reduce((a, x) => a + x.due.length, 0), () => pickIsle(i)); })) : el("p", { class: "muted", text: "No islands yet." }));
   } else {
     const all = S.model.flatMap((q) => q.topics).filter((q) => q.id), thirsty = all.filter((q) => q.due.length).sort((a, b) => b.due.length - a.due.length), top = Math.max(1, ...all.map((q) => q.ideas));
     put(box, head(null, name("Garden", null), S.garden.mapAt ? null : ib("isleAdd", "New island", ICON.plus, newIsle)),
-      el("div", { class: "gtop" }, ctl, el("div", { class: "gacts" }, act("newGraph", "New knowledge graph", "N", () => newGraph(), true), act("mapBtn", "Meaning map", "M", () => goMeaning()), act("techBtn", "Tech tree", "K", openTech))),
+      el("div", { class: "gtop" }, ctl, el("div", { class: "gacts" }, act("newGraph", "New knowledge graph", "N", () => newGraph(), true), act("scopeGraphs", "Knowledge graphs", "G", () => openScope()), act("mapBtn", "Meaning map", "M", () => goMeaning()), act("techBtn", "Tech tree", "K", openTech))),
       el("h3", { text: "Needs watering" }),
       thirsty.length ? el("div", { class: "rows" }, thirsty.slice(0, 6).map((q) => row("", q.name, "", q.due.length, () => goTopic(q.id)))) : el("p", { class: "muted", text: "Nothing right now." }),
       all.length ? el("details", { class: "fold", id: "spread", open: pref("spread", "") === "1", ontoggle: (e) => setPref("spread", e.target.open ? "1" : "") }, el("summary", {}, el("h3", { text: "Knowledge spread" })), el("div", { class: "spread" }, all.map((q) => el("button", { class: "bar", title: `${q.name}: ${q.ideas}`, onclick: () => goTopic(q.id) }, el("span", { text: q.name }), el("i", {}, el("b", { style: `width:${Math.max(3, (100 * q.ideas) / top)}%` })))))) : null);
@@ -1140,6 +1154,7 @@ function islesKey(k, stop) {
   if (k === "ArrowDown" || k === "Enter") { stop(); if (t) { if (t.trees[0]) goTree(t.trees[0].id); else newGraph(t.id); } else if (isl) pickTopic(0); else if (multi() && !hub) pickHub(0); else if (list.length) pickIsle(list[0]); return; }
   if (k === "ArrowUp") { stop(); return back(); }
   if (k === "n") { stop(); return newGraph(t?.id); }
+  if (k === "g") { stop(); return openScope(t?.id || isl?.id || hub?.id); }
   if (k === "z") { stop(); return newZone(); }
   if (k === "m") { stop(); return goMeaning(t?.id); }
   if (k === "s" && t && t.growth >= 2) { stop(); return splitTopic(t); }
@@ -1501,11 +1516,16 @@ function showNotes(id) {
   S.view = "notes"; S.tree = null; S.sel = null; S.lay = null; S.panel = null; clearScene(); hideHover();
   S.npage = pageOf(id) ? id : pageOf(S.npage) ? S.npage : noteRows()[0]?.p.id || null;
   for (const q of pagePath(pageOf(S.npage))) setOpen(q.id, true);   // show the way down to it
+  put($("#notes"), notesSidebar(), el("section", { class: "nmain" }, el("div", { class: "pbar", id: "pbar" }), el("div", { class: "nedit", id: "nedit" })));
+  setNotesHash(); drawPageList(); drawEditor(); renderChrome();
+}
+// the notes sidebar: search, status filter, the tree, new page and folder. The notes window and the drawer beside a graph share it.
+function notesSidebar(close) {
   const search = el("input", { id: "notesSearch", type: "text", placeholder: "Search pages or #tags", "aria-label": "Search notes", autocomplete: "off", value: S.nq || "",
     oninput: (e) => { S.nq = e.target.value; drawPageList(); },
     onkeydown: (e) => {
       const rows = noteRows();
-      if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); const i = rows.findIndex((r) => r.p.id === S.npage); const r = rows[Math.max(0, Math.min(rows.length - 1, i + (e.key === "ArrowDown" ? 1 : -1)))]; if (r) pickPage(r.p.id, { keepFocus: true }); }
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); const i = rows.findIndex((r) => r.p.id === (S.view === "notes" ? S.npage : S.sp)); const r = rows[Math.max(0, Math.min(rows.length - 1, i + (e.key === "ArrowDown" ? 1 : -1)))]; if (r) pickPage(r.p.id, { keepFocus: true }); }
       else if (e.key === "Enter") { e.preventDefault(); if (rows[0] && !rows.some((r) => r.p.id === S.npage)) pickPage(rows[0].p.id); e.target.blur(); S.ed?.focus("start"); }
       else if (e.key === "Escape" && e.target.value) { e.preventDefault(); e.stopPropagation(); S.nq = ""; e.target.value = ""; drawPageList(); }
     } });
@@ -1518,9 +1538,7 @@ function showNotes(id) {
   const filter = el("div", { class: "nfilter", role: "group", "aria-label": "Status" }, [["", "All"], ...STATUSES.map(([v]) => [v, v])].map(([v, text]) =>
     el("button", { type: "button", class: "nf" + ((S.nf || "") === v ? " on" : ""), "aria-pressed": String((S.nf || "") === v), dataset: { status: v }, text,
       onclick: (e) => { S.nf = v; for (const b of e.currentTarget.parentElement.children) { const on = b.dataset.status === v; b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); } drawPageList(); } })));
-  put($("#notes"), el("nav", { class: "nside-bar", "aria-label": "Notes" }, el("div", { class: "nsearch" }, search, el("kbd", { text: "/" })), filter, tree, foot),
-    el("section", { class: "nmain" }, el("div", { class: "pbar", id: "pbar" }), el("div", { class: "nedit", id: "nedit" })));
-  setNotesHash(); drawPageList(); drawEditor(); renderChrome();
+  return el("nav", { class: "nside-bar", "aria-label": "Notes" }, el("div", { class: "nsearch" }, search, close ? null : el("kbd", { text: "/" }), close), filter, tree, foot);
 }
 function setNotesHash() { const h = notesHash(); history.replaceState(null, "", h); S.hashNow = h; S.lastNotes = h; }
 function drawPageList() {
@@ -1528,7 +1546,7 @@ function drawPageList() {
   const rows = noteRows(), open = notesOpen();
   put(host, rows.map(({ p, depth, hit }, i) => {
     const kids = kidPages(p.id).length, folder = isFolder(p), isOpen = open.has(p.id);
-    const row = el("div", { class: "nrow" + (p.id === S.npage ? " on" : "") + (folder ? " folder" : ""), dataset: { id: p.id }, style: `--d:${depth}`, role: "treeitem", draggable: !hit,
+    const row = el("div", { class: "nrow" + (p.id === (S.view === "notes" ? S.npage : S.sp) ? " on" : "") + (folder ? " folder" : ""), dataset: { id: p.id }, style: `--d:${depth}`, role: "treeitem", draggable: !hit,
       ondragstart: (e) => { S.ndrag = p.id; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", p.id); },
       ondragend: () => { S.ndrag = null; },
       ondragover: (e) => { if (S.ndrag && S.ndrag !== p.id) { e.preventDefault(); row.classList.add("drop"); } }, ondragleave: () => row.classList.remove("drop"),
@@ -1666,12 +1684,15 @@ function tagPicker(p, pr, anchor, save) {
 }
 async function pickPage(id, { keepFocus = false } = {}) {
   const p = pageOf(id); if (!p) return;
-  await flushPage(); S.npage = id;
+  await flushPage(); if (S.view === "notes") S.npage = id;
   if (S.view === "notes") {
     if (!S.nq) for (const q of pagePath(p)) setOpen(q.id, true);
     setNotesHash(); drawPageList(); drawEditor(); renderActions();
     if (keepFocus) $("#notesSearch")?.focus();
-  } else { S.sideFor = null; renderSide(); }
+  } else {
+    if (isFolder(p)) { setOpen(p.id, !notesOpen().has(p.id)); return drawPageList(); }
+    S.sp = id; S.sideFor = null; renderSide();
+  }
   if (!keepFocus && !p.title && !isFolder(p) && !(p.blocks || []).length) $(S.view === "notes" ? "#pageTitle" : "#sideTitle")?.focus();   // a fresh page: straight to its title
 }
 // typing is saved shortly after it stops, and before anything else is opened
@@ -1694,26 +1715,27 @@ async function newPage(parentId = null, kind = "page") {
   const par = pageOf(parentId);
   if (par && !isFolder(par)) await safely(() => store.updatePage(parentId, { blocks: [...(par.blocks || []), { id: "b" + Date.now().toString(36), type: "page", pageId: p.id, html: "", indent: 0 }] }));   // like Notion: a link in the page it's in
   if (parentId) setOpen(parentId, true);
-  await load(); S.npage = p.id; S.nq = ""; if ($("#notesSearch")) $("#notesSearch").value = "";
-  if (S.view === "notes") { setNotesHash(); drawPageList(); drawEditor(); renderActions(); } else { S.nside = true; S.sideFor = null; renderSide(); }
+  await load(); S.nq = ""; if ($("#notesSearch")) $("#notesSearch").value = "";
+  if (S.view === "notes") { S.npage = p.id; setNotesHash(); drawPageList(); drawEditor(); renderActions(); } else { S.sp = kind === "folder" ? S.sp : p.id; S.nside = true; S.sideFor = null; renderSide(); }
   const ti = $(S.view === "notes" ? "#pageTitle" : "#sideTitle"); ti?.focus(); ti?.select();
 }
 async function movePage(id, toId) {
   const p = pageOf(id); if (!p || id === toId || (p.parentId || null) === (toId || null)) return;
   await flushPage();
-  if (await safely(() => store.updatePage(id, { parentId: toId || null, order: Date.now() }))) { if (toId) setOpen(toId, true); await load(); S.npage = id; redrawNotes(); }
+  if (await safely(() => store.updatePage(id, { parentId: toId || null, order: Date.now() }))) { if (toId) setOpen(toId, true); await load(); if (S.view === "notes") S.npage = id; redrawNotes(); }
 }
 async function removePage(id) {
   await flushPage();
   const gone = await safely(() => store.deletePage(id)); if (!gone?.length) return;
+  if (gone.some((g) => g.id === S.sp)) S.sp = null;
   if (gone.some((g) => g.id === S.npage)) { const rows = noteRows().map((r) => r.p.id).filter((x) => !gone.some((g) => g.id === x)); S.npage = rows[0] || null; }
   S.ed?.destroy(); S.ed = null;
   await load(); redrawNotes();
-  toast(gone.length > 1 ? `Deleted ${gone.length} pages` : isFolder(gone[0]) ? "Folder deleted" : "Page deleted", { label: "Undo", run: async () => { await store.putPages(gone); await load(); S.npage = gone[0].id; redrawNotes(); } });
+  toast(gone.length > 1 ? `Deleted ${gone.length} pages` : isFolder(gone[0]) ? "Folder deleted" : "Page deleted", { label: "Undo", run: async () => { await store.putPages(gone); await load(); if (S.view === "notes") S.npage = gone[0].id; redrawNotes(); } });
 }
 function redrawNotes() {
   if (S.view === "notes") { setNotesHash(); drawPageList(); drawEditor(); renderActions(); renderTop(); }
-  else { S.sideFor = null; renderSide(); }
+  else { S.sideFor = null; renderSide(); drawPageList(); }
 }
 // where a page can be moved to: the top level, or any folder or page that isn't inside it
 function moveMenu(p, anchor) {
@@ -1808,25 +1830,24 @@ function notesKey(k, stop) {
     else if (k === "ArrowLeft") { if (has && notesOpen().has(p.id)) { setOpen(p.id, false); drawPageList(); } else if (p.parentId && pageOf(p.parentId)) pickPage(p.parentId); }
   }
 }
-// In a knowledge graph, O pulls notes up beside it: the page last open, any page to pick.
-function toggleSide() { S.nside = !S.nside; S.sideFor = null; if (!S.nside) flushPage(); renderSide(); }
+// In a knowledge graph, O pulls notes up beside it: the same sidebar as the notes window, and a page beside it once one is picked.
+function toggleSide() { S.nside = !S.nside; S.sp = null; S.sideFor = null; if (!S.nside) flushPage(); renderSide(); renderTop(); }
 function renderSide() {
   const box = $("#nside"), on = S.nside && S.view === "tree" && S.tree;
-  document.body.dataset.nside = on ? "1" : "";
+  if (on && S.sp && (!pageOf(S.sp) || isFolder(pageOf(S.sp)))) S.sp = null;
+  document.body.dataset.nside = on ? (S.sp ? "page" : "list") : "";
   if (!on) { if (!box.hidden) { flushPage(); if (S.view !== "notes") { S.ed?.destroy(); S.ed = null; } box.hidden = true; box.replaceChildren(); S.sideFor = null; } return; }
-  if (!pageOf(S.npage) || isFolder(pageOf(S.npage))) S.npage = S.pages.filter((x) => !isFolder(x)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]?.id || null;
-  const sig = S.npage + "/" + S.pages.length;
-  if (S.sideFor === sig && !box.hidden) return;
+  const sig = (S.sp || "") + "/" + S.pages.length;
+  if (S.sideFor === sig && !box.hidden) return drawPageList();
   flushPage(); S.ed?.destroy(); S.ed = null;
   S.sideFor = sig; box.hidden = false;
-  const p = pageOf(S.npage), opts = [];
-  const walk = (id, d) => { for (const q of kidPages(id)) { opts.push(el("option", { value: q.id, text: " ".repeat(d) + (q.title || (isFolder(q) ? "New folder" : "Untitled")), disabled: isFolder(q), selected: q.id === S.npage })); walk(q.id, d + 1); } };
-  walk(null, 0);
-  put(box, el("div", { class: "ph" }, opts.length ? el("select", { id: "sidePage", "aria-label": "Page", onchange: (e) => pickPage(e.target.value) }, opts) : el("h2", { text: "Notes" }),
-    ib("sideNew", "New page", ICON.plus, () => newPage()),
-    p ? ib("sideMore", "Page menu", ICON.more, (e) => pageMenu(p, e.currentTarget)) : null,
-    ib("sideClose", "Close (O)", ICON.close, toggleSide)),
-    p ? pageView(p, true) : el("div", { class: "page none" }, el("button", { class: "btn", id: "sideFirst", onclick: () => newPage() }, "New page")));
+  const p = pageOf(S.sp);
+  put(box, notesSidebar(ib("sideClose", "Close (O)", ICON.close, toggleSide)),
+    p ? el("section", { class: "nmain" },
+      el("div", { class: "pbar" }, el("div", { class: "pcrumb" }, pagePath(p).map((q) => [el("span", { text: q.title || "Untitled" }), el("span", { class: "sl", text: "/" })]), el("span", { class: "here", text: p.title || "Untitled" })),
+        el("span", { class: "grow" }), ib("sideMore", "Page menu", ICON.more, (e) => pageMenu(p, e.currentTarget)), ib("sideShut", "Close the page", ICON.back, () => { flushPage(); S.sp = null; S.sideFor = null; renderSide(); })),
+      el("div", { class: "nedit" }, pageView(p, true))) : null);
+  drawPageList();
 }
 // Garden, Knowledge and Notes are three windows; Shift+Tab goes round them.
 const winOf = (v) => (v === "isles" || v === "garden" ? "garden" : v === "notes" ? "notes" : "knowledge");

@@ -177,7 +177,11 @@ await k("Escape");
 // Beside a graph, O shows the page last open; typing there is saved; Esc closes it.
 await page.evaluate((id) => { location.hash = "#/tree/" + id; }, ids.em);
 await page.waitForSelector(".lbl.trunk"); await k("o");
+await page.waitForSelector("#nside #nlist .nrow");
+t.eq(await state(page, () => [document.body.dataset.nside, !!document.querySelector("#sideTitle"), !!document.querySelector("#nside #notesSearch")]), ["list", false, true], "O opens the notes sidebar, no page open yet");
+await page.click('#nside .nrow:has-text("Lecture 6") .nname');
 await page.waitForFunction(() => document.querySelector("#sideTitle")?.value === "Lecture 6: Momentum");
+t.eq(await state(page, () => document.body.dataset.nside), "page", "a picked page opens beside the sidebar");
 await page.click("#nside .blk.t-bullet >> nth=-1"); await k("End"); await k("Enter"); await type("Momentum in 2D");
 await page.waitForTimeout(800);
 await page.screenshot({ path: "tests/shots/notes-beside.png" });
@@ -214,6 +218,16 @@ await k("0"); await page.waitForFunction(() => document.querySelector("#gpanel h
 await k("1"); await k("4"); await page.waitForFunction(() => document.querySelector("#gpanel h2")?.textContent === "Physics");
 await page.click("#isleTech"); await page.waitForFunction(() => bonsai.S.view === "tech" && bonsai.tech); await page.waitForTimeout(300);
 t.eq(await state(page, () => bonsai.tech.snapshot().centre), "phys", "an island's Tech tree opens on that island's tier");
+// G in the garden: the knowledge graphs of the island (or topic, or hub) picked, and only those.
+await page.evaluate(() => { location.hash = "#/"; }); await page.waitForSelector("#gpanel h2");
+await k("0"); await page.waitForFunction(() => document.querySelector("#gpanel h2")?.textContent === "Garden");
+await k("1"); await k("2"); await page.waitForFunction(() => document.querySelector("#gpanel h2")?.textContent === "General science");
+await k("g"); await page.waitForFunction(() => bonsai.S.view === "forest" && bonsai.S.forest);
+t.eq(await state(page, () => [document.querySelector("#top h1").textContent, bonsai.S.forest.fl.zones.size]), ["General science", 4], "an island's graphs, its four topics");
+await page.screenshot({ path: "tests/shots/scope-island.png" });
+await page.evaluate((z) => { location.hash = "#/forest/" + z; }, ids.mech); await page.waitForFunction(() => document.querySelector("#top h1")?.textContent === "Mechanics");
+t.eq(await state(page, () => [bonsai.S.forest.fl.zones.size, bonsai.S.forest.fl.trees.size]), [1, 3], "a topic's graphs");
+await page.click("#scopeAll"); await page.waitForFunction(() => !bonsai.S.fscope && bonsai.S.forest.fl.zones.size > 10);
 
 // Dark, phone, and the other windows in the new bars and colours.
 const dark = await t.page({ colorScheme: "dark" }, "#/");
