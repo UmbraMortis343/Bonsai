@@ -239,14 +239,14 @@ const PAGES = [
   - elastic: KE conserved too (snooker balls, roughly)
   - inelastic: KE lost to heat/sound/deformation
   - perfectly inelastic: objects stick together, max KE lost
-- Worked example: 2 kg at 3 m/s hits 1 kg at rest, they stick → v = 6/3 = 2 m/s`, [{ id: "pr-course", name: "Course", type: "select", value: "PHYSICS 120" }, tag("Tags", ["lecture", "momentum"]), { id: "pr-date", name: "Date", type: "date", value: "2026-11-12" }], [
+- Worked example: 2 kg at 3 m/s hits 1 kg at rest, they stick → v = 6/3 = 2 m/s`, [tag("Tags", ["lecture", "momentum", "physics 120"]), { id: "pr-date", name: "Date", type: "date", value: "2026-11-12" }, { id: "pr-status", name: "Status", type: "status", value: "Tidied" }], [
       ["page", "Problem sheet 6", `## Q1
 A 0.15 kg ball at 20 m/s is caught and stopped in 0.1 s. Average force?
 - Δp = 0.15 × 20 = 3 kg m/s
 - F = Δp / Δt = 30 N
 ## Q2
 - [ ] Two skaters push apart: 50 kg moves off at 2 m/s. How fast does the 40 kg one go?
-- [ ] Ask in tutorial about rockets and dp/dt`, [tag("Tags", ["problems", "momentum"]), { id: "pr-done", name: "Done", type: "checkbox", value: false }]]]],
+- [ ] Ask in tutorial about rockets and dp/dt`, [tag("Tags", ["problems", "momentum"]), { id: "pr-status", name: "Status", type: "status", value: "Raw" }]]]],
   ]],
   ["folder", "Leadership", [
     ["page", "Workshop: GROW model", `Facilitator: Sam. Slides on the drive.
@@ -259,7 +259,7 @@ GROW = a structure for a coaching conversation
 - Silence is fine, let them think
 - Coach doesn't need to know the answer
 - Practised in pairs: 10 min each, observer gave feedback
-  - I jumped to Options too fast, skipped Reality`, [tag("Tags", ["workshop", "coaching"]), { id: "pr-date", name: "Date", type: "date", value: "2026-11-08" }]],
+  - I jumped to Options too fast, skipped Reality`, [tag("Tags", ["workshop", "coaching"]), { id: "pr-date", name: "Date", type: "date", value: "2026-11-08" }, { id: "pr-status", name: "Status", type: "status", value: "Raw" }]],
   ]],
   ["page", "Reading list", `- [ ] Feynman Lectures, vol 1, ch 9–10
 - [x] The Coaching Habit

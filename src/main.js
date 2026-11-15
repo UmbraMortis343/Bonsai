@@ -1456,10 +1456,15 @@ const PI = { text: "M4 7h16M4 12h16M4 17h10", number: "M9 4L7 20M17 4l-2 16M4 9h
   status: "M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1", date: "M4 6h16v14H4zM4 10h16M8 3v4M16 3v4", checkbox: "M4 4h16v16H4zM8 12l3 3 5-6",
   url: "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1", email: "M3 6h18v12H3zM3 6l9 7 9-7", phone: "M6 3h4l2 5-2.5 1.5a11 11 0 0 0 5 5L16 12l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 4 5a2 2 0 0 1 2-2z",
   created: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2", edited: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2" };
-const PROP_TYPES = [["text", "Text"], ["number", "Number"], ["select", "Select"], ["tags", "Tags"], ["status", "Status"], ["date", "Date"], ["checkbox", "Checkbox"], ["url", "URL"], ["email", "Email"], ["phone", "Phone"], ["created", "Created"], ["edited", "Last edited"]];
-const PROP_SUGGEST = [["date", "Due date"], ["status", "Status"], ["select", "Priority"], ["tags", "Tags"], ["url", "Link"], ["date", "Date"]];
-const PROP_OPTIONS = { Priority: ["High", "Medium", "Low"] };
-const STATUSES = [["Not started", "gray"], ["In progress", "yellow"], ["Done", "green"]];
+// the property types for notes; older pages may hold others (number, select, checkbox, email, phone, edited), which still show and edit
+const PROP_TYPES = [["tags", "Tags"], ["date", "Date"], ["status", "Status"], ["url", "Source"], ["text", "Text"], ["created", "Created"]];
+const ALL_TYPES = [...PROP_TYPES, ["number", "Number"], ["select", "Select"], ["checkbox", "Checkbox"], ["email", "Email"], ["phone", "Phone"], ["edited", "Last edited"]];
+
+const PROP_OPTIONS = {};
+// a note's life: written in a lecture, tidied up, grown into a knowledge graph (set by itself when you grow it)
+const STATUSES = [["Raw", "gray"], ["Tidied", "yellow"], ["Grown", "green"]];
+const statusOf = (p) => (p.props || []).find((x) => x.type === "status")?.value || "";
+const dateOf = (p) => (p.props || []).find((x) => x.type === "date" && x.value)?.value || p.createdAt.slice(0, 10);
 const TAG_COLOURS = ["gray", "brown", "orange", "yellow", "green", "blue", "purple", "pink", "red"];
 const tagColour = (v) => { let h = 0; for (const c of String(v)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return TAG_COLOURS[h % TAG_COLOURS.length]; };
 const notesOpen = () => S.nopen || (S.nopen = new Set((() => { try { return JSON.parse(pref("notesOpen", "[]")); } catch { return []; } })()));
@@ -1467,11 +1472,11 @@ function setOpen(id, on) { const o = notesOpen(); if (on) o.add(id); else o.dele
 const notesHash = (id = S.npage) => "#/notes" + (id ? "/" + encodeURIComponent(id) : "");
 // the sidebar rows: the tree with open folders, or search results
 function noteRows() {
-  const q = (S.nq || "").trim().toLowerCase();
-  if (q) {
+  const q = (S.nq || "").trim().toLowerCase(), nf = S.nf || "";
+  if (q || nf) {
     const tagOnly = q.startsWith("#"), w = tagOnly ? q.slice(1) : q;
-    return S.pages.filter((p) => tagsOf(p).some((t) => t.toLowerCase().includes(w)) || (!tagOnly && (p.title || "Untitled").toLowerCase().includes(w)))
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map((p) => ({ p, depth: 0, hit: true }));
+    return S.pages.filter((p) => !isFolder(p) && (!nf || statusOf(p) === nf) && (!q || tagsOf(p).some((t) => t.toLowerCase().includes(w)) || (!tagOnly && (p.title || "Untitled").toLowerCase().includes(w))))
+      .sort((a, b) => dateOf(b).localeCompare(dateOf(a)) || b.updatedAt.localeCompare(a.updatedAt)).map((p) => ({ p, depth: 0, hit: true }));
   }
   const out = [], open = notesOpen();
   const walk = (id, depth) => { for (const p of kidPages(id)) { out.push({ p, depth }); if (open.has(p.id)) walk(p.id, depth + 1); } };
@@ -1500,7 +1505,10 @@ function showNotes(id) {
   const foot = el("div", { class: "nfoot" },
     el("button", { class: "btn", id: "newPageBtn", onclick: () => newPage() }, "+ Page", el("kbd", { text: "N" })),
     el("button", { class: "btn", id: "newFolderBtn", onclick: () => newPage(null, "folder") }, "+ Folder", el("kbd", { text: "F" })));
-  put($("#notes"), el("nav", { class: "nside-bar", "aria-label": "Notes" }, el("div", { class: "nsearch" }, search, el("kbd", { text: "/" })), tree, foot),
+  const filter = el("div", { class: "nfilter", role: "group", "aria-label": "Status" }, [["", "All"], ...STATUSES.map(([v]) => [v, v])].map(([v, text]) =>
+    el("button", { type: "button", class: "nf" + ((S.nf || "") === v ? " on" : ""), "aria-pressed": String((S.nf || "") === v), dataset: { status: v }, text,
+      onclick: (e) => { S.nf = v; for (const b of e.currentTarget.parentElement.children) { const on = b.dataset.status === v; b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); } drawPageList(); } })));
+  put($("#notes"), el("nav", { class: "nside-bar", "aria-label": "Notes" }, el("div", { class: "nsearch" }, search, el("kbd", { text: "/" })), filter, tree, foot),
     el("section", { class: "nmain" }, el("div", { class: "pbar", id: "pbar" }), el("div", { class: "nedit", id: "nedit" })));
   setNotesHash(); drawPageList(); drawEditor(); renderChrome();
 }
@@ -1567,10 +1575,10 @@ function pageView(p, side) {
 const propIcon = (type) => el("span", { class: "pg" }, icon(PI[type] || PI.text));
 function propsView(p) {
   const box = el("div", { class: "props", id: "props" });
-  const save = () => { queuePage(p.id, { props: (p.props || []).map((x) => ({ ...x })) }); draw(); };
+  const save = () => { p.props ||= []; queuePage(p.id, { props: p.props }); draw(); };
   const add = (type, label) => {
     const taken = new Set((p.props || []).map((x) => x.name)); let name = label, n = 2; while (taken.has(name)) name = `${label} ${n++}`;
-    p.props = [...(p.props || []), { id: "pr" + Date.now().toString(36), name, type, value: type === "tags" ? [] : type === "checkbox" ? false : type === "status" ? "Not started" : "" }]; save();
+    p.props = [...(p.props || []), { id: "pr" + Date.now().toString(36), name, type, value: type === "tags" ? [] : type === "checkbox" ? false : type === "status" ? "Raw" : "" }]; save();
     const last = [...box.querySelectorAll(".prow")].at(-1)?.querySelector(".pv"); if (last && type !== "checkbox" && type !== "created" && type !== "edited") (last.tagName === "INPUT" ? last.focus() : last.click());
   };
   const draw = () => put(box, (p.props || []).map((pr) => el("div", { class: "prow", dataset: { type: pr.type } },
@@ -1578,13 +1586,12 @@ function propsView(p) {
       propValue(p, pr, save))),
     el("button", { class: "padd", type: "button", id: "propAdd", onclick: (e) => {
       const have = new Set((p.props || []).map((x) => x.name));
-      menu(e.currentTarget, [...PROP_SUGGEST.filter(([, name]) => !have.has(name)).map(([type, label]) => ({ label, key: PROP_TYPES.find((t) => t[0] === type)[1], run: () => add(type, label) })), "-",
-        ...PROP_TYPES.map(([type, label]) => ({ label, run: () => add(type, label) }))]);
+      menu(e.currentTarget, PROP_TYPES.filter(([type, label]) => type === "text" || !have.has(label)).map(([type, label]) => ({ label, run: () => add(type, label) })));
     } }, el("span", { class: "pg" }, icon(ICON.plus)), el("span", { text: "Add a property" })));
   draw(); return box;
 }
 function propValue(p, pr, save) {
-  const set = (v) => { pr.value = v; queuePage(p.id, { props: p.props.map((x) => ({ ...x })) }); };
+  const set = (v) => { pr.value = v; queuePage(p.id, { props: p.props }); };   // the same objects, so the next keystroke edits what's saved
   const empty = () => el("span", { class: "empty", text: "Empty" });
   if (pr.type === "checkbox") return el("label", { class: "pv chk" }, el("input", { type: "checkbox", checked: !!pr.value, "aria-label": pr.name, onchange: (e) => set(e.target.checked) }));
   if (pr.type === "created" || pr.type === "edited") return el("span", { class: "pv ro", text: longDate((pr.type === "created" ? p.createdAt : p.updatedAt).slice(0, 10)) });
@@ -1610,7 +1617,7 @@ function propMenu(p, pr, anchor, save) {
     { label: "Type", run: () => menu(anchor, PROP_TYPES.map(([type, label]) => ({ label: (pr.type === type ? "✓ " : "") + label, run: () => {
       if (pr.type === type) return;
       const was = [].concat(pr.value ?? []).filter((x) => x !== "" && x != null && typeof x !== "boolean").map(String);
-      pr.value = type === "tags" ? was : type === "select" ? was[0] || "" : type === "status" ? (STATUSES.some((x) => x[0] === was[0]) ? was[0] : "Not started") : type === "checkbox" ? false : type === "date" ? (/^\d{4}-\d{2}-\d{2}$/.test(was[0] || "") ? was[0] : "") : ["text", "url", "email", "phone"].includes(type) ? was.join(", ") : "";
+      pr.value = type === "tags" ? was : type === "select" ? was[0] || "" : type === "status" ? (STATUSES.some((x) => x[0] === was[0]) ? was[0] : "Raw") : type === "checkbox" ? false : type === "date" ? (/^\d{4}-\d{2}-\d{2}$/.test(was[0] || "") ? was[0] : "") : ["text", "url", "email", "phone"].includes(type) ? was.join(", ") : "";
       pr.type = type; save();
     } }))) },
     { label: "Move up", disabled: p.props[0] === pr, run: () => { const i = p.props.indexOf(pr); p.props.splice(i - 1, 0, ...p.props.splice(i, 1)); save(); } },
@@ -1751,12 +1758,20 @@ async function growDialog(id) {
   if (!plan || !(plan.added || plan.links.length)) return toast(plan ? "Nothing new" : "Not a Bonsai reply");
   setPref("growZone", zoneId);
   const made = await safely(() => store.growPage(page.id, plan, zoneId)); if (!made) return;
+  await setPageStatus(page.id, "Grown");
   await refresh(); redrawNotes();
   const n = made.nodeIds.length, l = made.linkIds.length;
   toast(`Grew ${n} idea${n === 1 ? "" : "s"}${l ? `, ${l} link${l === 1 ? "" : "s"}` : ""}`, { label: "Undo", run: () => ungrow(page.id) });
 }
+async function setPageStatus(id, value) {
+  await load(); const p = pageOf(id); if (!p) return;
+  const props = (p.props || []).map((x) => ({ ...x })), st = props.find((x) => x.type === "status");
+  if (st) st.value = value; else props.push({ id: "pr" + Date.now().toString(36), name: "Status", type: "status", value });
+  await safely(() => store.updatePage(id, { props }));
+}
 async function ungrow(id) {
   const made = await safely(() => store.ungrowPage(id)); if (!made) return;
+  await load(); const p = pageOf(id); if (p && !(p.grown || []).length && statusOf(p) === "Grown") await setPageStatus(id, "Tidied");
   await refresh(); redrawNotes(); toast("Taken back");
 }
 // topics in garden order, grouped by island (for choosing where a page grows)

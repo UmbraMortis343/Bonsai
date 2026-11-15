@@ -486,3 +486,8 @@ body[data-window="garden"][data-gfold="1"] #gpanel{display:none}
 .gsrow{display:grid;grid-template-columns:96px 1fr;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
 .gsrow select{padding:5px 8px;font-size:13px;border-radius:4px;color:var(--ink)}
 .gsrow input[type=checkbox]{justify-self:start;width:16px;height:16px;accent-color:var(--accent)}
+/* the notes sidebar's status filter */
+.nfilter{display:flex;gap:2px;padding:6px 8px;border-bottom:1px solid var(--line)}
+.nf{flex:1;border:0;background:none;border-radius:4px;padding:3px 4px;font-size:12px;font-weight:600;color:var(--muted)}
+.nf:hover{background:var(--hover)}
+.nf.on{background:var(--card);color:var(--ink);box-shadow:0 0 0 1px var(--line)}

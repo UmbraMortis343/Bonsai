@@ -8,7 +8,8 @@ Notes, a third window, and a cleaner look everywhere.
 
 - Garden, Knowledge and Notes are three windows, switched from the top bar or round with Shift+Tab.
 - Notes work like Notion and stand on their own: folders and pages, pages inside pages, nothing tied to a topic or a graph. Search by name or #tag (/). N new page, F new folder; drag a page onto a folder to move it, or use Move to.
-- Properties at the top of a page, laid out as in Notion: text, number, select, tags, status, date, checkbox, link, email, phone, created and last edited. Add a property suggests Due date, Status, Priority and Tags. Dates open a calendar. Tags made on one page are offered on the others.
+- Properties at the top of a page, laid out as in Notion, and only the ones that help with notes: Tags, Date (opens a calendar), Status, Source, Text and Created. Tags made on one page are offered on the others.
+- Status follows a note from Raw to Tidied to Grown; growing a page into a knowledge graph marks it Grown by itself. The sidebar can show just Raw, Tidied or Grown notes, newest first.
 - Type @ for a date tag (today, tomorrow, next Monday or any day); click it to change the day.
 - Writing as in Notion: / for blocks, Markdown shortcuts, Tab to indent, Ctrl+B, I, U, E, K, a toolbar over selected text, drag blocks by ⋮⋮ or Ctrl+Shift+↑ ↓, and block colours.
 - In a knowledge graph, O opens your notes beside it.

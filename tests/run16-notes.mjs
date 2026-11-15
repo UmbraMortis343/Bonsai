@@ -50,8 +50,8 @@ await page.click('#nlist .nrow:has-text("Physics") .chev');
 await page.click('#nlist .nrow:has-text("Lecture 6") .nname');
 await page.waitForFunction(() => document.querySelector("#pageTitle")?.value === "Lecture 6: Momentum");
 t.eq((await page.textContent("#pbar .pcrumb")).replace(/\s+/g, " ").trim(), "Physics/Lecture 6: Momentum", "the bar over the page shows where it sits");
-t.eq(await page.$$eval("#props .prow .pname > span:last-child", (r) => r.map((x) => x.textContent)), ["Course", "Tags", "Date"], "its properties");
-t.eq(await page.$$eval("#props .tagc", (r) => r.map((x) => x.textContent)), ["PHYSICS 120", "lecture", "momentum"], "select and tags");
+t.eq(await page.$$eval("#props .prow .pname > span:last-child", (r) => r.map((x) => x.textContent)), ["Tags", "Date", "Status"], "its properties");
+t.eq(await page.$$eval("#props .tagc", (r) => r.map((x) => x.textContent)), ["lecture", "momentum", "physics 120"], "its tags");
 t.eq(await page.locator("#nedit .blk.t-bullet").count() > 10, true, "the lecture's bullets are blocks");
 t.eq(await page.isVisible(".gchip, #attachBtn"), false, "nothing ties it to a graph");
 await page.screenshot({ path: "tests/shots/notes-laptop.png" });
@@ -73,28 +73,31 @@ await page.click('#nlist .nrow:has-text("Reading list") .nname');
 await page.waitForFunction(() => document.querySelector("#pageTitle")?.value === "Reading list");
 await page.click("#props .prow .pv.chips"); await page.waitForSelector(".tagpop input");
 await type("books"); await k("Enter"); await k("Escape");
-await page.click("#propAdd"); await page.click('.mi:has-text("Checkbox")');
-await page.click('#props .prow[data-type="checkbox"] input');
+t.eq(await (async () => { await page.click("#propAdd"); const m = await page.$$eval(".menu .mi", (r) => r.map((x) => x.textContent)); await k("Escape"); return m; })(), ["Date", "Status", "Source", "Text", "Created"], "only the properties that suit notes, less what the page has");
+await page.click("#propAdd"); await page.click('.mi:has-text("Source")'); await type("example.org/slides");
 await page.waitForTimeout(900);
-t.eq((await pg("Reading list")).props.map((x) => [x.name, x.value]), [["Tags", ["reading", "books"]], ["Checkbox", true]], "properties are saved");
+t.eq((await pg("Reading list")).props.map((x) => [x.name, x.value]), [["Tags", ["reading", "books"]], ["Source", "example.org/slides"]], "properties are saved");
 await page.fill("#notesSearch", "#books"); await page.dispatchEvent("#notesSearch", "input");
 t.eq(await page.$$eval("#nlist .nrow .nt", (r) => r.map((x) => x.textContent)), ["Reading list"], "a new tag is searchable");
 await page.fill("#notesSearch", ""); await page.dispatchEvent("#notesSearch", "input");
 
-// Suggested properties: Due date opens a calendar, Status starts as Not started, Priority offers High/Medium/Low, Created fills itself in.
-await page.click("#propAdd"); await page.click('.mi:has-text("Due date")');
+// Date opens a calendar, Status runs Raw → Tidied → Grown, Created fills itself in; the sidebar filters by Status.
+await page.click("#propAdd"); await page.click('.menu .mi:has-text("Date")');
 await page.waitForSelector(".datepop"); await page.click("#dpToday");
-await page.click("#propAdd"); await page.click('.mi:has-text("Status")');
-await page.click('.mi:has-text("In progress")');   // adding it opens its choices
-await page.click("#propAdd"); await page.click('.mi:has-text("Priority")');
-await page.waitForSelector(".tagpop"); t.eq(await page.$$eval(".tagpop .ti .tagc", (r) => r.map((x) => x.textContent)), ["High", "Medium", "Low"], "Priority offers its usual options");
-await page.click('.tagpop .ti:has-text("High")');
+await page.click("#propAdd"); await page.click('.menu .mi:has-text("Status")');
+t.eq(await page.$$eval(".menu .mi", (r) => r.map((x) => x.textContent.replace("✓ ", ""))), ["Raw", "Tidied", "Grown"], "a note's statuses");
+await page.click('.menu .mi:has-text("Tidied")');
 await page.click("#propAdd"); await page.click('.menu .mi:has-text("Created")');
 await page.waitForTimeout(900);
 const today = await state(page, () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; });
-t.eq((await pg("Reading list")).props.slice(2).map((x) => [x.name, x.type, x.value]), [["Due date", "date", today], ["Status", "status", "In progress"], ["Priority", "select", "High"], ["Created", "created", ""]], "suggested properties");
+t.eq((await pg("Reading list")).props.slice(2).map((x) => [x.name, x.type, x.value]), [["Date", "date", today], ["Status", "status", "Tidied"], ["Created", "created", ""]], "date, status, created");
 t.eq((await page.textContent('#props .prow[data-type="created"] .pv')).length > 6, true, "Created shows the date it was made");
 await page.screenshot({ path: "tests/shots/notes-props.png" });
+await page.click('.nfilter .nf[data-status="Tidied"]');
+t.eq(await page.$$eval("#nlist .nrow .nt", (r) => r.map((x) => x.textContent)), ["Reading list", "Lecture 6: Momentum"], "the Tidied filter, newest date first");
+await page.click('.nfilter .nf[data-status="Raw"]');
+t.eq(await page.$$eval("#nlist .nrow .nt", (r) => r.map((x) => x.textContent)), ["Problem sheet 6", "Workshop: GROW model"], "the Raw filter");
+await page.click('.nfilter .nf[data-status=""]');
 
 // Backspacing a page to nothing leaves an ordinary empty line; @ makes a date tag.
 await page.click("#nedit .blk .tx >> nth=-1"); await k("End");
@@ -160,8 +163,11 @@ await page.waitForFunction((n) => bonsai.S.nodes.length === n + 7, before[0]);
 const grown = await state(page, () => { const by = (x) => bonsai.S.nodes.find((n) => n.title === x), S = bonsai.S;
   return { inelastic: S.byId.get(by("Perfectly inelastic collision").parentId).title, body: by("Conservation of momentum").body.includes("recoil"), links: S.links.length, page: Object.keys(S.pages.find((p) => p.title.startsWith("Lecture 6"))).filter((k) => /tree|zone/i.test(k)) }; });
 t.eq(grown, { inelastic: "Inelastic collision", body: true, links: before[1] + 2, page: [] }, "ideas strung onto the right ones; the page stays untied");
+await page.waitForFunction(() => bonsai.S.pages.find((p) => p.title.startsWith("Lecture 6")).props.find((x) => x.type === "status")?.value === "Grown");
+t.eq(await page.textContent('#props .prow[data-type="status"] .stat'), "Grown", "growing a page marks it Grown");
 await page.click("#toast .link");
 await page.waitForFunction((n) => bonsai.S.nodes.length === n, before[0]);
+await page.waitForFunction(() => bonsai.S.pages.find((p) => p.title.startsWith("Lecture 6")).props.find((x) => x.type === "status")?.value === "Tidied");
 await k("g"); await page.waitForSelector("#growReply");
 t.eq(await page.inputValue("#growTopic"), ids.mech, "it remembers the topic");
 await page.fill("#growReply", reply); await k("Control+Enter");
