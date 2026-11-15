@@ -2,7 +2,7 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
-## 0.11.0 — 2026-11-15
+## 0.11.0 — 2026-11-16
 
 Notes, a third window, and a cleaner look everywhere.
 
