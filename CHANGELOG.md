@@ -4,13 +4,14 @@ Every release of Bonsai, newest first. Versions follow `major.minor.patch`: mino
 
 ## 0.11.0 — 2026-11-15
 
-Notes.
+Notes, a third window beside the garden and knowledge.
 
-- A notes window (O): pages per topic, for lectures and anything else you want down before it goes into a graph. 1–9 or ↑ ↓ pick a page, ← → change topic, N adds a page, Del deletes one (with undo).
-- Bullets in the editor: Enter carries the bullet on, Tab and Shift+Tab indent, Enter on an empty bullet steps out.
-- Grow with Claude (G): copy the page for Claude, paste its reply back, see what it adds, then grow. Claude picks the ideas, strings them onto your graphs (or starts a new one) and adds links, keeping details as the ideas' notes. Growing again adds only what's new. Undo, or take back the last grow from the page menu.
-- In a knowledge graph, O pulls the topic's notes up beside it.
-- The garden's panel has Notes in place of New note; the quick-capture inbox (I) is unchanged.
+- Garden, Knowledge and Notes are switched from the top bar; Shift+Tab goes round all three. O opens Notes.
+- Pages per topic, with pages inside pages in the sidebar. 1–9 or ↑ ↓ pick a page, ← → change topic, N adds a page, + on a page adds one inside it, Del deletes (with undo).
+- Writing works like Notion: type / for blocks (headings, bullets, numbers, to-dos, toggles, quote, callout, code, divider, page), or Markdown shortcuts (# , - , 1. , [] , > ). Tab and Shift+Tab indent, Ctrl+B, I, U, E, K format, and a toolbar shows over selected text. Drag a block by its ⋮⋮ handle, or Ctrl+Shift+↑ ↓; the handle also turns a block into another kind, colours it, duplicates or deletes it.
+- Notion's colours: warm greys instead of the slate blue, light and dark, with its nine text and background colours for blocks.
+- Attach a page to any knowledge graphs (A). In a graph, O shows the pages attached to it, beside it. Idea notes stay separate.
+- Grow with Claude (G): copy the page for Claude, paste its reply back, see what it adds, then grow. Claude picks the ideas, strings them onto your graphs (or starts one) and adds links, keeping details as the ideas' notes. The page is attached to the graphs it grew into. Growing again adds only what's new; undo, or take the last grow back from the page menu.
 
 ## 0.10.0 — 2026-11-15
 

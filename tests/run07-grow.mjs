@@ -8,16 +8,16 @@ const ids = await seed(page);
 const key = (k) => page.keyboard.press(k);
 
 // Nothing is thirsty on day one; a few days later the garden shows what is.
-if (await page.isVisible("#switchBtn .thirst")) t.fail("something thirsty on the first day");
+if (await page.isVisible("#winGarden .thirst")) t.fail("something thirsty on the first day");
 await page.evaluate(async () => {
   const b = await bonsai.store.exportAll(), old = new Date(Date.now() - 3 * 86400000).toISOString();
   b.nodes.forEach((n, i) => { n.createdAt = new Date(Date.parse(old) + (n.parentId === null ? 0 : (i + 1) * 60000)).toISOString(); });
   await bonsai.store.importAll(b); await bonsai.refresh();
 });
-t.eq(await page.textContent("#switchBtn .thirst"), "5", "thirsty count on the Garden button");   // 3 trunks, Resistors, Capacitors
-await page.keyboard.press("Shift+Tab");
+t.eq(await page.textContent("#winGarden .thirst"), "5", "thirsty count on the Garden button");   // 3 trunks, Resistors, Capacitors
+await page.click("#winGarden");
 await page.waitForSelector("#waterAll");
-t.eq(await state(page, () => [bonsai.S.view, location.hash]), ["isles", "#/"], "Shift+Tab opens the garden");
+t.eq(await state(page, () => [bonsai.S.view, location.hash]), ["isles", "#/"], "the switch opens the garden");
 await page.click("#waterAll"); await page.waitForSelector("#showAnswer");
 t.eq(await state(page, () => [bonsai.S.view, bonsai.S.review.ids.length]), ["garden", 5], "Water starts a round in the watering view");
 await key("Escape"); await page.waitForSelector("#review", { state: "hidden" });

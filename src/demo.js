@@ -216,7 +216,9 @@ const LINKS = [
   ["Geometric sequences", "Harmonics"], ["Repeating patterns", "Polyrhythm"], ["Coulomb's law", "Weight", "inverse square"], ["Energy transfer", "Work"], ["Density", "Weight"],
 ];
 
-// Notes pages, written the way lecture notes are, to try growing with Claude.
+import { textToBlocks } from "./blocks.js";
+
+// Notes pages, written the way lecture notes are, to try growing with Claude: [title, text, graph it's attached to, pages inside it]
 const PAGES = {
   Mechanics: [["Lecture 6: Momentum", `Quiz on Friday, bring calculator
 - Momentum p = mv (vector, kg m/s)
@@ -234,7 +236,13 @@ const PAGES = {
   - elastic: KE conserved too (snooker balls, roughly)
   - inelastic: KE lost to heat/sound/deformation
   - perfectly inelastic: objects stick together, max KE lost
-- Worked example: 2 kg at 3 m/s hits 1 kg at rest, they stick → v = 6/3 = 2 m/s`]],
+- Worked example: 2 kg at 3 m/s hits 1 kg at rest, they stick → v = 6/3 = 2 m/s`, "Energy and momentum", [["Problem sheet 6", `## Q1
+A 0.15 kg ball at 20 m/s is caught and stopped in 0.1 s. Average force?
+- Δp = 0.15 × 20 = 3 kg m/s
+- F = Δp / Δt = 30 N
+## Q2
+- [ ] Two skaters push apart: 50 kg moves off at 2 m/s. How fast does the 40 kg one go?
+- [ ] Ask in tutorial about rockets and dp/dt`]]]],
   Coaching: [["Workshop: GROW model", `Facilitator: Sam. Slides on the drive.
 GROW = a structure for a coaching conversation
   Goal: what do you want out of this? make it specific
@@ -245,7 +253,7 @@ GROW = a structure for a coaching conversation
 - Silence is fine, let them think
 - Coach doesn't need to know the answer
 - Practised in pairs: 10 min each, observer gave feedback
-  - I jumped to Options too fast, skipped Reality`]],
+  - I jumped to Options too fast, skipped Reality`, "Coaching"]],
 };
 
 export function demoBackup(now = Date.now()) {
@@ -277,6 +285,12 @@ export function demoBackup(now = Date.now()) {
   for (const [a, b, label = ""] of LINKS) { const x = byTitle.get(a), y = byTitle.get(b); if (x && y && x !== y) links.push({ id: id("l"), fromId: x, toId: y, label, note: "", createdAt: made, updatedAt: made }); }
   const garden = { hubs: HUBS.map(([hid, name]) => ({ id: hid, name })), zone: {}, patron: "none",
     islands: ISLANDS.map(([iid, name, landmark, hubId, topics, after, from]) => ({ id: iid, name, landmark, hubId, zoneIds: topics.map((t) => zoneByName.get(t).id), after: after || null, from: (from && byTitle.get(from)) || null })) };
-  const pages = Object.entries(PAGES).flatMap(([name, list]) => list.map(([title, text], k) => ({ id: id("p"), zoneId: zoneByName.get(name).id, title, text, order: k + 1, createdAt: iso(now - (2 - k) * DAY), updatedAt: iso(now - DAY), grown: [] })));
+  const pages = [];
+  const addPages = (zoneId, list, parentId) => list.forEach(([title, text, graph, inside = []], k) => {
+    const p = { id: id("p"), zoneId, parentId, title, blocks: textToBlocks(text), treeIds: trees.filter((t) => t.name === graph).map((t) => t.id), order: k + 1, createdAt: iso(now - (2 - k) * DAY), updatedAt: iso(now - DAY), grown: [] };
+    pages.push(p);
+    if (inside.length) { addPages(zoneId, inside, p.id); for (const c of pages.filter((x) => x.parentId === p.id)) p.blocks.push({ id: id("b"), type: "page", pageId: c.id, html: "", indent: 0 }); }
+  });
+  for (const [name, list] of Object.entries(PAGES)) addPages(zoneByName.get(name).id, list, null);
   return { app: "bonsai", schema: 4, exportedAt: iso(now), zones, trees, nodes, links, events: [], patches: [], inbox: [], pages, meta: [{ key: "garden", value: garden }, { key: "demo", value: iso(now) }] };
 }

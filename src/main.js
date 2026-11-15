@@ -14,6 +14,7 @@ import { createTechTree } from "./techtree.js";
 import { CHANNEL } from "./channel.js";
 import { demoBackup } from "./demo.js";
 import { growPrompt, readGrow, planGrow, growSummary } from "./notes.js";
+import { createEditor, textToBlocks, blocksToText } from "./blocks.js";
 
 const PALETTE = [["Blue", "#3b82f6"], ["Violet", "#8b5cf6"], ["Pink", "#ec4899"], ["Red", "#ef4444"], ["Orange", "#f97316"], ["Amber", "#f59e0b"], ["Green", "#22c55e"], ["Teal", "#14b8a6"], ["Cyan", "#06b6d4"]];
 const SWATCHES = [["Auto", ""], ...PALETTE];
@@ -22,7 +23,7 @@ const G = { leaf: "#22c55e", thirsty: "#f59e0b", dry: "#a8a29e", stem: "#65a30d"
 const DAY = 86400000;
 const ICON = {
   back: "M15 5l-7 7 7 7", fold: "M6 9l6 6 6-6", unfold: "M6 15l6-6 6 6", close: "M6 6l12 12M18 6L6 18", plus: "M12 5v14M5 12h14", more: "M5 12h.01M12 12h.01M19 12h.01",
-  search: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4", page: "M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h5", sprout: "M12 21v-8M12 13c0-4 3-6 7-6 0 4-3 6-7 6zM12 15c0-3-2-5-6-5 0 3 2 5 6 5z", inbox: "M4 13l3-8h10l3 8v6H4zM4 13h5a3 3 0 0 0 6 0h5", play: "M8 5l11 7-11 7z", pause: "M8 5v14M16 5v14",
+  search: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4", page: "M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h5", graph: "M7 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM21 8a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM6.3 7.6l4.7 8.6M17.6 9.6l-4.6 6.8M7 6.2l10 1.6", sprout: "M12 21v-8M12 13c0-4 3-6 7-6 0 4-3 6-7 6zM12 15c0-3-2-5-6-5 0 3 2 5 6 5z", inbox: "M4 13l3-8h10l3 8v6H4zM4 13h5a3 3 0 0 0 6 0h5", play: "M8 5l11 7-11 7z", pause: "M8 5v14M16 5v14",
 };
 const icon = (d) => el("span", { class: "ic", html: `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>` });
 const ib = (id, label, d, onclick) => el("button", { class: "ib", id, title: label, "aria-label": label, onclick }, icon(d));
@@ -59,7 +60,8 @@ function pathOf(n) {
 // ---------- data ----------
 async function load() {
   const [zones, trees, nodes, links, inbox, patches, pages] = await Promise.all([store.allZones(), store.allTrees(), store.allNodes(), store.allLinks(), store.listInbox(), store.listPatches(), store.listPages()]);
-  S.allZones = zones; S.allTrees = trees; S.nodes = nodes; S.links = links; S.inbox = inbox; S.patches = patches; S.pages = pages;
+  S.allZones = zones; S.allTrees = trees; S.nodes = nodes; S.links = links; S.inbox = inbox; S.patches = patches;
+  S.pages = pages.map((p) => (p.blocks ? { ...p, treeIds: p.treeIds || [] } : { ...p, parentId: p.parentId || null, treeIds: p.treeIds || [], blocks: textToBlocks(p.text || "") }));   // early beta pages were plain text
   S.zones = zones.filter((z) => !z.archived).sort(byOrder);
   const ok = new Set(S.zones.map((z) => z.id));
   S.trees = trees.filter((t) => !t.archived && ok.has(t.zoneId)).sort(byOrder);
@@ -340,6 +342,7 @@ function labelOpacity(L, dist) {
 // ---------- views ----------
 async function go() {
   await flushPage(); closeAll(); S.pick?.finish(null); stopPlay();
+  if (!/^#\/notes/.test(location.hash)) { S.ed?.destroy(); S.ed = null; }
   S.quick = null; S.review = null; S.cutoff = null; S.stitch = false;
   await load();
   const m = location.hash.match(/^#\/tree\/([^/?]+)/), id = m && decodeURIComponent(m[1]);
@@ -351,7 +354,6 @@ async function go() {
   if (origin && mm && S.view !== "meaning") S.meanBack = origin;
   if (origin && id && S.view !== "tree") S.treeBack = origin;
   if (from != null && tm && !/^#\/(tree|techtree)/.test(from)) S.techBack = from || "#/";
-  if (from != null && nm && !/^#\/notes/.test(from)) S.notesBack = from || "#/";
   const home = !mm && !tm && !nm && !location.hash.startsWith("#/garden") && !location.hash.startsWith("#/forest") && !(id && treeOf(id));
   showWindow(home, !!tm, !!nm);
   if (home) { if (id) history.replaceState(null, "", "#/"); showIsles(); }
@@ -392,12 +394,8 @@ function showGarden() {
   renderChrome();
   if (S.water !== undefined) { const w = S.water; S.water = undefined; if (w.treeId) S.fsel = w.treeId; reviewIds(w.ids); }
 }
-// Shift+Tab: swap between the knowledge window and the garden.
-function toggleWindow() {
-  if (S.review || S.pick) return;
-  if (S.view === "isles" || S.view === "garden") location.hash = S.lastKnowledge || "#/forest";
-  else { S.lastKnowledge = location.hash || "#/forest"; location.hash = "#/"; }
-}
+// Shift+Tab: round the windows, garden → knowledge → notes.
+function toggleWindow() { goWindow({ garden: "knowledge", knowledge: "notes", notes: "garden" }[winOf(S.view)]); }
 function pickPlant(id) {
   S.fsel = treeOf(id) ? id : null; markSel(); renderActions();
   const at = S.fsel && treeSpot(S.fsel); if (at) stage.flyTo({ ...at, radius: at.radius * 1.5 }, 420);
@@ -480,13 +478,13 @@ function showHover(id, x, y) {
 function renderTop() {
   const due = dueList(null).length;
   const search = ib("searchBtn", "Search", ICON.search, () => find());
-  const swap = el("button", { class: "btn pill plain", id: "switchBtn", title: "Shift+Tab", onclick: toggleWindow }, S.view === "garden" || S.view === "isles" ? "Knowledge" : "Garden", S.view !== "garden" && S.view !== "isles" && due ? el("span", { class: "thirst", text: String(due) }) : null);
+  const swap = winSwitch();
   const brand = el("div", { class: "brand" }, el("img", { src: "icons/icon-192.png", alt: "", width: 26, height: 26 }), el("h1", { text: "Bonsai" }));
   if (S.view === "notes") {
     const opt = (z) => el("option", { value: z.id, text: z.name, selected: z.id === S.nzone });
     const pick = el("select", { id: "notesTopic", "aria-label": "Topic", onchange: (e) => { location.hash = "#/notes/" + encodeURIComponent(e.target.value); } },
       notesTopics().map((g) => (g.name ? el("optgroup", { label: g.name }, g.zones.map(opt)) : g.zones.map(opt))));
-    put($("#top"), ib("backBtn", "Back", ICON.back, () => { location.hash = S.notesBack || "#/"; }), el("div", { class: "crumb" }, el("h1", { text: "Notes" }), S.zones.length ? pick : null), el("span", { class: "grow" }), swap, search);
+    put($("#top"), el("div", { class: "crumb" }, el("h1", { text: "Notes" }), S.zones.length ? pick : null), el("span", { class: "grow" }), swap, search, ib("moreBtn", "Menu", ICON.more, (e) => appMenu(e.currentTarget)));
   } else if (S.view === "tech") {
     put($("#top"), ib("backBtn", "Back", ICON.back, () => { location.hash = S.techBack; }), el("div", { class: "crumb" }, el("h1", { text: "Tech tree" })), el("span", { class: "grow" }), swap, search);
   } else if (S.view === "meaning") {
@@ -602,7 +600,7 @@ async function capture() {
 function shortcuts() {
   const rows = [["↑ ↓ ← →", "Child, parent, siblings"], ["Tab", "Add a branch"], ["Enter", "Add a sibling"], ["R", "Rename"], ["Del", "Delete"], ["Space", "Notes"],
     ["L", "Link"], ["G", "Graft"], ["C", "Colour"], ["F", "Fly to idea"], ["0", "Fit view"], ["W A S D  Q E", "Fly"], ["/", "Search"], ["I", "Capture"],
-    ["1–9", "Garden: go to a hub, an island, then a topic"], ["0  Esc", "Garden: step back out"], ["W", "Garden: water"], ["D", "Garden: day or night"], ["S", "Garden: split a topic past 200%"], ["P", "Patches"], ["T", "Timeline"], ["M", "Meaning view"], ["K", "Tech tree"], ["1–9  Enter", "Tech tree: pick, then go in or open"], ["Space", "Tech tree: open or close an idea"], ["Esc", "Tech tree: let go, then step back a tier"], ["T  A  H", "Tech tree: this tier only, show all, back to the start"], ["B", "Tech tree: what an island grows from"], ["L", "Tech tree: tree or web"], ["Y", "Tech tree: simple or organic look"], ["J", "Tech tree web: jiggle while dragging, or hold still"], ["N  Z", "New tree, new zone"], ["O", "Notes; in a graph, notes beside it"], ["N  G", "Notes: new page, grow with Claude"], ["1–9  ↑ ↓", "Notes: pick a page"], ["← →", "Notes: topics"], ["Tab  Shift+Tab", "Notes: indent a bullet"], ["Shift+Tab", "Knowledge or garden"], ["Enter  V", "Garden: water the plant, water everything"], ["Esc", "Back"]];
+    ["1–9", "Garden: go to a hub, an island, then a topic"], ["0  Esc", "Garden: step back out"], ["W", "Garden: water"], ["D", "Garden: day or night"], ["S", "Garden: split a topic past 200%"], ["P", "Patches"], ["T", "Timeline"], ["M", "Meaning view"], ["K", "Tech tree"], ["1–9  Enter", "Tech tree: pick, then go in or open"], ["Space", "Tech tree: open or close an idea"], ["Esc", "Tech tree: let go, then step back a tier"], ["T  A  H", "Tech tree: this tier only, show all, back to the start"], ["B", "Tech tree: what an island grows from"], ["L", "Tech tree: tree or web"], ["Y", "Tech tree: simple or organic look"], ["J", "Tech tree web: jiggle while dragging, or hold still"], ["N  Z", "New tree, new zone"], ["O", "Notes; in a graph, notes beside it"], ["N  G", "Notes: new page, grow with Claude"], ["1–9  ↑ ↓", "Notes: pick a page"], ["← →", "Notes: topics"], ["A", "Notes: attach the page to a graph"], ["/", "Notes, while writing: blocks"], ["Tab  Shift+Tab", "Notes, while writing: indent a block"], ["Ctrl+B I U E K", "Notes, while writing: bold, italic, underline, code, link"], ["Ctrl+Shift+↑ ↓", "Notes, while writing: move a block"], ["Shift+Tab", "Garden, knowledge, notes"], ["Enter  V", "Garden: water the plant, water everything"], ["Esc", "Back"]];
   dialog({ title: "Shortcuts", ok: null, cancel: "Close", body: el("table", { class: "keys" }, rows.map(([k, d]) => el("tr", {}, el("td", {}, el("kbd", { text: k })), el("td", { text: d })))) });
 }
 async function exportBackup() {
@@ -993,7 +991,7 @@ function crossLinks() {
 }
 function showWindow(garden, flat = false, notes = false) {
   $("#notes").hidden = !notes; flat ||= notes;
-  $("#stage").hidden = garden || flat; $("#isles").hidden = !garden; $("#tech").hidden = !flat || notes; if (!flat || notes) { tech?.setActive(false); document.body.classList.remove("night-ui"); } $("#gpanel").hidden = !garden; document.body.dataset.window = garden ? "garden" : "";
+  $("#stage").hidden = garden || flat; $("#isles").hidden = !garden; $("#tech").hidden = !flat || notes; if (!flat || notes) { tech?.setActive(false); document.body.classList.remove("night-ui"); } $("#gpanel").hidden = !garden; document.body.dataset.window = garden ? "garden" : notes ? "notes" : "";
   if (!garden) { isles?.setActive(false); stage.resize(); }   // the stage has no size while hidden; measure it again before anything is framed
 }
 // The garden's renderer, made when first needed: by the garden, or by the tech tree for its pictures.
@@ -1360,19 +1358,20 @@ function back() {
   if (closeTop()) return;
   if (S.pick) return S.pick.finish(null);
   if (S.quick) { S.quick = null; return renderActions(); }
-  if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName)) return document.activeElement.blur();
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || document.activeElement?.isContentEditable) return document.activeElement.blur();
   if (S.review) return endReview();
   if (S.cutoff != null) return toggleTimeline();
   if (S.panel) { S.panel = null; return renderPanel(); }
   if (S.nside && S.view === "tree") return toggleSide();
   if (S.view === "garden" && S.fsel) return pickPlant(null);
+  if (S.view === "notes") return;   // a window of its own: nothing to step back to
   if (S.view === "isles") { if (S.topic >= 0) return pickTopic(-1); if (S.isle >= 0) return pickIsle(-1); if (S.hub >= 0) pickHub(-1); return; }
   if (S.view === "tech") return techEsc();
-  location.hash = S.view === "tree" ? S.treeBack : S.view === "meaning" ? S.meanBack : S.view === "notes" ? S.notesBack || "#/" : "#/";
+  location.hash = S.view === "tree" ? S.treeBack : S.view === "meaning" ? S.meanBack : "#/";
 }
 function onKey(e) {
   if (e.key === "Escape") { e.preventDefault(); return back(); }
-  if (e.ctrlKey || e.metaKey || e.altKey || overlayOpen() || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName) || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName)) return;
+  if (e.ctrlKey || e.metaKey || e.altKey || overlayOpen() || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName) || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || e.target?.isContentEditable || document.activeElement?.isContentEditable) return;
   const k = e.key.length === 1 ? e.key.toLowerCase() : e.key, stop = () => e.preventDefault();
   if (S.review) {
     const r = S.review;
@@ -1431,9 +1430,12 @@ function onKey(e) {
   else if (k.startsWith("Arrow")) { stop(); nav(k); }
 }
 
-// ---------- notes: pages per topic, written first and grown into graphs with Claude ----------
+// ---------- notes: the third window. Pages per topic, nested, written as blocks, attached to graphs, grown with Claude ----------
 const pagesOf = (zoneId) => S.pages.filter((p) => p.zoneId === zoneId);
 const pageOf = (id) => S.pages.find((p) => p.id === id);
+const kidPages = (id) => S.pages.filter((p) => (p.parentId || null) === (id || null)).sort((a, b) => a.order - b.order || a.createdAt.localeCompare(b.createdAt));
+const attachedTo = (treeId) => S.pages.filter((p) => (p.treeIds || []).includes(treeId));
+const pageTitle = (id) => pageOf(id)?.title || (pageOf(id) ? "Untitled" : "");
 // topics in garden order, grouped by island
 function notesTopics() {
   const seen = new Set(), groups = [], live = new Map(S.zones.map((z) => [z.id, z]));
@@ -1449,111 +1451,141 @@ function notesZone() {
   const ok = (id) => id && S.zones.some((z) => z.id === id);
   return [S.nzone, pref("notesZone", ""), S.pages.at(-1)?.zoneId].find(ok) || notesOrder()[0]?.id || null;
 }
-// O: the notes window, or in a knowledge graph the topic's notes beside it
+const notesHash = (z = notesZone(), p = null) => "#/notes" + (z ? "/" + encodeURIComponent(z) + (p ? "/" + encodeURIComponent(p) : "") : "");
+// O: the notes window, or in a knowledge graph its attached pages beside it
 function openNotes() {
   if (S.view === "tree") return toggleSide();
-  if (S.view === "notes") { location.hash = S.notesBack || "#/"; return; }
+  if (S.view === "notes") return;
   const t = S.view === "isles" ? S.model[S.isle]?.topics[S.topic] : null;
-  const z = t?.id || (S.view === "meaning" && S.scope) || notesZone();
-  location.hash = "#/notes" + (z ? "/" + encodeURIComponent(z) : "");
+  location.hash = t?.id ? notesHash(t.id) : S.view === "meaning" && S.scope ? notesHash(S.scope) : S.lastNotes || notesHash();
 }
+// pages in the sidebar, in the order they show (children under open parents)
+function visiblePages(zoneId) {
+  const out = [], open = S.nopen || (S.nopen = new Set(JSON.parse(pref("notesOpen", "[]"))));
+  const walk = (parentId, depth) => { for (const p of kidPages(parentId).filter((x) => x.zoneId === zoneId)) { out.push({ p, depth }); if (open.has(p.id)) walk(p.id, depth + 1); } };
+  // top level of a topic: pages with no parent, or whose parent lives elsewhere
+  for (const p of pagesOf(zoneId).filter((x) => !x.parentId || pageOf(x.parentId)?.zoneId !== zoneId).sort((a, b) => a.order - b.order || a.createdAt.localeCompare(b.createdAt))) { out.push({ p, depth: 0 }); if (open.has(p.id)) walk(p.id, 1); }
+  return out;
+}
+function setOpen(id, on) { S.nopen ||= new Set(); if (on) S.nopen.add(id); else S.nopen.delete(id); setPref("notesOpen", JSON.stringify([...S.nopen])); }
 function showNotes(zoneId, pageId) {
   S.view = "notes"; S.tree = null; S.sel = null; S.lay = null; S.panel = null; clearScene(); hideHover();
-  const z = S.zones.some((x) => x.id === zoneId) ? zoneId : notesZone();
+  const want = pageOf(pageId), z = want ? want.zoneId : S.zones.some((x) => x.id === zoneId) ? zoneId : notesZone();
   S.nzone = z; if (z) setPref("notesZone", z);
-  const list = pagesOf(z);
-  S.npage = pageOf(pageId)?.zoneId === z ? pageId : pageOf(S.npage)?.zoneId === z ? S.npage : list.at(-1)?.id || null;
+  S.npage = want ? want.id : pageOf(S.npage)?.zoneId === z ? S.npage : visiblePages(z)[0]?.p.id || null;
+  for (let q = pageOf(pageOf(S.npage)?.parentId); q; q = pageOf(q.parentId)) setOpen(q.id, true);   // show the way down to it
   put($("#notes"), el("nav", { class: "nlist", id: "nlist", "aria-label": "Pages" }), el("section", { class: "nedit", id: "nedit" }));
+  S.lastNotes = notesHash(z, S.npage); setNotesHash();
   drawPageList(); drawEditor(); renderChrome();
 }
-function setNotesHash() {
-  const h = "#/notes/" + encodeURIComponent(S.nzone || "") + (S.npage ? "/" + encodeURIComponent(S.npage) : "");
-  history.replaceState(null, "", h); S.hashNow = h;
-}
+function setNotesHash() { const h = notesHash(S.nzone, S.npage); history.replaceState(null, "", h); S.hashNow = h; S.lastNotes = h; }
 function drawPageList() {
   const host = $("#nlist"); if (!host) return;
-  const list = pagesOf(S.nzone);
-  put(host, list.map((p, i) => el("button", { class: "nrow" + (p.id === S.npage ? " on" : ""), dataset: { id: p.id }, onclick: () => pickPage(p.id) },
-    el("kbd", { text: i < 9 ? String(i + 1) : "", class: i < 9 ? "" : "blank" }), el("b", { text: p.title || "Untitled" }),
-    p.grown?.length ? el("span", { class: "grown", title: "Grown into the graphs", "aria-label": "Grown" }, icon(ICON.sprout)) : null)));
+  const rows = visiblePages(S.nzone);
+  put(host, rows.map(({ p, depth }, i) => {
+    const kids = kidPages(p.id).length, open = S.nopen?.has(p.id);
+    return el("div", { class: "nrow" + (p.id === S.npage ? " on" : ""), dataset: { id: p.id }, style: `--d:${depth}` },
+      el("button", { class: "chev" + (kids ? "" : " none"), type: "button", "aria-label": open ? "Close" : "Open", "aria-expanded": kids ? String(!!open) : null, tabIndex: -1, onclick: () => { if (kids) { setOpen(p.id, !open); drawPageList(); } } }),
+      el("button", { class: "nname", type: "button", onclick: () => pickPage(p.id) }, el("span", { text: p.title || "Untitled" }), p.grown?.length ? el("span", { class: "grown", title: "Grown into graphs", "aria-label": "Grown" }, icon(ICON.sprout)) : null),
+      el("kbd", { text: i < 9 ? String(i + 1) : "", class: i < 9 ? "" : "blank" }),
+      el("button", { class: "nadd", type: "button", title: "Add a page inside", "aria-label": "Add a page inside", tabIndex: -1, onclick: () => newPage(p.id) }, "+"));
+  }), el("button", { class: "nrow newp", type: "button", id: "newPageRow", onclick: () => newPage() }, el("span", { class: "chev none" }), el("span", { class: "nname", text: "+ New page" }), el("kbd", { text: "N" })));
 }
+// the page itself: where it sits, title, the graphs it's attached to, then the blocks
 function drawEditor() {
   const host = $("#nedit"); if (!host) return;
-  put(host, pageEditor(pageOf(S.npage)));
+  S.ed?.destroy(); S.ed = null;
+  const p = pageOf(S.npage);
+  if (!p) { put(host, el("div", { class: "page none" }, S.nzone ? el("button", { class: "btn", id: "firstPage", onclick: () => newPage() }, "New page", el("kbd", { text: "N" })) : null)); return; }
+  put(host, pageView(p, false));
+}
+function pageView(p, side) {
+  const zone = S.zones.find((z) => z.id === p.zoneId), trail = [];
+  for (let q = pageOf(p.parentId); q; q = pageOf(q.parentId)) trail.unshift(q);
+  const crumbs = side ? null : el("div", { class: "pcrumb" }, el("span", { text: zone?.name || "" }), trail.map((q) => [el("span", { class: "sl", text: "/" }), el("button", { class: "link", type: "button", text: q.title || "Untitled", onclick: () => pickPage(q.id) })]));
+  const title = el("input", { id: side ? "sideTitle" : "pageTitle", class: "ptitle", value: p.title || "", placeholder: "Untitled", maxLength: 120, "aria-label": "Title", autocomplete: "off",
+    oninput: (e) => { queuePage(p.id, { title: e.target.value }); const r = $(`#nlist .nrow[data-id="${p.id}"] .nname span`); if (r) r.textContent = e.target.value || "Untitled"; const o = $(`#sidePage option[value="${p.id}"]`); if (o) o.textContent = e.target.value || "Untitled"; },
+    onkeydown: (e) => { if (e.key === "Enter" || e.key === "ArrowDown") { e.preventDefault(); S.ed?.focus("start"); } } });
+  const graphs = (p.treeIds || []).map(treeOf).filter(Boolean);
+  const attach = el("div", { class: "pattach" }, graphs.map((t) => el("span", { class: "gchip" },
+    el("button", { type: "button", class: "link", text: t.name, title: "Open the graph", onclick: () => { S.nside = true; goTree(t.id); } }),
+    el("button", { type: "button", class: "x", "aria-label": `Detach from ${t.name}`, text: "×", onclick: () => detach(p.id, t.id) }))),
+    el("button", { type: "button", class: "btn ghost", id: side ? "sideAttach" : "attachBtn", onclick: (e) => attachMenu(p, e.currentTarget) }, "Attach to graph", side ? null : el("kbd", { text: "A" })));
+  const body = el("div", { class: "pbody" });
+  const blocks = (p.blocks || []).filter((b) => b.type !== "page" || pageOf(b.pageId));
+  S.ed = createEditor({ host: body, blocks, onChange: (bl) => queuePage(p.id, { blocks: bl }), pageTitle,
+    openPage: (id) => (S.view === "notes" ? pickPage(id) : (location.hash = notesHash(pageOf(id)?.zoneId, id))),
+    newSubpage: async () => { const c = await safely(() => store.addPage(p.zoneId, { parentId: p.id })); if (!c) return null; S.pages.push(c); setOpen(p.id, true); return c.id; } });
+  S.edFor = p.id;
+  return el("article", { class: "page" + (side ? " side" : "") }, crumbs, title, attach, body);
 }
 async function pickPage(id) {
-  if (!pageOf(id)) return;
-  await flushPage(); S.npage = id;
-  if (S.view === "notes") { setNotesHash(); drawPageList(); drawEditor(); renderActions(); }
-  else { S.sideFor = null; renderSide(); }
+  const p = pageOf(id); if (!p) return;
+  await flushPage();
+  if (S.view === "notes") {
+    if (p.zoneId !== S.nzone) { location.hash = notesHash(p.zoneId, id); return; }
+    S.npage = id; for (let q = pageOf(p.parentId); q; q = pageOf(q.parentId)) setOpen(q.id, true);
+    setNotesHash(); drawPageList(); drawEditor(); renderActions();
+  } else { S.npage = id; S.sideFor = null; renderSide(); }
+  if (!p.title && !(p.blocks || []).length) { const ti = $(S.view === "notes" ? "#pageTitle" : "#sideTitle"); ti?.focus(); }   // a fresh page: straight to its title
 }
 // typing is saved shortly after it stops, and before anything else is opened
 let pageTimer = 0, pageDirty = null;
 async function flushPage() {
+  S.ed?.flush?.();
   clearTimeout(pageTimer); const d = pageDirty; pageDirty = null;
   if (d) await store.updatePage(d.id, d.patch).catch(() => {});
 }
 function queuePage(id, patch) {
-  if (pageDirty && pageDirty.id !== id) flushPage();
+  if (pageDirty && pageDirty.id !== id) { const d = pageDirty; pageDirty = null; store.updatePage(d.id, d.patch).catch(() => {}); }
   pageDirty = { id, patch: { ...(pageDirty?.patch || {}), ...patch } };
   const p = pageOf(id); if (p) Object.assign(p, patch);
-  if ("title" in patch) { const r = $(`#nlist .nrow[data-id="${id}"] b`); if (r) r.textContent = patch.title || "Untitled"; const o = $(`#sidePage option[value="${id}"]`); if (o) o.textContent = patch.title || "Untitled"; }
-  clearTimeout(pageTimer); pageTimer = setTimeout(flushPage, 600);
+  clearTimeout(pageTimer); pageTimer = setTimeout(() => { const d = pageDirty; pageDirty = null; if (d) store.updatePage(d.id, d.patch).catch(() => {}); }, 500);
 }
-function pageEditor(page) {
-  if (!page) return el("div", { class: "page none" }, S.nzone ? el("button", { class: "btn primary", id: "firstPage", onclick: newPage }, "New page", el("kbd", { text: "N" })) : null);
-  const text = el("textarea", { id: "pageText", value: page.text || "", placeholder: "Notes", "aria-label": "Notes", spellcheck: true,
-    oninput: (e) => queuePage(page.id, { text: e.target.value }), onkeydown: (e) => outlineKey(e, page.id) });
-  const title = el("input", { id: "pageTitle", class: "title", value: page.title || "", placeholder: "Title", maxLength: 120, "aria-label": "Title", autocomplete: "off",
-    oninput: (e) => queuePage(page.id, { title: e.target.value }), onkeydown: (e) => { if (e.key === "Enter") { e.preventDefault(); text.focus(); } } });
-  return el("div", { class: "page" }, title, text);
-}
-// Bullets in the editor: Tab and Shift+Tab indent, Enter carries on the bullet, Enter on an empty bullet ends it.
-function outlineKey(e, id) {
-  const t = e.target, v = t.value, a = t.selectionStart, b = t.selectionEnd, ls = v.lastIndexOf("\n", a - 1) + 1;
-  if (e.key === "Tab" && !e.ctrlKey && !e.altKey && !e.metaKey) {
-    e.preventDefault();
-    const stop = b > a && v[b - 1] === "\n" ? b - 1 : b, le = v.indexOf("\n", stop), end = le < 0 ? v.length : le;
-    const lines = v.slice(ls, end).split("\n"), out = lines.map((l) => (e.shiftKey ? l.replace(/^ {1,2}/, "") : "  " + l)).join("\n");
-    const first = e.shiftKey ? lines[0].length - lines[0].replace(/^ {1,2}/, "").length : 2;
-    t.setRangeText(out, ls, end, "preserve");
-    if (a === b) { const c = Math.max(ls, a + (e.shiftKey ? -first : 2)); t.setSelectionRange(c, c); } else t.setSelectionRange(ls, ls + out.length);
-  } else if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey && a === b) {
-    const line = v.slice(ls, a), m = line.match(/^(\s*)([-*•]|\d+[.)])(\s+)(.*)$/), lead = line.match(/^(\s+)\S/);
-    if (m && !m[4].trim() && v.slice(a, (v.indexOf("\n", a) + 1 || v.length + 1) - 1).trim() === "") { e.preventDefault(); t.setRangeText(m[1] ? m[1].slice(2) + m[2] + m[3] : "", ls, a, "end"); }   // nested: step out a level; top level: end the list
-    else if (m) { e.preventDefault(); const n = /\d/.test(m[2]) ? parseInt(m[2], 10) + 1 + m[2].slice(-1) : m[2]; t.setRangeText("\n" + m[1] + n + m[3], a, a, "end"); }
-    else if (lead) { e.preventDefault(); t.setRangeText("\n" + lead[1], a, a, "end"); }
-    else return;
-  } else return;
-  queuePage(id, { text: t.value });
-}
-async function newPage() {
-  const z = S.view === "tree" ? S.tree?.zoneId : S.nzone; if (!z) return;
+async function newPage(parentId = null) {
+  const z = parentId ? pageOf(parentId)?.zoneId : S.view === "tree" ? S.tree?.zoneId : S.nzone; if (!z) return;
   await flushPage();
-  const p = await safely(() => store.addPage(z, { title: new Date().toLocaleDateString(undefined, { day: "numeric", month: "short" }) })); if (!p) return;
+  const p = await safely(() => store.addPage(z, { parentId, treeIds: S.view === "tree" && !parentId ? [S.tree.id] : [] })); if (!p) return;
+  if (parentId) {   // like Notion, a page made inside another shows as a link at the end of it
+    const par = pageOf(parentId);
+    if (par) await safely(() => store.updatePage(parentId, { blocks: [...(par.blocks || []), { id: "b" + Date.now().toString(36), type: "page", pageId: p.id, html: "", indent: 0 }] }));
+    setOpen(parentId, true);
+  }
   await load(); S.npage = p.id;
-  if (S.view === "notes") { setNotesHash(); drawPageList(); drawEditor(); renderActions(); } else { S.sideFor = null; renderSide(); }
-  const ti = $("#pageTitle"); ti?.focus(); ti?.select();
+  if (S.view === "notes") { setNotesHash(); drawPageList(); drawEditor(); renderActions(); } else { S.nside = true; S.sideFor = null; renderSide(); }
+  const ti = $(S.view === "notes" ? "#pageTitle" : "#sideTitle"); ti?.focus(); ti?.select();
 }
 async function removePage(id) {
-  if (pageDirty?.id === id) await flushPage();
-  const p = await safely(() => store.deletePage(id)); if (!p) return;
-  const list = pagesOf(p.zoneId), i = list.findIndex((x) => x.id === id);
-  if (S.npage === id) S.npage = (list[i + 1] || list[i - 1])?.id || null;
+  await flushPage();
+  const gone = await safely(() => store.deletePage(id)); if (!gone?.length) return;
+  if (gone.some((g) => g.id === S.npage)) { const rows = visiblePages(S.nzone).map((r) => r.p.id).filter((x) => !gone.some((g) => g.id === x)); S.npage = rows[0] || null; }
+  S.ed?.destroy(); S.ed = null;
   await load(); redrawNotes();
-  toast("Page deleted", { label: "Undo", run: async () => { await store.putPage(p); await load(); S.npage = p.id; redrawNotes(); } });
+  toast(gone.length > 1 ? `Deleted ${gone.length} pages` : "Page deleted", { label: "Undo", run: async () => { await store.putPages(gone); await load(); S.npage = gone[0].id; redrawNotes(); } });
 }
 function redrawNotes() {
-  if (S.view === "notes") { setNotesHash(); drawPageList(); drawEditor(); renderActions(); }
+  if (S.view === "notes") { setNotesHash(); drawPageList(); drawEditor(); renderActions(); renderTop(); }
   else { S.sideFor = null; renderSide(); }
 }
+// attach a page to graphs: its own topic's first, then any other
+function attachMenu(p, anchor) {
+  const on = new Set(p.treeIds || []), item = (t) => ({ label: (on.has(t.id) ? "✓ " : "") + t.name, run: () => (on.has(t.id) ? detach(p.id, t.id) : attachTo(p.id, t.id)) });
+  const here = S.trees.filter((t) => t.zoneId === p.zoneId), others = S.zones.filter((z) => z.id !== p.zoneId && S.trees.some((t) => t.zoneId === z.id));
+  menu(anchor, [...here.map(item), here.length && others.length ? "-" : null,
+    others.length ? { label: "Other topics", run: () => menu(anchor, others.map((z) => ({ label: z.name, run: () => menu(anchor, S.trees.filter((t) => t.zoneId === z.id).map(item)) }))) } : null,
+    !here.length && !others.length ? { label: "No graphs yet", disabled: true } : null].filter(Boolean));
+}
+async function attachTo(pageId, treeId) { await flushPage(); const p = pageOf(pageId); if (!p) return; await safely(() => store.updatePage(pageId, { treeIds: [...new Set([...(p.treeIds || []), treeId])] })); await load(); redrawNotes(); }
+async function detach(pageId, treeId) { await flushPage(); const p = pageOf(pageId); if (!p) return; await safely(() => store.updatePage(pageId, { treeIds: (p.treeIds || []).filter((t) => t !== treeId) })); await load(); redrawNotes(); }
 function pageMenu(p, anchor) {
   menu(anchor, [
     { label: "Grow with Claude", key: "G", run: () => growDialog(p.id) },
     p.grown?.length && { label: "Take back the last grow", run: () => ungrow(p.id) },
+    { label: "Attach to graph", key: "A", run: () => attachMenu(p, anchor) },
+    { label: "Add a page inside", run: () => newPage(p.id) },
     { label: "Move to topic", run: () => menu(anchor, notesOrder().filter((z) => z.id !== p.zoneId).map((z) => ({ label: z.name, run: async () => {
-      await flushPage(); if (!(await safely(() => store.updatePage(p.id, { zoneId: z.id })))) return; await load();
-      if (S.view === "notes") { location.hash = "#/notes/" + encodeURIComponent(z.id) + "/" + encodeURIComponent(p.id); } else { S.sideFor = null; renderSide(); toast(`Moved to ${z.name}`); }
+      await flushPage(); if (!(await safely(() => store.updatePage(p.id, { zoneId: z.id, parentId: null })))) return; await load();
+      if (S.view === "notes") location.hash = notesHash(z.id, p.id); else { S.sideFor = null; renderSide(); toast(`Moved to ${z.name}`); }
     } }))) },
     "-", { label: "Delete page", key: "Del", danger: true, run: () => removePage(p.id) },
   ]);
@@ -1562,11 +1594,12 @@ function pageMenu(p, anchor) {
 // For now that's a copy and paste round trip, so it runs on the Claude plan with no key.
 async function growDialog(id) {
   await flushPage(); const page = pageOf(id); if (!page) return;
-  if (!String(page.text || "").trim()) return toast("Nothing to grow");
+  const text = blocksToText(page.blocks, pageTitle);
+  if (!text.trim()) return toast("Nothing to grow");
   const zone = S.zones.find((z) => z.id === page.zoneId), trees = S.trees.filter((t) => t.zoneId === page.zoneId), inTopic = new Set(trees.map((t) => t.id));
   const nodes = S.nodes.filter((n) => inTopic.has(n.treeId));
   const grownTitles = (page.grown || []).flatMap((g) => g.nodeIds).map((x) => S.byId.get(x)?.title).filter(Boolean);
-  const prompt = growPrompt({ topic: zone?.name || "", page, trees, nodes, grownTitles });
+  const prompt = growPrompt({ topic: zone?.name || "", page: { title: page.title, text }, trees, nodes, grownTitles });
   S.lastPrompt = prompt;
   let plan = null;
   const sum = el("p", { class: "meta", id: "growSum", "aria-live": "polite" });
@@ -1598,38 +1631,63 @@ async function ungrow(id) {
 function notesBar(a) {
   const p = pageOf(S.npage);
   const key = (id, text, k, run, cls = "btn") => el("button", { class: cls, id, onclick: run }, text, el("kbd", { text: k }));
-  put(a, key("pageAdd", "+ Page", "N", newPage), p ? key("pageGrow", "Grow", "G", () => growDialog(p.id), "btn primary") : null,
+  put(a, key("pageAdd", "+ Page", "N", () => newPage()), p ? key("pageGrow", "Grow", "G", () => growDialog(p.id), "btn primary") : null,
     p ? ib("pageMore", "Page menu", ICON.more, (e) => pageMenu(p, e.currentTarget)) : null);
   a.hidden = !S.nzone;
 }
 function notesKey(k, stop) {
-  const list = pagesOf(S.nzone), i = list.findIndex((p) => p.id === S.npage), p = list[i];
+  const rows = visiblePages(S.nzone).map((r) => r.p), i = rows.findIndex((p) => p.id === S.npage), p = pageOf(S.npage);
   if (k === "n") { stop(); return newPage(); }
   if (k === "g" && p) { stop(); return growDialog(p.id); }
+  if (k === "a" && p) { stop(); return attachMenu(p, $("#attachBtn") || $("#pageMore")); }
   if ((k === "Delete" || k === "Backspace") && p) { stop(); return removePage(p.id); }
-  if (k === "Enter" && p) { stop(); return $("#pageText")?.focus(); }
-  if (/^[1-9]$/.test(k) && list[+k - 1]) { stop(); return pickPage(list[+k - 1].id); }
-  if ((k === "ArrowDown" || k === "ArrowUp") && list.length) { stop(); return pickPage(list[Math.max(0, Math.min(list.length - 1, i + (k === "ArrowDown" ? 1 : -1)))].id); }
+  if (k === "Enter" && p) { stop(); return S.ed?.focus("end"); }
+  if (/^[1-9]$/.test(k) && rows[+k - 1]) { stop(); return pickPage(rows[+k - 1].id); }
+  if ((k === "ArrowDown" || k === "ArrowUp") && rows.length) { stop(); return pickPage(rows[Math.max(0, Math.min(rows.length - 1, i + (k === "ArrowDown" ? 1 : -1)))].id); }
   if (k === "ArrowRight" || k === "ArrowLeft") {
     stop(); const zs = notesOrder(), j = zs.findIndex((z) => z.id === S.nzone), z = zs[(j + (k === "ArrowRight" ? 1 : -1) + zs.length) % zs.length];
-    if (z) location.hash = "#/notes/" + encodeURIComponent(z.id);
+    if (z) location.hash = notesHash(z.id);
   }
 }
-// In a knowledge graph, O pulls the topic's notes up beside it.
+// In a knowledge graph, O pulls up the pages attached to it, beside it.
 function toggleSide() { S.nside = !S.nside; S.sideFor = null; if (!S.nside) flushPage(); renderSide(); }
 function renderSide() {
   const box = $("#nside"), on = S.nside && S.view === "tree" && S.tree;
   document.body.dataset.nside = on ? "1" : "";
-  if (!on) { if (!box.hidden) { box.hidden = true; box.replaceChildren(); S.sideFor = null; } return; }
-  const zid = S.tree.zoneId, list = pagesOf(zid);
-  if (pageOf(S.npage)?.zoneId !== zid) S.npage = list.at(-1)?.id || null;
-  const sig = zid + "/" + S.npage + "/" + list.length;
+  if (!on) { if (!box.hidden) { flushPage(); if (S.view !== "notes") { S.ed?.destroy(); S.ed = null; } box.hidden = true; box.replaceChildren(); S.sideFor = null; } return; }
+  const list = attachedTo(S.tree.id);
+  if (!list.some((p) => p.id === S.npage)) S.npage = list[0]?.id || null;
+  const sig = S.tree.id + "/" + S.npage + "/" + list.map((p) => p.id).join();
   if (S.sideFor === sig && !box.hidden) return;
+  flushPage(); S.ed?.destroy(); S.ed = null;
   S.sideFor = sig; box.hidden = false;
   const p = pageOf(S.npage);
-  const pick = list.length ? el("select", { id: "sidePage", "aria-label": "Page", onchange: (e) => pickPage(e.target.value) }, list.map((x) => el("option", { value: x.id, text: x.title || "Untitled", selected: x.id === S.npage }))) : el("h2", { text: "Notes" });
-  put(box, el("div", { class: "ph" }, pick, ib("sideNew", "New page", ICON.plus, newPage), p ? ib("sideGrow", "Grow with Claude", ICON.sprout, () => growDialog(p.id)) : null,
-    p ? ib("sideMore", "Page menu", ICON.more, (e) => pageMenu(p, e.currentTarget)) : null, ib("sideClose", "Close (O)", ICON.close, toggleSide)), pageEditor(p));
+  const pick = list.length > 1 ? el("select", { id: "sidePage", "aria-label": "Page", onchange: (e) => pickPage(e.target.value) }, list.map((x) => el("option", { value: x.id, text: x.title || "Untitled", selected: x.id === S.npage }))) : el("h2", { text: "Notes" });
+  const others = pagesOf(S.tree.zoneId).filter((x) => !list.includes(x));
+  put(box, el("div", { class: "ph" }, pick,
+    ib("sideNew", "New page for this graph", ICON.plus, () => newPage()),
+    others.length ? ib("sideLink", "Attach a page", ICON.page, (e) => menu(e.currentTarget, others.map((x) => ({ label: x.title || "Untitled", run: () => attachTo(x.id, S.tree.id) })))) : null,
+    p ? ib("sideGrow", "Grow with Claude", ICON.sprout, () => growDialog(p.id)) : null,
+    p ? ib("sideMore", "Page menu", ICON.more, (e) => pageMenu(p, e.currentTarget)) : null,
+    ib("sideClose", "Close (O)", ICON.close, toggleSide)),
+    p ? pageView(p, true) : el("div", { class: "page none" }, el("button", { class: "btn", id: "sideFirst", onclick: () => newPage() }, "New page"),
+      others.length ? el("button", { class: "btn", id: "sideAttachOne", onclick: (e) => menu(e.currentTarget, others.map((x) => ({ label: x.title || "Untitled", run: () => attachTo(x.id, S.tree.id) }))) }, "Attach a page") : null));
+}
+// Garden, Knowledge and Notes are three windows; Shift+Tab goes round them.
+const winOf = (v) => (v === "isles" || v === "garden" ? "garden" : v === "notes" ? "notes" : "knowledge");
+function goWindow(w) {
+  if (S.review || S.pick) return;
+  const now = winOf(S.view); if (w === now) return;
+  if (now === "knowledge") S.lastKnowledge = location.hash || "#/forest";
+  location.hash = w === "garden" ? "#/" : w === "notes" ? S.lastNotes || notesHash() : S.lastKnowledge || "#/forest";
+}
+function winSwitch() {
+  const now = winOf(S.view), due = dueList(null).length;
+  const b = (w, id, label, d, extra) => el("button", { class: "ws" + (now === w ? " on" : ""), id, type: "button", title: `${label} (Shift+Tab)`, "aria-pressed": String(now === w), onclick: () => goWindow(w) }, icon(d), el("span", { class: "wl", text: label }), extra);
+  return el("div", { class: "winseg", role: "group", "aria-label": "Window" },
+    b("garden", "winGarden", "Garden", ICON.sprout, now !== "garden" && due ? el("span", { class: "thirst", text: String(due) }) : null),
+    b("knowledge", "winKnowledge", "Knowledge", ICON.graph),
+    b("notes", "winNotes", "Notes", ICON.page));
 }
 
 // ---------- start ----------
