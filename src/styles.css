@@ -233,3 +233,40 @@ time{font-size:12px;color:var(--muted)}
   .review{bottom:0;width:100%;border-radius:16px 16px 0 0}
 }
 @media (prefers-reduced-motion:reduce){ *{transition:none!important;animation:none!important} }
+
+/* notes: pages per topic; the window, and the drawer beside a knowledge graph */
+.notes{position:absolute;inset:0;padding-top:56px;display:grid;grid-template-columns:230px 1fr;background:var(--bg)}
+.nlist{border-right:1px solid var(--line);overflow:auto;padding:8px 8px 90px;display:flex;flex-direction:column;gap:2px}
+.nrow{display:flex;align-items:center;gap:8px;border:0;background:none;text-align:left;padding:7px 8px;border-radius:8px;min-height:36px}
+.nrow b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.nrow.on{background:var(--well)}
+.nrow:hover{background:var(--well)}
+.nrow kbd.blank{visibility:hidden}
+.nrow .grown{color:var(--accent);display:flex}
+.nedit{overflow:auto;padding:14px 22px 90px;display:flex;justify-content:center}
+.page{width:min(780px,100%);display:flex;flex-direction:column;gap:6px;min-height:100%}
+.page.none{align-items:center;justify-content:center}
+.page .title{font-size:22px;font-weight:700;border:1px solid transparent;background:transparent;border-radius:8px;padding:6px 8px}
+.page .title:hover,.page .title:focus{border-color:var(--line);background:var(--well)}
+.page textarea{flex:1;min-height:58vh;resize:none;border:0;background:transparent;font:15px/1.65 var(--font);padding:6px 8px;outline:none;tab-size:2}
+.panel.nside{left:10px;right:auto;width:400px}
+.panel.nside .ph select{flex:1;min-width:0;font-weight:600}
+.panel.nside .page{min-height:0;flex:1}
+.panel.nside .page .title{font-size:17px}
+.panel.nside .page textarea{min-height:0}
+body[data-nside="1"] .actions{left:420px}
+.growd{display:grid;gap:8px;margin-bottom:6px}
+.growd textarea{width:100%}
+.dialog .growd .row{display:flex;gap:6px;flex-wrap:wrap}
+@media (max-width:700px){
+  .notes{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+  .nlist{flex-direction:row;overflow-x:auto;border-right:0;border-bottom:1px solid var(--line);padding:6px 8px}
+  .nrow{flex:0 0 auto;max-width:60vw}
+  .nrow kbd{display:none}
+  .nedit{padding:8px 10px 90px}
+  .panel.nside{left:0;right:0;top:56px;bottom:0;width:auto;max-height:none;border-radius:0;border-width:1px 0 0}
+  body[data-nside="1"] .actions{display:none}
+}
+a.btn{text-decoration:none;color:var(--ink)}
+.dialog:has(.growd){width:min(560px,100%)}
+@media (max-width:700px){ .crumb:has(#notesTopic) h1{display:none} .actions:has(#pageAdd) kbd{display:none} }

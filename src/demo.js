@@ -216,6 +216,38 @@ const LINKS = [
   ["Geometric sequences", "Harmonics"], ["Repeating patterns", "Polyrhythm"], ["Coulomb's law", "Weight", "inverse square"], ["Energy transfer", "Work"], ["Density", "Weight"],
 ];
 
+// Notes pages, written the way lecture notes are, to try growing with Claude.
+const PAGES = {
+  Mechanics: [["Lecture 6: Momentum", `Quiz on Friday, bring calculator
+- Momentum p = mv (vector, kg m/s)
+  - heavier or faster → harder to stop
+- Newton's 2nd law really says F = dp/dt
+  - F = ma is the special case when mass doesn't change
+  - rockets: mass changes, so use dp/dt
+- Impulse = F × Δt = Δp
+  - same change in momentum over longer time → smaller force
+  - crumple zones, airbags, bending knees when landing
+- Conservation of momentum: total p constant if no external force
+  - comes from Newton's 3rd law (equal and opposite forces, same time)
+  - recoil of a gun, ice skaters pushing apart
+- Collisions
+  - elastic: KE conserved too (snooker balls, roughly)
+  - inelastic: KE lost to heat/sound/deformation
+  - perfectly inelastic: objects stick together, max KE lost
+- Worked example: 2 kg at 3 m/s hits 1 kg at rest, they stick → v = 6/3 = 2 m/s`]],
+  Coaching: [["Workshop: GROW model", `Facilitator: Sam. Slides on the drive.
+GROW = a structure for a coaching conversation
+  Goal: what do you want out of this? make it specific
+  Reality: where are things now? facts, not judgements
+  Options: what could you do? get several before picking
+  Way forward: what will you do, by when? commitment
+- Ask, don't tell. Open questions ("what", "how"), not "why" (sounds like blame)
+- Silence is fine, let them think
+- Coach doesn't need to know the answer
+- Practised in pairs: 10 min each, observer gave feedback
+  - I jumped to Options too fast, skipped Reality`]],
+};
+
 export function demoBackup(now = Date.now()) {
   const DAY = 86400000, iso = (t) => new Date(t).toISOString();
   let seed = 7; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
@@ -245,5 +277,6 @@ export function demoBackup(now = Date.now()) {
   for (const [a, b, label = ""] of LINKS) { const x = byTitle.get(a), y = byTitle.get(b); if (x && y && x !== y) links.push({ id: id("l"), fromId: x, toId: y, label, note: "", createdAt: made, updatedAt: made }); }
   const garden = { hubs: HUBS.map(([hid, name]) => ({ id: hid, name })), zone: {}, patron: "none",
     islands: ISLANDS.map(([iid, name, landmark, hubId, topics, after, from]) => ({ id: iid, name, landmark, hubId, zoneIds: topics.map((t) => zoneByName.get(t).id), after: after || null, from: (from && byTitle.get(from)) || null })) };
-  return { app: "bonsai", schema: 3, exportedAt: iso(now), zones, trees, nodes, links, events: [], patches: [], inbox: [], meta: [{ key: "garden", value: garden }, { key: "demo", value: iso(now) }] };
+  const pages = Object.entries(PAGES).flatMap(([name, list]) => list.map(([title, text], k) => ({ id: id("p"), zoneId: zoneByName.get(name).id, title, text, order: k + 1, createdAt: iso(now - (2 - k) * DAY), updatedAt: iso(now - DAY), grown: [] })));
+  return { app: "bonsai", schema: 4, exportedAt: iso(now), zones, trees, nodes, links, events: [], patches: [], inbox: [], pages, meta: [{ key: "garden", value: garden }, { key: "demo", value: iso(now) }] };
 }

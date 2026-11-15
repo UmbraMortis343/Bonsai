@@ -2,6 +2,16 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.11.0 — 2026-11-15
+
+Notes.
+
+- A notes window (O): pages per topic, for lectures and anything else you want down before it goes into a graph. 1–9 or ↑ ↓ pick a page, ← → change topic, N adds a page, Del deletes one (with undo).
+- Bullets in the editor: Enter carries the bullet on, Tab and Shift+Tab indent, Enter on an empty bullet steps out.
+- Grow with Claude (G): copy the page for Claude, paste its reply back, see what it adds, then grow. Claude picks the ideas, strings them onto your graphs (or starts a new one) and adds links, keeping details as the ideas' notes. Growing again adds only what's new. Undo, or take back the last grow from the page menu.
+- In a knowledge graph, O pulls the topic's notes up beside it.
+- The garden's panel has Notes in place of New note; the quick-capture inbox (I) is unchanged.
+
 ## 0.10.0 — 2026-11-15
 
 - Tech tree, rebuilt as a web that recentres: one island in the middle as a hexagon with its key ideas around it; the islands that grow out of it sit on its ring. Step in on one, step back with Esc or the hexagon, and the way back stays lit. T shows this tier only, A shows everything, H goes back to the start, 1–9 pick, Enter goes in, Space opens a key idea.

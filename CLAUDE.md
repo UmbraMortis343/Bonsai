@@ -10,7 +10,7 @@ A knowledge-retention app. You build knowledge graphs of ideas, grouped into top
 - Owner: Karthik (GitHub UmbraMortis343). Use the handle, not his name, in anything public.
 
 ## Words
-Hub → island → topic → knowledge graph → idea. In code a topic is still a `zone`, a knowledge graph a `tree` and an idea a `node`. The old screens still say zone and tree; renaming them is part of the knowledge view card.
+Hub → island → topic → knowledge graph → idea. He sees a graph as ideas strung together rather than a trunk and branches (said 2026-11-15); the knowledge view redesign should drop those words. In code a topic is still a `zone`, a knowledge graph a `tree` and an idea a `node`. The old screens still say zone and tree; renaming them is part of the knowledge view card.
 
 ## How he wants it
 - Very little text in the app. No explanatory copy, labels only where needed.
@@ -23,12 +23,13 @@ Plain ES modules, no bundler. `src/` is the app; `scripts/build.mjs` copies it t
 
 | File | What |
 |---|---|
-| `src/main.js` | App state `S`, routes, views, panels, keys. Routes: `#/` garden (home), `#/forest`, `#/tree/<id>`, `#/garden` (watering with potted plants), `#/meaning[/<zoneId>]`, `#/techtree[/<zoneId>]` |
+| `src/main.js` | App state `S`, routes, views, panels, keys. Routes: `#/` garden (home), `#/forest`, `#/tree/<id>`, `#/garden` (watering with potted plants), `#/meaning[/<zoneId>]`, `#/techtree[/<zoneId>]`, `#/notes[/<zoneId>[/<pageId>]]` |
 | `src/techtree.js` | The tech tree (`#/techtree[/<zoneId>]`, key K), 2D canvas in the app's colours; dark when the garden is at night (`body.night-ui`) or the device is. Tree mode recentres: the middle is one island as a hex with its key ideas (graph trunks, grouped by topic) inside the first ring; islands that grow from it sit on the ring as boundary cells. Garden islands carry `after` (island id) and `from` (the idea on it that leads here), set with B (Grows from); none = grows from the start. State: `focus` (end of the chain) and `out` (steps back). Esc peels layers: pick, highlight, then a tier back (route lit, rest dimmed); T tier only, A show all, H the start, 1–9 pick, Enter go in / open in graph, Space open a key idea. Links lifted to whatever shows. Two looks (Y), both on the app's colours: simple (straight lines) and organic (tapered arms, flat, darker). The hex and the boundary cells show pictures of their islands, from `isles.snap(id, { topic, size, night })`, taken one at a time by `techArt` in `main.js` and cached. Web mode: force layout by island; dragging moves only the node and what hangs from it, then pins it (`meta` key `techtree`). UI state in localStorage `<prefix>tech` |
+| `src/notes.js` | Notes pages and growing them with Claude, pure logic: `growPrompt` (what Claude is given: the page, the topic's graphs as title outlines, ideas earlier grows made), `readGrow` (reads the reply format: `graph:` lines, indented `Title \| note`, `> ` lines as the idea's notes, `= Title` for an existing idea, `link: A -> B \| label`), `planGrow` (reuses existing ideas by title, never makes one twice, skips links that duplicate a string). The notes window (key O, `#/notes`) and the drawer beside a graph (O in a graph) are the notes section of `main.js`: pages listed per topic with 1–9, N new page, G grow, Del delete, ←/→ topics; the editor carries bullets on Enter and indents with Tab. Grow is a copy-and-paste round trip (Copy for Claude, paste the reply back), so it runs on his Claude plan with no key; `store.growPage` adds the plan in one save and records it on the page, `store.ungrowPage` takes the latest grow back. A test reply Claude wrote is in `tests/fixtures/grow-mechanics.txt` |
 | `src/isles.js` | Draws the garden: hubs, islands, bridges, mist, animals, sky, labels, picking, camera. API `createIsles(opts)` → `setData(islands, pairs, hubs)`, `focus`, `focusHub`, `select`, `setActive`, `setNight`, `setQuality`, `snap` (a still picture of an island or a topic's plot) |
 | `src/gardenmap.js` | Pure logic for Import map: `readMap`, `missing`, `mergeMap`. No browser needed |
 | `src/isles-world.js` | Builds one island's voxels and meshes: terrain, water, biomes, plants, landmarks, bones |
-| `src/store.js` | IndexedDB, schema v3: zones, trees, nodes, links, events, meta, patches, inbox, vectors. Garden arrangement lives in `meta` key `garden`: `hubs`, `islands` (`hubId`, `mapId` if it came from the map, `split` if made by a split), `zone[id]` (biome, mark, and `mapId`/`mapName`/`mapIsle`/`fromMap` for map topics), `mapAt` once a map has been imported |
+| `src/store.js` | IndexedDB, schema v4: zones, trees, nodes, links, events, meta, patches, inbox, pages (notes, by `zoneId`), vectors. Garden arrangement lives in `meta` key `garden`: `hubs`, `islands` (`hubId`, `mapId` if it came from the map, `split` if made by a split), `zone[id]` (biome, mark, and `mapId`/`mapName`/`mapIsle`/`fromMap` for map topics), `mapAt` once a map has been imported |
 | `src/srs.js` | Spaced repetition |
 | `src/stage.js`, `flora.js`, `layout.js` | 3D tree and forest views |
 | `src/ai.js`, `ai-worker.js`, `semantic.js` | On-device embeddings (all-MiniLM-L6-v2) for the meaning view and search |
@@ -62,7 +63,7 @@ Garden levels: every hub → one hub → one island → one topic (`S.hub`, `S.i
 
 ## Agreed, not built
 - Knowledge view from his sketch: numbered nodes, a key to jump to a number, a controls bar with shortcuts, a right panel of node cards that changes only on click, hover card, notes beside it. Stays 3D.
-- Notes section; nested bullets turn into a graph.
+- Grow straight from the app through Claude, without the copy and paste, once there's an in-app Claude connection.
 - Review that makes you work: Recall, Feynman, Rebuild, Patch and Stitch, scored for coverage by the on-device model.
 - Exams by tier, run as a page inside Claude that exports a file for the app; topic maps drafted from syllabuses (CIE for school level) and competency frameworks for non-academic skills. Pilot: Physics and Leadership.
 - Three colours per topic (main plants, accents, glow).

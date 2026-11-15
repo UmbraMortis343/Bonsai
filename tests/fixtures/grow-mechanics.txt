@@ -1,0 +1,28 @@
+Here's what your momentum lecture adds:
+
+```
+bonsai grow
+graph: Energy and momentum
+= Momentum
+  Momentum is a vector | p = mv points the way the object moves, measured in kg m/s
+    > More mass or more speed means more momentum, so it's harder to stop
+  Conservation of momentum | Total momentum stays the same when no external force acts
+    > Follows from Newton's 3rd law: equal and opposite forces act for the same time
+    > Examples: a gun's recoil, ice skaters pushing apart
+  = Collisions
+    Elastic collision | Kinetic energy is conserved as well as momentum
+      > Snooker balls are close to elastic
+    Inelastic collision | Some kinetic energy is lost to heat, sound or deformation
+      Perfectly inelastic collision | The objects stick together and the most kinetic energy is lost
+        > 2 kg at 3 m/s hits 1 kg at rest and they stick: v = (2 × 3) / 3 = 2 m/s
+graph: Newton's laws
+= 2nd law
+  Force is rate of change of momentum | F = dp/dt; F = ma is the case where mass stays constant
+    > Use dp/dt when mass changes, such as a rocket burning fuel
+= Impulse
+  Longer impact, smaller force | The same change in momentum spread over more time needs less force
+    > Impulse = F × Δt = Δp
+    > Crumple zones, airbags, bending your knees when you land
+link: Conservation of momentum -> 3rd law | why it holds
+link: Impulse -> Momentum | a change in momentum
+```
