@@ -62,7 +62,7 @@ function pathOf(n) {
 async function load() {
   const [zones, trees, nodes, links, inbox, patches, pages] = await Promise.all([store.allZones(), store.allTrees(), store.allNodes(), store.allLinks(), store.listInbox(), store.listPatches(), store.listPages()]);
   S.allZones = zones; S.allTrees = trees; S.nodes = nodes; S.links = links; S.inbox = inbox; S.patches = patches;
-  S.pages = pages.map((p) => ({ ...p, kind: p.kind || "page", parentId: p.parentId || null, props: p.props || [], blocks: p.blocks || textToBlocks(p.text || "") }));   // early beta pages were plain text in a topic
+  S.pages = pages.map((p) => { const kind = p.kind || "page"; return { ...p, kind, parentId: p.parentId || null, props: kind === "page" ? withStd(p.props) : p.props || [], blocks: p.blocks || textToBlocks(p.text || "") }; });   // early beta pages were plain text in a topic
   S.zones = zones.filter((z) => !z.archived).sort(byOrder);
   const ok = new Set(S.zones.map((z) => z.id));
   S.trees = trees.filter((t) => !t.archived && ok.has(t.zoneId)).sort(byOrder);
@@ -1461,6 +1461,16 @@ const PROP_TYPES = [["tags", "Tags"], ["date", "Date"], ["status", "Status"], ["
 const ALL_TYPES = [...PROP_TYPES, ["number", "Number"], ["select", "Select"], ["checkbox", "Checkbox"], ["email", "Email"], ["phone", "Phone"], ["edited", "Last edited"]];
 
 const PROP_OPTIONS = {};
+// every page carries these, in this order, as in a Notion database; extra text properties can follow
+const STD_PROPS = [["tags", "Tags", []], ["date", "Date", ""], ["status", "Status", "Raw"], ["url", "Source", ""], ["created", "Created", ""]];
+function withStd(props = []) {
+  const rest = [...props], std = STD_PROPS.map(([type, name, value]) => {
+    const i = rest.findIndex((x) => x.type === type);
+    return i >= 0 ? rest.splice(i, 1)[0] : { id: "std-" + type, name, type, value: Array.isArray(value) ? [] : value };
+  });
+  return [...std, ...rest];
+}
+const isStd = (p, pr) => p.props.indexOf(pr) < STD_PROPS.length;
 // a note's life: written in a lecture, tidied up, grown into a knowledge graph (set by itself when you grow it)
 const STATUSES = [["Raw", "gray"], ["Tidied", "yellow"], ["Grown", "green"]];
 const statusOf = (p) => (p.props || []).find((x) => x.type === "status")?.value || "";
@@ -1584,10 +1594,7 @@ function propsView(p) {
   const draw = () => put(box, (p.props || []).map((pr) => el("div", { class: "prow", dataset: { type: pr.type } },
       el("button", { class: "pname", type: "button", title: pr.name, onclick: (e) => propMenu(p, pr, e.currentTarget, save) }, propIcon(pr.type), el("span", { text: pr.name })),
       propValue(p, pr, save))),
-    el("button", { class: "padd", type: "button", id: "propAdd", onclick: (e) => {
-      const have = new Set((p.props || []).map((x) => x.name));
-      menu(e.currentTarget, PROP_TYPES.filter(([type, label]) => type === "text" || !have.has(label)).map(([type, label]) => ({ label, run: () => add(type, label) })));
-    } }, el("span", { class: "pg" }, icon(ICON.plus)), el("span", { text: "Add a property" })));
+    el("button", { class: "padd", type: "button", id: "propAdd", onclick: () => add("text", "Text") }, el("span", { class: "pg" }, icon(ICON.plus)), el("span", { text: "Add a property" })));
   draw(); return box;
 }
 function propValue(p, pr, save) {
@@ -1612,6 +1619,8 @@ function propValue(p, pr, save) {
   return href && pr.value ? el("div", { class: "pvwrap" }, input, el("a", { class: "ib small", href, target: pr.type === "url" ? "_blank" : null, rel: "noopener", title: "Open", "aria-label": "Open", text: "↗" })) : input;
 }
 function propMenu(p, pr, anchor, save) {
+  const rename = { label: "Rename", run: async () => { const v = await dialog({ title: "Property", fields: [{ name: "n", label: "Name", value: pr.name, max: 40 }] }); if (v?.n.trim()) { pr.name = v.n.trim(); save(); } } };
+  if (isStd(p, pr)) return menu(anchor, [rename]);
   menu(anchor, [
     { label: "Rename", run: async () => { const v = await dialog({ title: "Property", fields: [{ name: "n", label: "Name", value: pr.name, max: 40 }] }); if (v?.n.trim()) { pr.name = v.n.trim(); save(); } } },
     { label: "Type", run: () => menu(anchor, PROP_TYPES.map(([type, label]) => ({ label: (pr.type === type ? "✓ " : "") + label, run: () => {
@@ -1620,7 +1629,7 @@ function propMenu(p, pr, anchor, save) {
       pr.value = type === "tags" ? was : type === "select" ? was[0] || "" : type === "status" ? (STATUSES.some((x) => x[0] === was[0]) ? was[0] : "Raw") : type === "checkbox" ? false : type === "date" ? (/^\d{4}-\d{2}-\d{2}$/.test(was[0] || "") ? was[0] : "") : ["text", "url", "email", "phone"].includes(type) ? was.join(", ") : "";
       pr.type = type; save();
     } }))) },
-    { label: "Move up", disabled: p.props[0] === pr, run: () => { const i = p.props.indexOf(pr); p.props.splice(i - 1, 0, ...p.props.splice(i, 1)); save(); } },
+    { label: "Move up", disabled: p.props.indexOf(pr) <= STD_PROPS.length, run: () => { const i = p.props.indexOf(pr); p.props.splice(i - 1, 0, ...p.props.splice(i, 1)); save(); } },
     "-", { label: "Delete property", danger: true, run: () => { p.props = p.props.filter((x) => x !== pr); save(); } },
   ]);
 }

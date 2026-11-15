@@ -21,6 +21,7 @@ t.eq(await state(page, () => [bonsai.S.view, location.hash]), ["isles", "#/"], "
 await page.click("#waterAll"); await page.waitForSelector("#showAnswer");
 t.eq(await state(page, () => [bonsai.S.view, bonsai.S.review.ids.length]), ["garden", 5], "Water starts a round in the watering view");
 await key("Escape"); await page.waitForSelector("#review", { state: "hidden" });
+await key("0"); await page.waitForTimeout(900);   // the round leaves the camera on the last plant; 0 shows them all
 await page.click('.lbl.tree:has-text("Basic electronics")');
 await page.waitForSelector("#waterBtn");
 t.eq(await page.textContent("#waterBtn"), "Water 3", "thirsty in this plant");
