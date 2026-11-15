@@ -33,5 +33,9 @@ for (const id of ids) for (const g of [1, 2]) for (const n of [3, 6]) { const m 
 
 for (const [name, want] of [["Physics", "atom"], ["Leadership", "lectern"], ["Music", "synth"], ["Maths", "abacus"], ["World history", "ruined-temple"], ["Knitting", "yarn"], ["Organic chemistry", "flask"], ["Something else", "kit"]]) ok(guessMark(name) === want, `${name} guessed ${guessMark(name)}, want ${want}`);
 
+// every topic in the beta's demo gets a landmark of its own, not the plain monument
+const { demoBackup } = await import("../src/demo.js");
+for (const z of demoBackup().zones) ok(guessMark(z.name) !== "kit", `demo topic ${z.name} has no landmark guessed for it`);
+
 if (failed) process.exit(1);
 console.log(`PASS run17-marks (${ids.length} landmarks)`);
