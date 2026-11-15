@@ -12,10 +12,11 @@
 // event {id, at, type, ref, data}  Append-only log for the growth timeline.
 // patch {id, treeId, text, nodeIds, createdAt}  A short reflection (Patchwork Text).
 // inbox {id, text, createdAt}  Quick-captured thoughts waiting to be filed.
-// page  {id, zoneId, parentId, title, blocks, treeIds, order, createdAt, updatedAt, grown: [{at, treeIds, nodeIds, linkIds}]}
-//        A notes page in a topic (a lecture, a chapter), possibly inside another page. blocks is the editor's content (blocks.js);
-//        early beta pages had plain text instead. treeIds: the knowledge graphs it's attached to.
-//        Growing it with Claude adds ideas; grown records what each grow made.
+// page  {id, kind, parentId, title, blocks, props, order, createdAt, updatedAt, grown: [{at, zoneId, treeIds, nodeIds, linkIds}]}
+//        Notes stand on their own, apart from topics and graphs. kind: "page" or "folder"; parentId: the folder or page it's in.
+//        blocks is the editor's content (blocks.js); props are Notion-style properties [{id, name, type, value}].
+//        Early beta pages had zoneId, treeIds and plain text; they're read as top-level pages.
+//        Growing a page with Claude adds ideas to a topic; grown records what each grow made.
 // vector {id, model, hash, v}  An idea's embedding. Recomputable, so not in backups.
 
 import { CHANNEL } from "./channel.js";
@@ -140,10 +141,7 @@ export async function updateZone(id, patch) {
 export async function deleteZone(id) {
   const trees = await listTreesRaw(id);
   for (const t of trees) await deleteTree(t.id);
-  await tx(["zones", "events", "pages"], "readwrite", async (s) => {
-    for (const p of await reqP(s.pages.index("zoneId").getAll(id))) s.pages.delete(p.id);
-    s.zones.delete(id); logEvent(s, "zone.delete", id);
-  });
+  await tx(["zones", "events"], "readwrite", (s) => { s.zones.delete(id); logEvent(s, "zone.delete", id); });
 }
 const listTreesRaw = (zoneId) => tx(["trees"], "readonly", (s) => reqP(s.trees.index("zoneId").getAll(zoneId)));
 
@@ -353,27 +351,24 @@ export const deleteLink = (id) => tx(["links", "events"], "readwrite", (s) => { 
 
 // ---------- notes pages ----------
 export const listPages = async () => (await tx(["pages"], "readonly", (s) => reqP(s.pages.getAll()))).sort((a, b) => a.order - b.order || a.createdAt.localeCompare(b.createdAt));
-export async function addPage(zoneId, { title = "", blocks = [], parentId = null, treeIds = [] } = {}) {
-  return tx(["zones", "pages"], "readwrite", async (s) => {
-    if (!(await reqP(s.zones.get(zoneId)))) throw new Error("That topic no longer exists.");
-    const sibs = (await reqP(s.pages.index("zoneId").getAll(zoneId))).filter((x) => (x.parentId || null) === parentId);
-    const p = { id: uid(), zoneId, parentId, title: clean(title, 120), blocks, treeIds, order: sibs.length ? Math.max(...sibs.map((x) => x.order)) + 1 : 1, createdAt: now(), updatedAt: now(), grown: [] };
+export async function addPage({ title = "", blocks = [], parentId = null, kind = "page", props = [] } = {}) {
+  return tx(["pages"], "readwrite", async (s) => {
+    const all = await reqP(s.pages.getAll()), sibs = all.filter((x) => (x.parentId || null) === parentId);
+    const p = { id: uid(), kind, parentId, title: clean(title, 120), blocks, props, order: sibs.length ? Math.max(...sibs.map((x) => x.order || 0)) + 1 : 1, createdAt: now(), updatedAt: now(), grown: [] };
     s.pages.put(p); return p;
   });
 }
 export async function updatePage(id, patch) {
-  return tx(["pages", "zones"], "readwrite", async (s) => {
+  return tx(["pages"], "readwrite", async (s) => {
     const p = await reqP(s.pages.get(id)); if (!p) throw new Error("That page no longer exists.");
-    const q = pick(patch, ["title", "blocks", "order", "zoneId", "parentId", "treeIds"]);
+    const q = pick(patch, ["title", "blocks", "order", "parentId", "props", "kind"]);
     if ("title" in q) q.title = clean(q.title, 120);
     if ("blocks" in q && JSON.stringify(q.blocks).length > 2000000) throw new Error("That page is too long.");
-    if ("zoneId" in q && !(await reqP(s.zones.get(q.zoneId)))) throw new Error("That topic no longer exists.");
-    const next = { ...p, ...q, updatedAt: now() }; s.pages.put(next);
-    if ("zoneId" in q && q.zoneId !== p.zoneId) {   // pages inside it go with it
+    if ("parentId" in q && q.parentId) {   // never inside itself
       const all = await reqP(s.pages.getAll());
-      for (const d of descendants(all, id)) s.pages.put({ ...d, zoneId: q.zoneId, updatedAt: now() });
+      if (q.parentId === id || descendants(all, id).some((d) => d.id === q.parentId)) throw new Error("A page can't go inside itself.");
     }
-    return next;
+    const next = { ...p, ...q, updatedAt: now() }; s.pages.put(next); return next;
   });
 }
 const descendants = (all, id) => { const out = [], st = [id]; while (st.length) { const x = st.pop(); for (const c of all.filter((p) => p.parentId === x)) { out.push(c); st.push(c.id); } } return out; };
@@ -387,19 +382,19 @@ export const deletePage = (id) => tx(["pages"], "readwrite", async (s) => {
 export const putPages = (list) => tx(["pages"], "readwrite", (s) => { for (const p of [].concat(list)) s.pages.put(p); });
 
 // Adds what planGrow (notes.js) worked out, all in one save, and records it on the page so it can be taken back.
-export async function growPage(pageId, plan) {
+export async function growPage(pageId, plan, zoneId) {
   return tx(["pages", "zones", "trees", "nodes", "links", "events"], "readwrite", async (s) => {
     const page = await reqP(s.pages.get(pageId)); if (!page) throw new Error("That page no longer exists.");
-    if (!(await reqP(s.zones.get(page.zoneId)))) throw new Error("That topic no longer exists.");
-    const ids = new Map(), treeOfKey = new Map(), made = { at: now(), treeIds: [], nodeIds: [], linkIds: [] };
-    const sibs = await reqP(s.trees.index("zoneId").getAll(page.zoneId));
+    if (!(await reqP(s.zones.get(zoneId)))) throw new Error("That topic no longer exists.");
+    const ids = new Map(), treeOfKey = new Map(), made = { at: now(), zoneId, treeIds: [], nodeIds: [], linkIds: [] };
+    const sibs = await reqP(s.trees.index("zoneId").getAll(zoneId));
     let order = sibs.length ? Math.max(...sibs.map((x) => x.order)) : 0;
     for (const t of plan.trees) {
-      const tree = { id: uid(), zoneId: page.zoneId, name: clean(t.name, 80) || clean(t.title, 80), color: null, rootId: null, order: ++order, archived: false, createdAt: now(), updatedAt: now() };
+      const tree = { id: uid(), zoneId, name: clean(t.name, 80) || clean(t.title, 80), color: null, rootId: null, order: ++order, archived: false, createdAt: now(), updatedAt: now() };
       const root = newNode(tree.id, null, t, 1); tree.rootId = root.id;
       s.trees.put(tree); s.nodes.put(root); ids.set(t.root, root.id); treeOfKey.set(t.root, tree.id);
       made.treeIds.push(tree.id); made.nodeIds.push(root.id);
-      logEvent(s, "tree.create", tree.id, { name: tree.name, zoneId: page.zoneId }); logEvent(s, "node.create", root.id, { treeId: tree.id, parentId: null });
+      logEvent(s, "tree.create", tree.id, { name: tree.name, zoneId }); logEvent(s, "node.create", root.id, { treeId: tree.id, parentId: null });
     }
     const nextOrder = new Map();
     for (const n of plan.nodes) {
@@ -418,10 +413,7 @@ export async function growPage(pageId, plan) {
       const link = { id: uid(), fromId, toId, label: clean(l.label, 60), note: "", createdAt: now(), updatedAt: now() };
       s.links.put(link); made.linkIds.push(link.id); logEvent(s, "link.create", link.id, { fromId, toId });
     }
-    // the page is attached to every graph it grew into
-    const touched = new Set(page.treeIds || []);
-    for (const id of made.nodeIds) { const n = await reqP(s.nodes.get(id)); if (n) touched.add(n.treeId); }
-    s.pages.put({ ...page, grown: [...(page.grown || []), made], treeIds: [...touched], updatedAt: now() });
+    s.pages.put({ ...page, grown: [...(page.grown || []), made], updatedAt: now() });
     return made;
   });
 }
@@ -434,7 +426,7 @@ export async function ungrowPage(pageId) {
     for (const id of made.nodeIds) { const n = await reqP(s.nodes.get(id)); if (!n) continue; for (const x of subtreeIds(await reqP(s.nodes.index("treeId").getAll(n.treeId)), id)) ids.add(x); }
     await removeNodes(s, [...ids]);
     for (const id of made.treeIds) { for (const p of await reqP(s.patches.index("treeId").getAll(id))) s.patches.delete(p.id); s.trees.delete(id); }
-    s.pages.put({ ...page, grown: page.grown.slice(0, -1), treeIds: (page.treeIds || []).filter((t) => !made.treeIds.includes(t)), updatedAt: now() });
+    s.pages.put({ ...page, grown: page.grown.slice(0, -1), updatedAt: now() });
     return made;
   });
 }

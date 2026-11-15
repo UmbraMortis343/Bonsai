@@ -4,14 +4,16 @@ Every release of Bonsai, newest first. Versions follow `major.minor.patch`: mino
 
 ## 0.11.0 — 2026-11-15
 
-Notes, a third window beside the garden and knowledge.
+Notes, a third window, and a cleaner look everywhere.
 
-- Garden, Knowledge and Notes are switched from the top bar; Shift+Tab goes round all three. O opens Notes.
-- Pages per topic, with pages inside pages in the sidebar. 1–9 or ↑ ↓ pick a page, ← → change topic, N adds a page, + on a page adds one inside it, Del deletes (with undo).
-- Writing works like Notion: type / for blocks (headings, bullets, numbers, to-dos, toggles, quote, callout, code, divider, page), or Markdown shortcuts (# , - , 1. , [] , > ). Tab and Shift+Tab indent, Ctrl+B, I, U, E, K format, and a toolbar shows over selected text. Drag a block by its ⋮⋮ handle, or Ctrl+Shift+↑ ↓; the handle also turns a block into another kind, colours it, duplicates or deletes it.
-- Notion's colours: warm greys instead of the slate blue, light and dark, with its nine text and background colours for blocks.
-- Attach a page to any knowledge graphs (A). In a graph, O shows the pages attached to it, beside it. Idea notes stay separate.
-- Grow with Claude (G): copy the page for Claude, paste its reply back, see what it adds, then grow. Claude picks the ideas, strings them onto your graphs (or starts one) and adds links, keeping details as the ideas' notes. The page is attached to the graphs it grew into. Growing again adds only what's new; undo, or take the last grow back from the page menu.
+- Garden, Knowledge and Notes are three windows, switched from the top bar or round with Shift+Tab.
+- Notes work like Notion and stand on their own: folders and pages, pages inside pages, nothing tied to a topic or a graph. Search by name or #tag (/). N new page, F new folder; drag a page onto a folder to move it, or use Move to.
+- Properties at the top of a page: text, number, select, tags, date, checkbox and link. Tags made on one page are offered on the others.
+- Writing as in Notion: / for blocks, Markdown shortcuts, Tab to indent, Ctrl+B, I, U, E, K, a toolbar over selected text, drag blocks by ⋮⋮ or Ctrl+Shift+↑ ↓, and block colours.
+- In a knowledge graph, O opens your notes beside it.
+- Grow into a knowledge graph, from a page's menu: pick the topic, copy the page for Claude, paste its reply back and see what it adds. Undo, or take the last grow back later.
+- One look: white, black and an earth green, with warm greys, in light and dark. Corners are only slightly rounded; no pills.
+- The bars are docked instead of floating: a full-width top bar, side panels against the edge, a bottom bar for actions. The garden's totals and Water are in the top bar, and its panel starts with day/night and detail, with Knowledge spread folded away.
 
 ## 0.10.0 — 2026-11-15
 

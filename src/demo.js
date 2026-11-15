@@ -218,9 +218,12 @@ const LINKS = [
 
 import { textToBlocks } from "./blocks.js";
 
-// Notes pages, written the way lecture notes are, to try growing with Claude: [title, text, graph it's attached to, pages inside it]
-const PAGES = {
-  Mechanics: [["Lecture 6: Momentum", `Quiz on Friday, bring calculator
+// Notes, written the way lecture notes are, in folders, with properties: to try the notes window and growing with Claude.
+// [kind, title, text or children, props, pages inside]
+const tag = (name, value) => ({ id: "pr-" + name.toLowerCase(), name, type: "tags", value });
+const PAGES = [
+  ["folder", "Physics", [
+    ["page", "Lecture 6: Momentum", `Quiz on Friday, bring calculator
 - Momentum p = mv (vector, kg m/s)
   - heavier or faster → harder to stop
 - Newton's 2nd law really says F = dp/dt
@@ -236,14 +239,17 @@ const PAGES = {
   - elastic: KE conserved too (snooker balls, roughly)
   - inelastic: KE lost to heat/sound/deformation
   - perfectly inelastic: objects stick together, max KE lost
-- Worked example: 2 kg at 3 m/s hits 1 kg at rest, they stick → v = 6/3 = 2 m/s`, "Energy and momentum", [["Problem sheet 6", `## Q1
+- Worked example: 2 kg at 3 m/s hits 1 kg at rest, they stick → v = 6/3 = 2 m/s`, [{ id: "pr-course", name: "Course", type: "select", value: "PHYSICS 120" }, tag("Tags", ["lecture", "momentum"]), { id: "pr-date", name: "Date", type: "date", value: "2026-11-12" }], [
+      ["page", "Problem sheet 6", `## Q1
 A 0.15 kg ball at 20 m/s is caught and stopped in 0.1 s. Average force?
 - Δp = 0.15 × 20 = 3 kg m/s
 - F = Δp / Δt = 30 N
 ## Q2
 - [ ] Two skaters push apart: 50 kg moves off at 2 m/s. How fast does the 40 kg one go?
-- [ ] Ask in tutorial about rockets and dp/dt`]]]],
-  Coaching: [["Workshop: GROW model", `Facilitator: Sam. Slides on the drive.
+- [ ] Ask in tutorial about rockets and dp/dt`, [tag("Tags", ["problems", "momentum"]), { id: "pr-done", name: "Done", type: "checkbox", value: false }]]]],
+  ]],
+  ["folder", "Leadership", [
+    ["page", "Workshop: GROW model", `Facilitator: Sam. Slides on the drive.
 GROW = a structure for a coaching conversation
   Goal: what do you want out of this? make it specific
   Reality: where are things now? facts, not judgements
@@ -253,8 +259,12 @@ GROW = a structure for a coaching conversation
 - Silence is fine, let them think
 - Coach doesn't need to know the answer
 - Practised in pairs: 10 min each, observer gave feedback
-  - I jumped to Options too fast, skipped Reality`, "Coaching"]],
-};
+  - I jumped to Options too fast, skipped Reality`, [tag("Tags", ["workshop", "coaching"]), { id: "pr-date", name: "Date", type: "date", value: "2026-11-08" }]],
+  ]],
+  ["page", "Reading list", `- [ ] Feynman Lectures, vol 1, ch 9–10
+- [x] The Coaching Habit
+- [ ] Make It Stick`, [tag("Tags", ["reading"])]],
+];
 
 export function demoBackup(now = Date.now()) {
   const DAY = 86400000, iso = (t) => new Date(t).toISOString();
@@ -286,11 +296,12 @@ export function demoBackup(now = Date.now()) {
   const garden = { hubs: HUBS.map(([hid, name]) => ({ id: hid, name })), zone: {}, patron: "none",
     islands: ISLANDS.map(([iid, name, landmark, hubId, topics, after, from]) => ({ id: iid, name, landmark, hubId, zoneIds: topics.map((t) => zoneByName.get(t).id), after: after || null, from: (from && byTitle.get(from)) || null })) };
   const pages = [];
-  const addPages = (zoneId, list, parentId) => list.forEach(([title, text, graph, inside = []], k) => {
-    const p = { id: id("p"), zoneId, parentId, title, blocks: textToBlocks(text), treeIds: trees.filter((t) => t.name === graph).map((t) => t.id), order: k + 1, createdAt: iso(now - (2 - k) * DAY), updatedAt: iso(now - DAY), grown: [] };
+  const addPages = (list, parentId) => list.forEach(([kind, title, content, props = [], inside = []], k) => {
+    const p = { id: id("p"), kind, parentId, title, blocks: kind === "page" ? textToBlocks(content) : [], props, order: k + 1, createdAt: iso(now - (3 - k) * DAY), updatedAt: iso(now - DAY), grown: [] };
     pages.push(p);
-    if (inside.length) { addPages(zoneId, inside, p.id); for (const c of pages.filter((x) => x.parentId === p.id)) p.blocks.push({ id: id("b"), type: "page", pageId: c.id, html: "", indent: 0 }); }
+    if (kind === "folder") addPages(content, p.id);
+    if (inside.length) { addPages(inside, p.id); for (const c of pages.filter((x) => x.parentId === p.id)) p.blocks.push({ id: id("b"), type: "page", pageId: c.id, html: "", indent: 0 }); }
   });
-  for (const [name, list] of Object.entries(PAGES)) addPages(zoneByName.get(name).id, list, null);
+  addPages(PAGES, null);
   return { app: "bonsai", schema: 4, exportedAt: iso(now), zones, trees, nodes, links, events: [], patches: [], inbox: [], pages, meta: [{ key: "garden", value: garden }, { key: "demo", value: iso(now) }] };
 }
