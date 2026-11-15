@@ -104,7 +104,7 @@ textarea{resize:vertical;line-height:1.45;display:block}
 .timeline input{flex:1;accent-color:var(--accent);min-width:0}
 .when{font-size:12px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
 
-.empty{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);width:min(380px,calc(100% - 32px));z-index:4;
+#empty{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);width:min(380px,calc(100% - 32px));z-index:4;
   background:var(--card);border:1px solid var(--line);border-radius:6px;padding:12px;box-shadow:var(--shadow)}
 
 .status{position:absolute;left:50%;top:46%;transform:translate(-50%,-50%);z-index:4;background:var(--card);border:1px solid var(--line);border-radius:4px;padding:7px 16px;font-size:14px;font-variant-numeric:tabular-nums;box-shadow:var(--shadow)}
@@ -299,7 +299,7 @@ time{font-size:12px;color:var(--muted)}
 .pv.chk{display:flex;align-items:center}
 .pv.chk input{width:16px;height:16px;accent-color:var(--accent)}
 .pv.chips{display:flex;flex-wrap:wrap;gap:4px;cursor:pointer}
-.pv.chips .empty{color:var(--muted);opacity:.7}
+.pv .empty{color:var(--muted);opacity:.7}
 .padd{justify-self:start;border:0;background:none;color:var(--muted);padding:5px 6px;border-radius:4px;font-size:14px}
 .padd:hover{background:var(--hover)}
 .tagc{display:inline-block;padding:1px 7px;border-radius:3px;font-size:13px;line-height:1.5;background:var(--b-gray);color:var(--ink);white-space:nowrap}
@@ -445,3 +445,44 @@ body[data-window="garden"][data-gfold="1"] #gpanel{display:none}
 }
 @media (max-width:700px){ .brand h1,.top .btn .wl,.top .btn kbd,.crumb.sub{display:none} .top{gap:3px;padding:0 6px} .top .ib{width:32px} }
 @media (max-width:700px){ .ws{padding:4px 7px} .ws .thirst{display:none} .top .btn{padding:5px 7px} .channel{padding:3px 4px;font-size:9px} }
+
+/* properties, as Notion lays them out */
+.prow{grid-template-columns:180px 1fr;min-height:34px;border-radius:4px}
+.prow:hover{background:var(--hover)}
+.pname{gap:8px;padding:5px 6px}
+.pg{width:18px;height:18px;display:grid;place-items:center;color:var(--muted);flex:none}
+.pg .ic svg{width:16px;height:16px;stroke-width:1.8}
+.pv{display:flex;align-items:center;gap:4px}
+.pv.ro{color:var(--muted);padding:5px 8px;font-size:14px}
+.padd{display:flex;align-items:center;gap:8px;margin-top:2px}
+.stat{display:inline-flex;align-items:center;gap:6px;padding:1px 8px;border-radius:3px;font-size:13px;line-height:1.6;background:var(--b-gray);color:var(--ink)}
+.stat::before{content:"";width:7px;height:7px;border-radius:2px;background:var(--c-gray)}
+.stat.c-yellow{background:var(--b-yellow)}.stat.c-yellow::before{background:var(--c-yellow)}
+.stat.c-green{background:var(--b-green)}.stat.c-green::before{background:var(--c-green)}
+/* the calendar */
+.datepop{width:260px;padding:8px;gap:6px;outline:none}
+.dphead{display:flex;align-items:center;justify-content:space-between}
+.dphead b{font-size:14px}
+.dphead .ib{width:28px;height:28px;font-size:18px}
+.dpgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.dpw{font-size:11px;color:var(--muted);text-align:center;padding:2px 0}
+.dpd{border:0;background:none;border-radius:4px;height:30px;font-size:13px;color:var(--ink);padding:0}
+.dpd:hover,.dpd.at{background:var(--hover)}
+.dpd.out{color:var(--muted);opacity:.6}
+.dpd.today{color:var(--accent);font-weight:700}
+.dpd.on{background:var(--accent);color:var(--accent-ink)}
+.dpfoot{display:flex;gap:6px;border-top:1px solid var(--line);padding-top:6px}
+.dpfoot .btn{flex:1;justify-content:center;padding:5px 8px;font-size:13px}
+/* a date tag in the text (@) */
+.tx time{display:inline-block;padding:0 4px;border-radius:3px;color:var(--muted);background:var(--well);border:1px solid var(--line);cursor:pointer;font-size:.92em;line-height:1.4;user-select:none;-webkit-user-select:none}
+.tx time::before{content:"@"}
+.tx time:hover{color:var(--ink)}
+/* the garden panel's name: click to rename; its settings at the foot */
+.gph{margin:-2px 0 2px}
+.gname{cursor:text;border-radius:4px;padding:2px 4px;margin-left:-4px}
+.gname:hover{background:var(--hover)}
+.gname-in{flex:1;font-size:17px;font-weight:700;padding:2px 4px!important;border-radius:4px!important}
+.gset{display:grid;gap:6px;margin-top:auto;padding-top:10px;border-top:1px solid var(--line)}
+.gsrow{display:grid;grid-template-columns:96px 1fr;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.gsrow select{padding:5px 8px;font-size:13px;border-radius:4px;color:var(--ink)}
+.gsrow input[type=checkbox]{justify-self:start;width:16px;height:16px;accent-color:var(--accent)}

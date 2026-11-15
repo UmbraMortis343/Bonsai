@@ -128,7 +128,7 @@ await key(page, "l");
 t.eq((await snap(page)).mode, "web", "L switches to the web");
 await page.waitForFunction(() => bonsai.tech.snapshot().settled, null, { timeout: 90000 });
 await page.screenshot({ path: "tests/shots/tech-web.png" });
-const p0 = await state(page, (id) => bonsai.tech.screenOf(id), I.Harmonics);
+const p0 = await state(page, (id) => { const p = bonsai.tech.screenOf(id), r = document.querySelector('#tech').getBoundingClientRect(); return p && { x: p.x + r.left, y: p.y + r.top }; }, I.Harmonics);
 const others = () => state(page, (ids) => ids.map((id) => bonsai.tech.screenOf(id)), [I.Numbers, I.Energy, I.Kinematics]);
 const o0 = await others();
 t.eq(await page.getAttribute("#techLoose", "aria-pressed"), "true", "the web jiggles while you drag");
@@ -137,7 +137,7 @@ t.eq(await page.getAttribute("#techLoose", "aria-pressed"), "false", "J holds it
 await page.mouse.move(p0.x, p0.y); await page.mouse.down(); await page.mouse.move(p0.x + 60, p0.y + 50, { steps: 6 }); await page.mouse.up();
 await page.waitForFunction(() => bonsai.tech.snapshot().settled, null, { timeout: 90000 });
 t.eq((await state(page, () => bonsai.store.getMeta("techtree")))?.pin?.length, 1, "a dragged idea stays where it was put");
-const p1 = await state(page, (id) => bonsai.tech.screenOf(id), I.Harmonics);
+const p1 = await state(page, (id) => { const p = bonsai.tech.screenOf(id), r = document.querySelector('#tech').getBoundingClientRect(); return p && { x: p.x + r.left, y: p.y + r.top }; }, I.Harmonics);
 t.eq([Math.round(p1.x - p0.x), Math.round(p1.y - p0.y)], [60, 50], "it goes where it is dragged");
 t.eq(await others(), o0, "and nothing else moves");
 await key(page, "j");

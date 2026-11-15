@@ -50,7 +50,7 @@ await page.click('#nlist .nrow:has-text("Physics") .chev');
 await page.click('#nlist .nrow:has-text("Lecture 6") .nname');
 await page.waitForFunction(() => document.querySelector("#pageTitle")?.value === "Lecture 6: Momentum");
 t.eq((await page.textContent("#pbar .pcrumb")).replace(/\s+/g, " ").trim(), "Physics/Lecture 6: Momentum", "the bar over the page shows where it sits");
-t.eq(await page.$$eval("#props .prow .pname span:last-child", (r) => r.map((x) => x.textContent)), ["Course", "Tags", "Date"], "its properties");
+t.eq(await page.$$eval("#props .prow .pname > span:last-child", (r) => r.map((x) => x.textContent)), ["Course", "Tags", "Date"], "its properties");
 t.eq(await page.$$eval("#props .tagc", (r) => r.map((x) => x.textContent)), ["PHYSICS 120", "lecture", "momentum"], "select and tags");
 t.eq(await page.locator("#nedit .blk.t-bullet").count() > 10, true, "the lecture's bullets are blocks");
 t.eq(await page.isVisible(".gchip, #attachBtn"), false, "nothing ties it to a graph");
@@ -80,6 +80,34 @@ t.eq((await pg("Reading list")).props.map((x) => [x.name, x.value]), [["Tags", [
 await page.fill("#notesSearch", "#books"); await page.dispatchEvent("#notesSearch", "input");
 t.eq(await page.$$eval("#nlist .nrow .nt", (r) => r.map((x) => x.textContent)), ["Reading list"], "a new tag is searchable");
 await page.fill("#notesSearch", ""); await page.dispatchEvent("#notesSearch", "input");
+
+// Suggested properties: Due date opens a calendar, Status starts as Not started, Priority offers High/Medium/Low, Created fills itself in.
+await page.click("#propAdd"); await page.click('.mi:has-text("Due date")');
+await page.waitForSelector(".datepop"); await page.click("#dpToday");
+await page.click("#propAdd"); await page.click('.mi:has-text("Status")');
+await page.click('.mi:has-text("In progress")');   // adding it opens its choices
+await page.click("#propAdd"); await page.click('.mi:has-text("Priority")');
+await page.waitForSelector(".tagpop"); t.eq(await page.$$eval(".tagpop .ti .tagc", (r) => r.map((x) => x.textContent)), ["High", "Medium", "Low"], "Priority offers its usual options");
+await page.click('.tagpop .ti:has-text("High")');
+await page.click("#propAdd"); await page.click('.menu .mi:has-text("Created")');
+await page.waitForTimeout(900);
+const today = await state(page, () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; });
+t.eq((await pg("Reading list")).props.slice(2).map((x) => [x.name, x.type, x.value]), [["Due date", "date", today], ["Status", "status", "In progress"], ["Priority", "select", "High"], ["Created", "created", ""]], "suggested properties");
+t.eq((await page.textContent('#props .prow[data-type="created"] .pv')).length > 6, true, "Created shows the date it was made");
+await page.screenshot({ path: "tests/shots/notes-props.png" });
+
+// Backspacing a page to nothing leaves an ordinary empty line; @ makes a date tag.
+await page.click("#nedit .blk .tx >> nth=-1"); await k("End");
+for (let i = 0; i < 150; i++) await k("Backspace");
+t.eq(await state(page, () => [...document.querySelectorAll("#nedit .blk")].map((b) => getComputedStyle(b).position)), ["relative"], "an emptied page keeps one ordinary line");
+await type("Read by @tom"); await page.waitForSelector(".slash .si.on"); await k("Enter"); await type("then review");
+await page.waitForTimeout(800);
+const tomorrow = await state(page, () => { const d = new Date(); d.setDate(d.getDate() + 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; });
+t.eq((await pg("Reading list")).blocks[0].html.includes(`<time datetime="${tomorrow}" contenteditable="false">Tomorrow</time>`), true, "@tomorrow makes a date tag");
+await page.click("#nedit .tx time"); await page.waitForSelector(".datepop"); await k("ArrowRight"); await k("Enter");
+await page.waitForTimeout(800);
+t.eq((await pg("Reading list")).blocks[0].html.includes("<time datetime"), true, "clicking the tag picks another day");
+await page.screenshot({ path: "tests/shots/notes-date.png" });
 
 // A folder, then a page in it, written by keyboard: Markdown shortcuts, Enter, Tab, the / menu, bold, moving blocks.
 await page.click("#nedit"); await k("Escape"); await page.evaluate(() => document.activeElement?.blur());
@@ -163,6 +191,25 @@ await page.click("#toast .link");
 await page.waitForFunction(() => bonsai.S.pages.some((p) => p.title === "Problem sheet 6"));
 const b = await state(page, async () => { const x = await bonsai.store.exportAll(); return [x.schema, x.pages.length]; });
 t.eq(b, [4, 8], "backup has schema 4 and the pages");
+
+// The garden panel: the name comes first and renames in place; Tech tree opens at the island's tier.
+await page.click("#winGarden"); await page.waitForSelector("body[data-isles=ready]");
+await page.waitForFunction(() => document.querySelector("#gpanel h2")?.textContent === "Garden"); await page.waitForTimeout(400);
+await k("1"); await k("2"); await k("1");
+await page.waitForFunction(() => document.querySelector("#gpanel h2")?.textContent === "Matter");
+t.eq(await state(page, () => document.querySelector("#gpanel").firstElementChild.className), "ph gph", "the name is at the top of the panel");
+await page.click("#gpanel h2.gname"); await page.fill("#gpanel .gname-in", "Matter and materials"); await k("Enter");
+await page.waitForFunction(() => bonsai.S.zones.some((z) => z.name === "Matter and materials"));
+await page.selectOption("#topicBiome", "glowcap");
+await page.waitForFunction(() => Object.values(bonsai.S.garden.zone).some((o) => o.biome === "glowcap"));
+await page.screenshot({ path: "tests/shots/garden-topic-panel.png" });
+await page.click("#techBtn"); await page.waitForFunction(() => bonsai.S.view === "tech" && bonsai.tech); await page.waitForTimeout(300);
+t.eq(await state(page, () => { const s = bonsai.tech.snapshot(); return [s.centre, !!s.pick]; }), ["gensci", true], "a topic's Tech tree opens on its island's tier, the topic picked");
+await k("Escape"); await k("Escape"); await k("Escape"); await page.evaluate(() => { location.hash = "#/"; }); await page.waitForSelector("#gpanel h2");
+await k("0"); await page.waitForFunction(() => document.querySelector("#gpanel h2")?.textContent === "Garden");
+await k("1"); await k("4"); await page.waitForFunction(() => document.querySelector("#gpanel h2")?.textContent === "Physics");
+await page.click("#isleTech"); await page.waitForFunction(() => bonsai.S.view === "tech" && bonsai.tech); await page.waitForTimeout(300);
+t.eq(await state(page, () => bonsai.tech.snapshot().centre), "phys", "an island's Tech tree opens on that island's tier");
 
 // Dark, phone, and the other windows in the new bars and colours.
 const dark = await t.page({ colorScheme: "dark" }, "#/");

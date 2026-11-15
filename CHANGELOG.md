@@ -8,11 +8,13 @@ Notes, a third window, and a cleaner look everywhere.
 
 - Garden, Knowledge and Notes are three windows, switched from the top bar or round with Shift+Tab.
 - Notes work like Notion and stand on their own: folders and pages, pages inside pages, nothing tied to a topic or a graph. Search by name or #tag (/). N new page, F new folder; drag a page onto a folder to move it, or use Move to.
-- Properties at the top of a page: text, number, select, tags, date, checkbox and link. Tags made on one page are offered on the others.
+- Properties at the top of a page, laid out as in Notion: text, number, select, tags, status, date, checkbox, link, email, phone, created and last edited. Add a property suggests Due date, Status, Priority and Tags. Dates open a calendar. Tags made on one page are offered on the others.
+- Type @ for a date tag (today, tomorrow, next Monday or any day); click it to change the day.
 - Writing as in Notion: / for blocks, Markdown shortcuts, Tab to indent, Ctrl+B, I, U, E, K, a toolbar over selected text, drag blocks by ⋮⋮ or Ctrl+Shift+↑ ↓, and block colours.
 - In a knowledge graph, O opens your notes beside it.
 - Grow into a knowledge graph, from a page's menu: pick the topic, copy the page for Claude, paste its reply back and see what it adds. Undo, or take the last grow back later.
 - One look: white, black and an earth green, with warm greys, in light and dark. Corners are only slightly rounded; no pills.
+- The garden panel puts the name first: click it to rename. Biome, landmark, centrepiece and mountain sit at the foot of the panel instead of in menus. Tech tree from a topic or an island opens at that island's tier.
 - The bars are docked instead of floating: a full-width top bar, side panels against the edge, a bottom bar for actions. The garden's totals and Water are in the top bar, and its panel starts with day/night and detail, with Knowledge spread folded away.
 
 ## 0.10.0 — 2026-11-15

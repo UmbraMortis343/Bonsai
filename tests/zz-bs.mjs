@@ -1,0 +1,13 @@
+import { start, state } from "./lib.mjs";
+const t = await start("zzbs", 4395, { channel: "beta" });
+const page = await t.page({ colorScheme: "dark" }, "#/");
+await page.waitForFunction(() => bonsai.S.pages.length >= 6);
+await page.click("#winNotes"); await page.waitForSelector("#nlist");
+await page.keyboard.press("n"); await page.waitForFunction(() => document.activeElement?.id === "pageTitle");
+await page.keyboard.type("asdsadklasd"); await page.keyboard.press("Enter");
+await page.keyboard.type("hello there");
+for (let i = 0; i < 15; i++) await page.keyboard.press("Backspace");
+await page.waitForTimeout(400);
+console.log(await state(page, () => [document.activeElement?.className, [...document.querySelectorAll("body *")].filter((e) => { const r = e.getBoundingClientRect(), cs = getComputedStyle(e); return r.width > 200 && r.height > 20 && r.height < 80 && cs.boxShadow !== "none" && cs.display !== "none"; }).map((e) => e.className + " " + Math.round(e.getBoundingClientRect().width))]));
+await page.screenshot({ path: "tests/shots/zz-bs.png" });
+await t.end();

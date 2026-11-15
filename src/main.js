@@ -15,6 +15,7 @@ import { CHANNEL } from "./channel.js";
 import { demoBackup } from "./demo.js";
 import { growPrompt, readGrow, planGrow, growSummary } from "./notes.js";
 import { createEditor, textToBlocks, blocksToText } from "./blocks.js";
+import { datePicker, longDate } from "./datepick.js";
 
 const PALETTE = [["Blue", "#3b82f6"], ["Violet", "#8b5cf6"], ["Pink", "#ec4899"], ["Red", "#ef4444"], ["Orange", "#f97316"], ["Amber", "#f59e0b"], ["Green", "#22c55e"], ["Teal", "#14b8a6"], ["Cyan", "#06b6d4"]];
 const SWATCHES = [["Auto", ""], ...PALETTE];
@@ -1037,27 +1038,54 @@ function renderGarden() {
   const seg = (label, opts, now, run) => el("div", { class: "seg", role: "group", "aria-label": label }, opts.map(([v, text]) => el("button", { text, "aria-pressed": String(v === now), onclick: () => run(v) })));
   const act = (id, text, key, run, primary) => el("button", { class: "btn" + (primary ? " primary" : ""), id, onclick: run }, text, key ? el("kbd", { text: key }) : null);
   const row = (key, name, meta, due, run) => el("button", { class: "grow-row", onclick: run }, key ? el("kbd", { text: key }) : null, el("b", { text: name }), el("span", { class: "muted", text: meta }), due ? el("span", { class: "thirst", text: String(due) }) : null);
-  const foot = el("div", { class: "gctl" },
+  const ctl = el("div", { class: "gctl" },
     seg("Time", [["", "Day"], ["1", "Night"]], isles.night ? "1" : "", (v) => { isles.setNight(v === "1"); setPref("night", v); $("#isles").classList.toggle("night", isles.night); renderGarden(); }),
     seg("Detail", Object.keys(QUALITY).map((q) => [q, q[0].toUpperCase() + q.slice(1)]), isles.quality, (v) => { isles.setQuality(v); setPref("detail", v); renderGarden(); }));
+  // the name: click it (or Enter on it) to rename in place
+  const name = (text, rename) => {
+    const h = el("h2", { text, class: rename ? "gname" : null, title: rename ? "Rename" : null, tabIndex: rename ? 0 : null });
+    if (rename) {
+      const edit = () => {
+        const input = el("input", { class: "gname-in", value: text, maxLength: 80, "aria-label": "Name" });
+        let done = false; const finish = async (save) => { if (done) return; done = true; const v = input.value.trim(); if (save && v && v !== text) await rename(v); else renderGarden(); };
+        input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); finish(true); } else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); finish(false); } });
+        input.addEventListener("blur", () => finish(true));
+        h.replaceWith(input); input.focus(); input.select();
+      };
+      h.addEventListener("click", edit); h.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); edit(); } });
+    }
+    return h;
+  };
+  const head = (back, h, more) => el("div", { class: "ph gph" }, back ? ib("gBack", "Back", ICON.back, back) : null, h, more);
+  const pickRow = (id, label, opts, now, set) => el("label", { class: "gsrow" }, el("span", { text: label }), el("select", { id, onchange: (e) => set(e.target.value) }, opts.map(([v, text]) => el("option", { value: v, text, selected: v === now }))));
   if (t) {
-    const due = t.due.length;
-    put(box, el("div", { class: "gtop" }, foot, el("div", { class: "gacts" }, due ? act("waterTopic", `Water ${due}`, "W", () => water(t.due), true) : null, act("newGraph", "New knowledge graph", "N", () => newGraph(t.id), !due), act("topicMap", "Meaning map", "M", () => goMeaning(t.id)), act("techBtn", "Tech tree", "K", openTech), t.growth >= 2 ? act("splitTopic", "Split", "S", () => splitTopic(t)) : null)), el("div", { class: "ph" }, ib("gBack", "Back", ICON.back, () => pickTopic(-1)), el("h2", { text: t.name }), ib("topicMore", "Topic menu", ICON.more, (e) => topicMenu(t, e.currentTarget))),
+    const due = t.due.length, o = (S.garden.zone[t.id] ||= {});
+    put(box, head(() => pickTopic(-1), name(t.name, async (v) => { if (await safely(() => store.updateZone(t.id, { name: v }))) refresh(); }), ib("topicMore", "Move to island", ICON.more, (e) => topicMenu(t, e.currentTarget))),
+      el("div", { class: "gtop" }, ctl, el("div", { class: "gacts" }, due ? act("waterTopic", `Water ${due}`, "W", () => water(t.due), true) : null, act("newGraph", "New knowledge graph", "N", () => newGraph(t.id), !due), act("topicMap", "Meaning map", "M", () => goMeaning(t.id)), act("techBtn", "Tech tree", "K", openTech), t.growth >= 2 ? act("splitTopic", "Split", "S", () => splitTopic(t)) : null)),
       el("div", { class: "stats" }, el("span", {}, el("b", { text: String(t.ideas) }), ` idea${t.ideas === 1 ? "" : "s"}`), el("span", {}, el("b", { text: pct(t.growth) }), " grown"), el("span", {}, el("b", { text: pct(t.health) }), " healthy")),
       el("h3", { text: "Knowledge graphs" }),
-      t.trees.length ? el("div", { class: "rows" }, t.trees.map((tr, k) => { const n = (S.byTree.get(tr.id) || []).length; return row(k < 9 ? String(k + 1) : "", tr.name, `${n} idea${n === 1 ? "" : "s"}`, dueList(tr.id).length, () => goTree(tr.id)); })) : el("p", { class: "muted", text: "None yet." }));
+      t.trees.length ? el("div", { class: "rows" }, t.trees.map((tr, k) => { const n = (S.byTree.get(tr.id) || []).length; return row(k < 9 ? String(k + 1) : "", tr.name, `${n} idea${n === 1 ? "" : "s"}`, dueList(tr.id).length, () => goTree(tr.id)); })) : el("p", { class: "muted", text: "None yet." }),
+      el("div", { class: "gset" }, pickRow("topicBiome", "Biome", BIOMES, t.biome, (v) => { o.biome = v; saveGarden(); }), pickRow("topicMark", "Landmark", MARKS, t.mark, (v) => { o.mark = v; saveGarden(); })));
   } else if (isl) {
-    put(box, el("div", { class: "gtop" }, foot, el("div", { class: "gacts" }, act("newTopic", "New topic", "Z", newZone, true))), el("div", { class: "ph" }, ib("gBack", "Back", ICON.back, () => pickIsle(-1)), el("h2", { text: isl.name }), isleItems(S.isle).length ? ib("isleMore", "Island menu", ICON.more, (e) => isleMenu(S.isle, e.currentTarget)) : null),
+    const rec = S.garden.islands[S.isle], items = isleItems(S.isle);
+    put(box, head(() => pickIsle(-1), name(isl.name, rec.mapId ? null : (v) => { rec.name = v; saveGarden(); }), items.length ? ib("isleMore", "Island menu", ICON.more, (e) => isleMenu(S.isle, e.currentTarget)) : null),
+      el("div", { class: "gtop" }, ctl, el("div", { class: "gacts" }, act("newTopic", "New topic", "Z", newZone, true), act("isleTech", "Tech tree", "K", openTech))),
       el("h3", { text: "Topics" }),
-      isl.topics[0].id ? el("div", { class: "rows" }, isl.topics.map((q, k) => row(String(k + 1), q.name, pct(q.growth), q.due.length, () => pickTopic(k)))) : el("p", { class: "muted", text: "No topics here yet." }));
+      isl.topics[0].id ? el("div", { class: "rows" }, isl.topics.map((q, k) => row(String(k + 1), q.name, pct(q.growth), q.due.length, () => pickTopic(k)))) : el("p", { class: "muted", text: "No topics here yet." }),
+      el("div", { class: "gset" },
+        rec.mapId ? null : pickRow("isleCentre", "Centrepiece", CENTRES, rec.landmark, (v) => { rec.landmark = v; saveGarden(); }),
+        S.isle === 0 && rec.landmark === "arches" ? pickRow("islePatron", "Figure", [["none", "None"], ["athena", "Athena"], ["saraswati", "Saraswati"]], S.garden.patron || "none", (v) => { S.garden.patron = v; saveGarden(); }) : null,
+        rec.landmark !== "arches" ? el("label", { class: "gsrow" }, el("span", { text: "Mountain" }), el("input", { type: "checkbox", id: "isleMountain", checked: !!rec.mountain, onchange: (e) => { rec.mountain = e.target.checked; saveGarden(); } })) : null));
   } else if (S.hub >= 0) {
     const hub = S.hubs[S.hub];
-    put(box, el("div", { class: "gtop" }, foot, el("div", { class: "gacts" }, act("newTopic", "New topic", "Z", newZone, true))), el("div", { class: "ph" }, ib("gBack", "Back", ICON.back, () => pickHub(-1)), el("h2", { text: hub.name })),
+    put(box, head(() => pickHub(-1), name(hub.name, null)),
+      el("div", { class: "gtop" }, ctl, el("div", { class: "gacts" }, act("newTopic", "New topic", "Z", newZone, true), act("techBtn", "Tech tree", "K", openTech))),
       el("h3", { text: "Islands" }),
       hub.isles.length ? el("div", { class: "rows" }, hub.isles.map((i, k) => { const q = S.model[i], n = q.topics.filter((x) => x.id).length; return row(k < 9 ? String(k + 1) : "", q.name, `${n} topic${n === 1 ? "" : "s"}`, q.topics.reduce((a, x) => a + x.due.length, 0), () => pickIsle(i)); })) : el("p", { class: "muted", text: "No islands yet." }));
   } else {
     const all = S.model.flatMap((q) => q.topics).filter((q) => q.id), thirsty = all.filter((q) => q.due.length).sort((a, b) => b.due.length - a.due.length), top = Math.max(1, ...all.map((q) => q.ideas));
-    put(box, el("div", { class: "gtop" }, foot, el("div", { class: "gacts" }, act("newGraph", "New knowledge graph", "N", () => newGraph(), true), act("mapBtn", "Meaning map", "M", () => goMeaning()), act("techBtn", "Tech tree", "K", openTech))), el("div", { class: "ph" }, el("h2", { text: "Garden" }), S.garden.mapAt ? null : ib("isleAdd", "New island", ICON.plus, newIsle)),
+    put(box, head(null, name("Garden", null), S.garden.mapAt ? null : ib("isleAdd", "New island", ICON.plus, newIsle)),
+      el("div", { class: "gtop" }, ctl, el("div", { class: "gacts" }, act("newGraph", "New knowledge graph", "N", () => newGraph(), true), act("mapBtn", "Meaning map", "M", () => goMeaning()), act("techBtn", "Tech tree", "K", openTech))),
       el("h3", { text: "Needs watering" }),
       thirsty.length ? el("div", { class: "rows" }, thirsty.slice(0, 6).map((q) => row("", q.name, "", q.due.length, () => goTopic(q.id)))) : el("p", { class: "muted", text: "Nothing right now." }),
       all.length ? el("details", { class: "fold", id: "spread", open: pref("spread", "") === "1", ontoggle: (e) => setPref("spread", e.target.open ? "1" : "") }, el("summary", {}, el("h3", { text: "Knowledge spread" })), el("div", { class: "spread" }, all.map((q) => el("button", { class: "bar", title: `${q.name}: ${q.ideas}`, onclick: () => goTopic(q.id) }, el("span", { text: q.name }), el("i", {}, el("b", { style: `width:${Math.max(3, (100 * q.ideas) / top)}%` })))))) : null);
@@ -1082,11 +1110,7 @@ async function newGraph(zoneId) {
 function isleItems(i) {
   const rec = S.garden.islands[i]; if (!rec) return [];
   return [
-    !rec.mapId && { label: "Rename", run: async () => { const v = await dialog({ title: "Rename island", fields: [{ name: "name", label: "Island", value: rec.name, max: 40 }] }); if (v) { rec.name = v.name; saveGarden(); } } },
-    !rec.mapId && { label: "Centrepiece", run: (anchor) => menu(anchor, CENTRES.map(([v, text]) => ({ label: (rec.landmark === v ? "✓ " : "") + text, run: () => { rec.landmark = v; saveGarden(); } }))) },
-    i === 0 && rec.landmark === "arches" && { label: "Figure under the arches", run: (anchor) => menu(anchor, [["none", "None"], ["athena", "Athena"], ["saraswati", "Saraswati"]].map(([v, text]) => ({ label: ((S.garden.patron || "none") === v ? "✓ " : "") + text, run: () => { S.garden.patron = v; saveGarden(); } }))) },
-    rec.landmark !== "arches" && { label: (rec.mountain ? "✓ " : "") + "Mountain", run: () => { rec.mountain = !rec.mountain; saveGarden(); } },   // the arches always stand under one
-    !S.garden.mapAt && "-", !S.garden.mapAt && { label: "New island", run: newIsle },
+    !S.garden.mapAt && { label: "New island", run: newIsle },
     i > 0 && !rec.mapId && !rec.zoneIds.length && { label: "Remove island", danger: true, run: () => { S.garden.islands.splice(i, 1); S.isle = -1; isles.focus(-1); saveGarden(); } },
   ].filter(Boolean);
 }
@@ -1097,17 +1121,11 @@ async function newIsle() {
   S.garden.islands.push({ id: newId(), name: v.name, landmark: v.landmark, hubId: hubsOf(S.garden)[0].id, zoneIds: [] }); await saveGarden(); pickIsle(S.garden.islands.length - 1);
 }
 function topicMenu(t, anchor) {
-  const z = S.zones.find((q) => q.id === t.id), o = (S.garden.zone[t.id] ||= {}), here = S.garden.islands[S.isle];
-  const choose = (list, now, set) => () => menu(anchor, list.map(([v, text]) => ({ label: (now === v ? "✓ " : "") + text, run: () => { set(v); saveGarden(); } })));
+  const here = S.garden.islands[S.isle];
   const move = (to) => { here.zoneIds = here.zoneIds.filter((id) => id !== t.id); to.zoneIds.push(t.id); S.topic = -1; saveGarden(); };
-  menu(anchor, [
-    { label: "Rename", run: () => renameThing(z, store.updateZone, "Topic") },
-    { label: "Notes", key: "O", run: () => { location.hash = "#/notes/" + encodeURIComponent(t.id); } },
-    { label: "Biome", run: choose(BIOMES, t.biome, (v) => { o.biome = v; }) },
-    { label: "Landmark", run: choose(MARKS, t.mark, (v) => { o.mark = v; }) },
-    { label: "Move to island", run: () => menu(anchor, [...S.garden.islands.filter((q) => q !== here && q.zoneIds.length < ISLE_MAX).map((q) => ({ label: (multi() ? hubsOf(S.garden).find((h) => h.id === q.hubId).name + " › " : "") + q.name, run: () => move(q) })),
-      !S.garden.mapAt && { label: "New island…", run: async () => { const v = await dialog({ title: "New island", ok: "Move", fields: [{ name: "name", label: "Island", max: 40 }] }); if (!v) return; const q = { id: newId(), name: v.name, landmark: "academy", hubId: here.hubId, zoneIds: [] }; S.garden.islands.push(q); move(q); } }].filter(Boolean)) },
-  ]);
+  menu(anchor, [{ label: "Move to island", disabled: true },
+    ...S.garden.islands.filter((q) => q !== here && q.zoneIds.length < ISLE_MAX).map((q) => ({ label: (multi() ? hubsOf(S.garden).find((h) => h.id === q.hubId).name + " › " : "") + q.name, run: () => move(q) })),
+    !S.garden.mapAt && { label: "New island…", run: async () => { const v = await dialog({ title: "New island", ok: "Move", fields: [{ name: "name", label: "Island", max: 40 }] }); if (!v) return; const q = { id: newId(), name: v.name, landmark: "academy", hubId: here.hubId, zoneIds: [] }; S.garden.islands.push(q); move(q); } }].filter(Boolean));
 }
 function islesKey(k, stop) {
   const isl = S.model[S.isle], t = isl?.topics[S.topic], hub = S.hub >= 0 ? S.hubs[S.hub] : null, list = hub ? hub.isles : S.model.map((_, i) => i);
@@ -1233,8 +1251,9 @@ function takeArt() {
 }
 function openTech() {
   if (S.view === "tree" || S.view === "meaning") { S.pendingSel = S.sel; location.hash = "#/techtree"; return; }
-  const t = S.view === "isles" ? S.model[S.isle]?.topics[S.topic] : null;
-  location.hash = "#/techtree" + (t?.id ? "/" + encodeURIComponent(t.id) : "");
+  const t = S.view === "isles" ? S.model[S.isle]?.topics[S.topic] : null, isl = S.view === "isles" ? S.model[S.isle] : null;
+  const at = t?.id || isl?.id;   // a topic opens on its island's tier with it picked; an island opens on its own tier
+  location.hash = "#/techtree" + (at ? "/" + encodeURIComponent(at) : "");
 }
 // The tech tree is dark when the garden is at night, or when the device is dark.
 const techNight = () => pref("night", "") === "1";
@@ -1253,7 +1272,7 @@ async function showTech(focus) {
   }
   tech.setActive(true); tech.setData(techData());
   const at = S.pendingSel || focus; S.pendingSel = null;
-  if (at) tech.focus(at);
+  if (at) { if (S.garden?.islands.some((q) => q.id === at)) tech.goTo(at); else tech.focus(at); }
   renderChrome();
 }
 function techHover(x, cx, cy) {
@@ -1431,8 +1450,16 @@ const byPageOrder = (a, b) => (isFolder(b) - isFolder(a)) || (a.order || 0) - (b
 const kidPages = (id) => S.pages.filter((p) => (id ? p.parentId === id : topLevel(p))).sort(byPageOrder);
 const pageTitle = (id) => (pageOf(id) ? pageOf(id).title || "Untitled" : "");
 const pagePath = (p) => { const out = []; for (let q = pageOf(p?.parentId); q; q = pageOf(q.parentId)) out.unshift(q); return out; };
-const tagsOf = (p) => (p.props || []).filter((x) => x.type === "tags" || x.type === "select").flatMap((x) => [].concat(x.value || []));
-const PROP_TYPES = [["text", "Text", "Aa"], ["number", "Number", "#"], ["select", "Select", "◉"], ["tags", "Tags", "▤"], ["date", "Date", "▦"], ["checkbox", "Checkbox", "☑"], ["url", "URL", "↗"]];
+const tagsOf = (p) => (p.props || []).filter((x) => x.type === "tags" || x.type === "select" || x.type === "status").flatMap((x) => [].concat(x.value || []));
+// [type, name it starts with, icon]; created and edited fill themselves in
+const PI = { text: "M4 7h16M4 12h16M4 17h10", number: "M9 4L7 20M17 4l-2 16M4 9h16M3 15h16", select: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM8 10l4 4 4-4", tags: "M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01",
+  status: "M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1", date: "M4 6h16v14H4zM4 10h16M8 3v4M16 3v4", checkbox: "M4 4h16v16H4zM8 12l3 3 5-6",
+  url: "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1", email: "M3 6h18v12H3zM3 6l9 7 9-7", phone: "M6 3h4l2 5-2.5 1.5a11 11 0 0 0 5 5L16 12l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 4 5a2 2 0 0 1 2-2z",
+  created: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2", edited: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2" };
+const PROP_TYPES = [["text", "Text"], ["number", "Number"], ["select", "Select"], ["tags", "Tags"], ["status", "Status"], ["date", "Date"], ["checkbox", "Checkbox"], ["url", "URL"], ["email", "Email"], ["phone", "Phone"], ["created", "Created"], ["edited", "Last edited"]];
+const PROP_SUGGEST = [["date", "Due date"], ["status", "Status"], ["select", "Priority"], ["tags", "Tags"], ["url", "Link"], ["date", "Date"]];
+const PROP_OPTIONS = { Priority: ["High", "Medium", "Low"] };
+const STATUSES = [["Not started", "gray"], ["In progress", "yellow"], ["Done", "green"]];
 const TAG_COLOURS = ["gray", "brown", "orange", "yellow", "green", "blue", "purple", "pink", "red"];
 const tagColour = (v) => { let h = 0; for (const c of String(v)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return TAG_COLOURS[h % TAG_COLOURS.length]; };
 const notesOpen = () => S.nopen || (S.nopen = new Set((() => { try { return JSON.parse(pref("notesOpen", "[]")); } catch { return []; } })()));
@@ -1537,47 +1564,62 @@ function pageView(p, side) {
   return el("article", { class: "page" + (side ? " side" : "") }, titleInput(p, side), propsView(p), body);
 }
 // ---- properties at the top of a page, as in Notion ----
+const propIcon = (type) => el("span", { class: "pg" }, icon(PI[type] || PI.text));
 function propsView(p) {
   const box = el("div", { class: "props", id: "props" });
   const save = () => { queuePage(p.id, { props: (p.props || []).map((x) => ({ ...x })) }); draw(); };
-  const draw = () => put(box, (p.props || []).map((pr) => {
-    const [, , glyph] = PROP_TYPES.find((t) => t[0] === pr.type) || PROP_TYPES[0];
-    const name = el("button", { class: "pname", type: "button", onclick: (e) => propMenu(p, pr, e.currentTarget, save) }, el("span", { class: "pg", text: glyph }), el("span", { text: pr.name }));
-    return el("div", { class: "prow", dataset: { type: pr.type } }, name, propValue(p, pr, save));
-  }), el("button", { class: "padd", type: "button", id: "propAdd", onclick: (e) => menu(e.currentTarget, PROP_TYPES.map(([type, label]) => ({ label, run: () => {
+  const add = (type, label) => {
     const taken = new Set((p.props || []).map((x) => x.name)); let name = label, n = 2; while (taken.has(name)) name = `${label} ${n++}`;
-    p.props = [...(p.props || []), { id: "pr" + Date.now().toString(36), name, type, value: type === "tags" ? [] : type === "checkbox" ? false : "" }]; save();
-    setTimeout(() => $(`#props .prow:last-of-type .pv`)?.click?.() || $(`#props .prow:last-of-type input`)?.focus(), 0);
-  } }))) }, "+ Add a property"));
+    p.props = [...(p.props || []), { id: "pr" + Date.now().toString(36), name, type, value: type === "tags" ? [] : type === "checkbox" ? false : type === "status" ? "Not started" : "" }]; save();
+    const last = [...box.querySelectorAll(".prow")].at(-1)?.querySelector(".pv"); if (last && type !== "checkbox" && type !== "created" && type !== "edited") (last.tagName === "INPUT" ? last.focus() : last.click());
+  };
+  const draw = () => put(box, (p.props || []).map((pr) => el("div", { class: "prow", dataset: { type: pr.type } },
+      el("button", { class: "pname", type: "button", title: pr.name, onclick: (e) => propMenu(p, pr, e.currentTarget, save) }, propIcon(pr.type), el("span", { text: pr.name })),
+      propValue(p, pr, save))),
+    el("button", { class: "padd", type: "button", id: "propAdd", onclick: (e) => {
+      const have = new Set((p.props || []).map((x) => x.name));
+      menu(e.currentTarget, [...PROP_SUGGEST.filter(([, name]) => !have.has(name)).map(([type, label]) => ({ label, key: PROP_TYPES.find((t) => t[0] === type)[1], run: () => add(type, label) })), "-",
+        ...PROP_TYPES.map(([type, label]) => ({ label, run: () => add(type, label) }))]);
+    } }, el("span", { class: "pg" }, icon(ICON.plus)), el("span", { text: "Add a property" })));
   draw(); return box;
 }
 function propValue(p, pr, save) {
   const set = (v) => { pr.value = v; queuePage(p.id, { props: p.props.map((x) => ({ ...x })) }); };
+  const empty = () => el("span", { class: "empty", text: "Empty" });
   if (pr.type === "checkbox") return el("label", { class: "pv chk" }, el("input", { type: "checkbox", checked: !!pr.value, "aria-label": pr.name, onchange: (e) => set(e.target.checked) }));
-  if (pr.type === "date") return el("input", { class: "pv", type: "date", value: pr.value || "", "aria-label": pr.name, onchange: (e) => set(e.target.value) });
+  if (pr.type === "created" || pr.type === "edited") return el("span", { class: "pv ro", text: longDate((pr.type === "created" ? p.createdAt : p.updatedAt).slice(0, 10)) });
+  if (pr.type === "date") return el("button", { class: "pv", type: "button", "aria-label": pr.name, onclick: (e) => datePicker(e.currentTarget, pr.value || "", (v) => { set(v); save(); }) }, pr.value ? el("span", { text: longDate(pr.value) }) : empty());
+  if (pr.type === "status") {
+    const [name, c] = STATUSES.find((x) => x[0] === pr.value) || [pr.value, "gray"];
+    return el("button", { class: "pv", type: "button", "aria-label": pr.name, onclick: (e) => menu(e.currentTarget, STATUSES.map(([v]) => ({ label: (pr.value === v ? "✓ " : "") + v, run: () => { set(v); save(); } }))) },
+      name ? el("span", { class: "stat c-" + c, text: name }) : empty());
+  }
   if (pr.type === "select" || pr.type === "tags") {
     const vals = [].concat(pr.value || []).filter(Boolean);
     return el("button", { class: "pv chips", type: "button", "aria-label": pr.name, onclick: (e) => tagPicker(p, pr, e.currentTarget, save) },
-      vals.length ? vals.map((v) => el("span", { class: "tagc c-" + tagColour(v), text: v })) : el("span", { class: "empty", text: "Empty" }));
+      vals.length ? vals.map((v) => el("span", { class: "tagc c-" + tagColour(v), text: v })) : empty());
   }
-  const input = el("input", { class: "pv", type: pr.type === "number" ? "number" : pr.type === "url" ? "url" : "text", value: pr.value ?? "", placeholder: "Empty", "aria-label": pr.name, oninput: (e) => set(e.target.value) });
-  return pr.type === "url" ? el("div", { class: "pvwrap" }, input, pr.value ? el("a", { class: "ib small", href: /^https?:/i.test(pr.value) ? pr.value : "https://" + pr.value, target: "_blank", rel: "noopener", title: "Open", text: "↗" }) : null) : input;
+  const kind = { number: "number", url: "url", email: "email", phone: "tel" }[pr.type] || "text";
+  const input = el("input", { class: "pv", type: kind, value: pr.value ?? "", placeholder: "Empty", "aria-label": pr.name, oninput: (e) => set(e.target.value) });
+  const href = pr.type === "url" ? (/^https?:/i.test(pr.value) ? pr.value : "https://" + pr.value) : pr.type === "email" ? "mailto:" + pr.value : pr.type === "phone" ? "tel:" + pr.value : "";
+  return href && pr.value ? el("div", { class: "pvwrap" }, input, el("a", { class: "ib small", href, target: pr.type === "url" ? "_blank" : null, rel: "noopener", title: "Open", "aria-label": "Open", text: "↗" })) : input;
 }
 function propMenu(p, pr, anchor, save) {
   menu(anchor, [
     { label: "Rename", run: async () => { const v = await dialog({ title: "Property", fields: [{ name: "n", label: "Name", value: pr.name, max: 40 }] }); if (v?.n.trim()) { pr.name = v.n.trim(); save(); } } },
     { label: "Type", run: () => menu(anchor, PROP_TYPES.map(([type, label]) => ({ label: (pr.type === type ? "✓ " : "") + label, run: () => {
       if (pr.type === type) return;
-      const was = [].concat(pr.value ?? []).filter((x) => x !== "" && x != null).map(String);
-      pr.value = type === "tags" ? was : type === "select" ? was[0] || "" : type === "checkbox" ? false : type === "text" || type === "url" ? was.join(", ") : "";
+      const was = [].concat(pr.value ?? []).filter((x) => x !== "" && x != null && typeof x !== "boolean").map(String);
+      pr.value = type === "tags" ? was : type === "select" ? was[0] || "" : type === "status" ? (STATUSES.some((x) => x[0] === was[0]) ? was[0] : "Not started") : type === "checkbox" ? false : type === "date" ? (/^\d{4}-\d{2}-\d{2}$/.test(was[0] || "") ? was[0] : "") : ["text", "url", "email", "phone"].includes(type) ? was.join(", ") : "";
       pr.type = type; save();
     } }))) },
+    { label: "Move up", disabled: p.props[0] === pr, run: () => { const i = p.props.indexOf(pr); p.props.splice(i - 1, 0, ...p.props.splice(i, 1)); save(); } },
     "-", { label: "Delete property", danger: true, run: () => { p.props = p.props.filter((x) => x !== pr); save(); } },
   ]);
 }
 // choose tags or a select value: type to filter, Enter to make a new one; options come from every page's property of the same name
 function tagPicker(p, pr, anchor, save) {
-  const known = [...new Set(S.pages.flatMap((q) => (q.props || []).filter((x) => x.name === pr.name && (x.type === "tags" || x.type === "select")).flatMap((x) => [].concat(x.value || []))).filter(Boolean))].sort();
+  const known = [...new Set([...(PROP_OPTIONS[pr.name] || []), ...S.pages.flatMap((q) => (q.props || []).filter((x) => x.name === pr.name && (x.type === "tags" || x.type === "select")).flatMap((x) => [].concat(x.value || [])))].filter(Boolean))];
   const multi = pr.type === "tags";
   let close;
   const input = el("input", { type: "text", placeholder: multi ? "Find or add a tag" : "Find or add an option", "aria-label": "Tag", autocomplete: "off" });

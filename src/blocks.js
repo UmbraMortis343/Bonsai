@@ -4,12 +4,14 @@
 // block {id, type, html, indent, checked, open, color, pageId, icon}
 //   type: text h1 h2 h3 bullet number todo toggle quote callout code divider page
 import { el, put, menu, dialog } from "./dom.js";
+import { datePicker, isoDay, relDate, longDate } from "./datepick.js";
 
 export const TYPES = [
   ["text", "Text", "Aa"], ["h1", "Heading 1", "H1"], ["h2", "Heading 2", "H2"], ["h3", "Heading 3", "H3"],
   ["bullet", "Bulleted list", "•"], ["number", "Numbered list", "1."], ["todo", "To-do list", "☐"], ["toggle", "Toggle list", "▸"],
   ["quote", "Quote", "❝"], ["callout", "Callout", "💡"], ["code", "Code", "</>"], ["divider", "Divider", "—"], ["page", "Page", "▤"],
 ];
+const DATES = [["today", "Today", "▦"], ["tomorrow", "Tomorrow", "▦"], ["yesterday", "Yesterday", "▦"], ["week", "Next Monday", "▦"], ["pick", "Pick a date…", "▦"]];
 export const COLORS = ["gray", "brown", "orange", "yellow", "green", "blue", "purple", "pink", "red"];
 const TEXTY = new Set(["text", "h1", "h2", "h3", "bullet", "number", "todo", "toggle", "quote", "callout", "code"]);
 const LISTS = new Set(["bullet", "number", "todo", "toggle"]);
@@ -18,7 +20,7 @@ const uid = () => "b" + Date.now().toString(36) + Math.random().toString(36).sli
 export const newBlock = (type = "text", extra = {}) => ({ id: uid(), type, html: "", indent: 0, ...extra });
 
 // Only simple inline formatting survives: bold, italic, underline, strike, code, links, line breaks.
-const KEEP = { B: "b", STRONG: "b", I: "i", EM: "i", U: "u", S: "s", STRIKE: "s", DEL: "s", CODE: "code", A: "a", BR: "br" };
+const KEEP = { B: "b", STRONG: "b", I: "i", EM: "i", U: "u", S: "s", STRIKE: "s", DEL: "s", CODE: "code", A: "a", BR: "br", TIME: "time" };
 export function cleanHtml(html) {
   const doc = new DOMParser().parseFromString(`<div>${html || ""}</div>`, "text/html"), out = document.createElement("div");
   const walk = (from, to) => {
@@ -30,6 +32,7 @@ export function cleanHtml(html) {
       if (!tag) { if (/^(DIV|P|LI)$/.test(n.tagName) && to.childNodes.length) to.append(document.createElement("br")); walk(n, to); continue; }
       const e = document.createElement(tag);
       if (tag === "a") { const h = n.getAttribute("href") || ""; if (!/^(https?:|mailto:)/i.test(h)) { walk(n, to); continue; } e.setAttribute("href", h); e.setAttribute("target", "_blank"); e.setAttribute("rel", "noopener"); }
+      if (tag === "time") { const d = n.getAttribute("datetime") || ""; if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) { walk(n, to); continue; } e.setAttribute("datetime", d); e.setAttribute("contenteditable", "false"); e.textContent = relDate(d); to.append(e); continue; }
       if (tag !== "br") walk(n, e);
       to.append(e);
     }
@@ -122,6 +125,7 @@ export function createEditor(opts) {
     }
     const tx = el("div", { class: "tx", contentEditable: opts.readOnly ? "false" : b.type === "code" ? "plaintext-only" : "true", spellcheck: b.type !== "code", html: b.type === "code" ? escapeCode(b.html) : b.html,
       dataset: { ph: placeholder(b, i) } });
+    tx.querySelectorAll("time[datetime]").forEach((t) => { t.textContent = relDate(t.getAttribute("datetime")); t.contentEditable = "false"; t.title = longDate(t.getAttribute("datetime")); });
     tx.addEventListener("input", (e) => onInput(e, b, tx));
     tx.addEventListener("beforeinput", (e) => onBefore(e, b, tx));
     tx.addEventListener("keydown", (e) => onKey(e, b, tx));
@@ -163,9 +167,9 @@ export function createEditor(opts) {
     const t = tx.textContent;
     if (b.type !== "code" && t === "---") { b.type = "divider"; b.html = ""; const n = insertAfter(idx(b.id), newBlock("text", { indent: b.indent })); changed(); return render({ id: n.id }); }
     if (b.type !== "code" && t === "```") { b.type = "code"; b.html = ""; changed(); return render({ id: b.id }); }
-    if (e.inputType === "insertText" && e.data === "/") { const at = caretOffset(tx); const prev = t[at - 2]; if (at === 1 || prev === " " || prev === " ") openSlash(b, tx, at - 1); }
+    if (e.inputType === "insertText" && (e.data === "/" || e.data === "@")) { const at = caretOffset(tx); const prev = t[at - 2]; if (at === 1 || prev === " " || prev === "\u00a0") openSlash(b, tx, at - 1, e.data === "@" ? "date" : "block"); }
     else if (slash) updateSlash();
-    tx.parentElement.classList.toggle("empty", !t);
+    tx.parentElement.classList.toggle("blank", !t);   // not "empty": that's the empty-garden box's class
     changed();
   }
   function onPaste(e, b, tx) {
@@ -316,20 +320,20 @@ export function createEditor(opts) {
   }
 
   // ---------- the / menu ----------
-  function openSlash(b, tx, start) {
+  function openSlash(b, tx, start, kind = "block") {
     closeSlash();
-    const box = el("div", { class: "slash", role: "listbox", "aria-label": "Blocks" });
+    const box = el("div", { class: "slash", role: "listbox", "aria-label": kind === "date" ? "Date" : "Blocks" });
     document.body.append(box);
-    slash = { b, tx, start, box, pick: 0, list: [] };
+    slash = { b, tx, start, box, pick: 0, list: [], kind };
     updateSlash();
   }
   function updateSlash() {
     const s = slash; if (!s) return;
     const at = caretOffset(s.tx), t = s.tx.textContent;
-    if (at <= s.start || t[s.start] !== "/") return closeSlash();
+    if (at <= s.start || t[s.start] !== (s.kind === "date" ? "@" : "/")) return closeSlash();
     const q = t.slice(s.start + 1, at).toLowerCase();
     if (q.length > 18 || /\s{2}/.test(q)) return closeSlash();
-    s.list = TYPES.filter(([type, name]) => !q || name.toLowerCase().includes(q) || type.startsWith(q) || name.toLowerCase().split(" ").some((w) => w.startsWith(q)));
+    s.list = (s.kind === "date" ? DATES : TYPES).filter(([type, name]) => !q || name.toLowerCase().includes(q) || type.startsWith(q) || name.toLowerCase().split(" ").some((w) => w.startsWith(q)));
     if (!s.list.length) return closeSlash();
     s.pick = Math.min(s.pick, s.list.length - 1);
     put(s.box, s.list.map(([type, name, ico], k) => el("button", { class: "si" + (k === s.pick ? " on" : ""), type: "button", role: "option", "aria-selected": String(k === s.pick), dataset: { type },
@@ -348,6 +352,7 @@ export function createEditor(opts) {
   }
   function chooseSlash() {
     const s = slash; if (!s) return; const [type] = s.list[s.pick]; closeSlash();
+    if (s.kind === "date") return chooseDate(s, type);
     // take the "/query" out, then turn this block into the type, or add one below if this block has words in it
     const at = caretOffset(s.tx), sel = getSelection(), r = document.createRange();
     setCaret(s.tx, s.start); r.setStart(sel.anchorNode, sel.anchorOffset); setCaret(s.tx, at); r.setEnd(sel.anchorNode, sel.anchorOffset); r.deleteContents();
@@ -361,6 +366,23 @@ export function createEditor(opts) {
     changed(true); render({ id: n.id });
   }
   function closeSlash() { slash?.box.remove(); slash = null; }
+  // @today, @tomorrow, … or a picked day: a date tag in the text
+  function chooseDate(s, when) {
+    const at = caretOffset(s.tx), sel = getSelection(), r = document.createRange();
+    setCaret(s.tx, s.start); r.setStart(sel.anchorNode, sel.anchorOffset); setCaret(s.tx, at); r.setEnd(sel.anchorNode, sel.anchorOffset); r.deleteContents();
+    const caret = r.cloneRange();
+    const insert = (iso) => {
+      s.tx.focus(); const sl = getSelection(); sl.removeAllRanges(); sl.addRange(caret);
+      if (iso) document.execCommand("insertHTML", false, `<time datetime="${iso}" contenteditable="false">${relDate(iso)}</time>\u00a0`);
+      sync(s.b, s.tx); s.b.html = cleanHtml(s.b.html); changed();
+    };
+    if (when === "pick") return datePicker(s.tx.getBoundingClientRect(), "", insert);
+    const d = new Date(); d.setHours(0, 0, 0, 0);
+    if (when === "tomorrow") d.setDate(d.getDate() + 1);
+    if (when === "yesterday") d.setDate(d.getDate() - 1);
+    if (when === "week") d.setDate(d.getDate() + ((8 - d.getDay()) % 7 || 7));   // next Monday
+    insert(isoDay(d));
+  }
 
   // ---------- dragging, and the handle's menu ----------
   function startDrag(e, id) {
@@ -423,6 +445,12 @@ export function createEditor(opts) {
   };
   document.addEventListener("selectionchange", onSel);
 
+  // clicking a date tag picks another day
+  root.addEventListener("click", (e) => {
+    const t = e.target.closest?.("time[datetime]"), tx = t?.closest(".tx"); if (!t || !tx || opts.readOnly) return;
+    const b = B[idx(tx.closest(".blk").dataset.id)]; if (!b) return;
+    datePicker(t, t.getAttribute("datetime"), (iso) => { if (iso) { t.setAttribute("datetime", iso); t.textContent = relDate(iso); } else t.remove(); sync(b, tx); b.html = cleanHtml(b.html); changed(); });
+  });
   // clicking below the last block puts the caret at the end, or starts a new block after a heading, list or solid block
   root.addEventListener("pointerdown", (e) => {
     if (e.target !== root) return;
@@ -475,7 +503,7 @@ function inlineMd(s) {
 // Blocks back to an indented outline, for Claude to read when growing a page.
 export function blocksToText(blocks, pageTitle = () => "") {
   const lines = []; let n = 0;
-  const md = (html) => { const d = document.createElement("div"); d.innerHTML = html || ""; d.querySelectorAll("br").forEach((b) => b.replaceWith("\n")); d.querySelectorAll("b").forEach((b) => b.replaceWith(`**${b.textContent}**`)); d.querySelectorAll("code").forEach((c) => c.replaceWith("`" + c.textContent + "`")); return d.textContent; };
+  const md = (html) => { const d = document.createElement("div"); d.innerHTML = html || ""; d.querySelectorAll("br").forEach((b) => b.replaceWith("\n")); d.querySelectorAll("b").forEach((b) => b.replaceWith(`**${b.textContent}**`)); d.querySelectorAll("code").forEach((c) => c.replaceWith("`" + c.textContent + "`")); d.querySelectorAll("time[datetime]").forEach((t) => t.replaceWith(longDate(t.getAttribute("datetime")))); return d.textContent; };
   for (const b of blocks || []) {
     const pad = "  ".repeat(b.indent || 0);
     n = b.type === "number" ? n + 1 : 0;

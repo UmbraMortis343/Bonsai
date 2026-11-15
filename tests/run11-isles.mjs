@@ -12,7 +12,7 @@ const ids = await seed(page);
 await page.waitForSelector("body[data-isles=ready]", { timeout: 60000 });
 t.eq(await state(page, () => bonsai.S.model.map((i) => [i.name, i.landmark, i.topics.map((q) => [q.name, q.ideas, q.trees.length])])), [["Home", "arches", [["Electronics", 12, 2], ["Music", 3, 1]]]], "topics sit on the first island");
 t.eq(await page.locator(".tag.isle").count(), 1, "one island tag");
-t.eq(await page.textContent("#gpanel .stats"), "15 ideas3 graphs2 topics", "stats in the panel");
+t.eq(await page.textContent("#gstats"), "15 ideas3 graphs2 topics", "garden totals in the top bar");
 await page.waitForTimeout(800); await page.screenshot({ path: "tests/shots/isles-home.png" });
 
 // 1 goes to the island, 1 again to its first topic, 2 opens that topic's second graph.
@@ -37,7 +37,7 @@ t.eq(await state(page, () => [bonsai.S.tree.name, bonsai.S.zones.find((z) => z.i
 await key("Escape"); await page.waitForSelector("#gpanel:not([hidden])");
 
 // Moving a topic to a new island adds a second island with a bridge; the arrangement is remembered.
-await key("1"); await key("2"); await page.click("#topicMore"); await page.click('.menu >> text=Move to island'); await page.click('.menu >> text=New island');
+await key("1"); await key("2"); await page.click("#topicMore"); await page.click('.menu >> text=New island');
 await page.fill(".dialog input", "Arts"); await key("Enter");
 await page.waitForFunction(() => bonsai.S.model.length === 2);
 t.eq(await state(page, () => bonsai.S.model.map((i) => [i.name, i.topics.map((q) => q.name)])), [["Home", ["Electronics"]], ["Arts", ["Music"]]], "topic moved to a new island");

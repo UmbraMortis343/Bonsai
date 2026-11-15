@@ -65,9 +65,8 @@ const shape = (page) => state(page, () => bonsai.S.hubs.map((h) => [h.name, h.is
   await page.waitForTimeout(1800); await page.screenshot({ path: "tests/shots/hubs-hub.png" });
   await key(page, "2"); t.eq(await page.textContent("#gpanel h2"), "Sciences", "2 goes to the hub's second island");
   await page.waitForTimeout(2500); await page.screenshot({ path: "tests/shots/hubs-island.png" });
-  await page.click("#isleMore");
-  t.eq(await page.locator(".menu button").allTextContents(), ["Mountain"], "an island from the map can't be renamed here, but can be given a mountain");
-  await page.click(".menu >> text=Mountain"); await page.waitForFunction(() => bonsai.S.model[1].mountain === true);
+  t.eq([await page.isVisible("#gpanel h2.gname"), await page.isVisible("#isleCentre"), await page.isVisible("#isleMountain")], [false, false, true], "an island from the map can't be renamed or rebuilt here, but can be given a mountain");
+  await page.click("#isleMountain"); await page.waitForFunction(() => bonsai.S.model[1].mountain === true);
   await page.waitForFunction(() => bonsai.isles.ready, null, { timeout: 90000 });
   await key(page, "2"); t.eq(await page.textContent("#gpanel h2"), "Electronics", "2 picks the island's second topic");
   await key(page, "Escape"); await key(page, "Escape");
@@ -76,7 +75,7 @@ const shape = (page) => state(page, () => bonsai.S.hubs.map((h) => [h.name, h.is
   await key(page, "0"); t.eq(await state(page, () => [bonsai.S.hub, bonsai.S.isle]), [-1, -1], "0 goes back out to every hub");
 
   // A topic moved by hand stays where it was put; the map only moves what moved on the map.
-  await key(page, "1"); await key(page, "3"); await key(page, "1"); await page.click("#topicMore"); await page.click(".menu >> text=Move to island"); await page.click(".menu >> text=Academics › Sciences");
+  await key(page, "1"); await key(page, "3"); await key(page, "1"); await page.click("#topicMore"); await page.click(".menu >> text=Academics › Sciences");
   await page.waitForFunction(() => bonsai.S.model.find((q) => q.name === "Sciences").topics.length === 4);
   const next = structuredClone(MAP);
   next.hubs[0].islands[1].name = "Science"; next.hubs[0].islands[1].topics = next.hubs[0].islands[1].topics.filter((q) => q.name !== "Maths");   // renamed; Maths dropped
