@@ -11,7 +11,10 @@ const ISLANDS = [
   ["phys", "Physics", "academy", "acad", ["Mechanics", "Electromagnetism", "Waves", "Thermodynamics", "Quantum"], "gensci", "Energy"],
   ["lead", "Leadership", "statue", "work", ["Communication", "Coaching", "Running events"]],
   ["music", "Music", "amphitheatre", "play", ["Synthesis", "Harmony", "Rhythm"]],
+  ["make", "Workshop", "amphitheatre", "play", ["Photography", "Knitting", "Cooking", "Electronics", "Geography", "Engineering"]],
 ];
+// Workshop topics count as this many ideas fuller than they are, so every landmark tier can be seen: 100%, 130%, 160%, 200%
+const FILL = { Photography: 150, Knitting: 240, Cooking: 330, Electronics: 480, Geography: 200, Engineering: 400 };
 const OUTLINES = {
   Numbers: `Numbers | The quantities we count, compare and measure with
   Counting | Matching things one-to-one with number words
@@ -207,6 +210,30 @@ Circuits | Paths for current
   Time signatures | Beats per bar
   Syncopation | Accents off the beat
   Polyrhythm | Two rhythms at once`,
+  Photography: `Photography | Catching light
+  Exposure | How much light reaches the sensor
+    Aperture | The size of the opening
+    Shutter speed | How long it stays open
+    ISO | How sensitive the sensor is
+  Composition | Where things sit in the frame`,
+  Knitting: `Knitting | Loops pulled through loops
+  Knit stitch | The basic stitch
+  Purl stitch | The knit stitch from the back
+  Norwegian patterns | Two-colour stranded motifs`,
+  Cooking: `Cooking | Heat and flavour
+  Searing | Browning for flavour
+  Braising | Slow and wet
+  Seasoning | Salt, acid, fat`,
+  Electronics: `Electronics | Moving charge to do work
+  Ohm's law | V = IR
+  Capacitors | Store charge
+  Op-amps | High-gain amplifiers`,
+  Geography: `Geography | Places and the people in them
+  Maps | Projections and scale
+  Climate | Weather over decades`,
+  Engineering: `Engineering | Making things that work
+  Gears | Trading speed for torque
+  Tolerances | How exact is exact enough`,
 };
 const LINKS = [
   ["Velocity", "Derivatives", "rate of change"], ["Acceleration", "Rates of change"], ["Harmonic oscillator", "Standing waves"], ["Free-body diagrams", "Vector addition"],
@@ -293,7 +320,7 @@ export function demoBackup(now = Date.now()) {
     });
   }
   for (const [a, b, label = ""] of LINKS) { const x = byTitle.get(a), y = byTitle.get(b); if (x && y && x !== y) links.push({ id: id("l"), fromId: x, toId: y, label, note: "", createdAt: made, updatedAt: made }); }
-  const garden = { hubs: HUBS.map(([hid, name]) => ({ id: hid, name })), zone: {}, patron: "none",
+  const garden = { hubs: HUBS.map(([hid, name]) => ({ id: hid, name })), zone: Object.fromEntries(Object.entries(FILL).map(([name, fill]) => [zoneByName.get(name).id, { fill }])), patron: "none",
     islands: ISLANDS.map(([iid, name, landmark, hubId, topics, after, from]) => ({ id: iid, name, landmark, hubId, zoneIds: topics.map((t) => zoneByName.get(t).id), after: after || null, from: (from && byTitle.get(from)) || null })) };
   const pages = [];
   const addPages = (list, parentId) => list.forEach(([kind, title, content, props = [], inside = []], k) => {

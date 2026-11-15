@@ -997,12 +997,13 @@ async function loadGarden() {
 const saveGarden = async () => { await safely(() => store.setMeta("garden", S.garden)); await refresh(); };
 // What the garden draws: growth is how full a topic's plot is, health is the share of its ideas not waiting to be watered.
 // A topic with no ideas yet is uncharted, and lies under mist.
+// (o.fill, beta only: the demo's Workshop topics count as fuller than they are, to show every landmark tier)
 function gardenModel() {
   const zone = new Map(S.zones.map((z) => [z.id, z])), now = Date.now(), hubs = hubsOf(S.garden), at = new Map(hubs.map((h, k) => [h.id, k]));
   const model = S.garden.islands.map((isl, i) => {
     const topics = isl.zoneIds.map((id) => zone.get(id)).filter(Boolean).map((z, k) => {
       const trees = S.trees.filter((t) => t.zoneId === z.id), nodes = trees.flatMap((t) => S.byTree.get(t.id) || []), rev = nodes.filter((n) => srs.reviewable(n, kidsOf(n.id).length)), due = rev.filter((n) => srs.isDue(n, now)), o = S.garden.zone[z.id] || {};
-      return { id: z.id, name: z.name, biome: o.biome || BIOMES[k % 6][0], mark: o.mark || guessMark(z.name), growth: Math.min(2, Math.pow(nodes.length / FULL_PLOT, 0.6)), health: rev.length ? 1 - due.length / rev.length : 1, ideas: nodes.length, mist: !nodes.length && charted(), due: due.map((n) => n.id), trees };
+      return { id: z.id, name: z.name, biome: o.biome || BIOMES[k % 6][0], mark: o.mark || guessMark(z.name), growth: Math.min(2, Math.pow((nodes.length + (CHANNEL ? o.fill || 0 : 0)) / FULL_PLOT, 0.6)), health: rev.length ? 1 - due.length / rev.length : 1, ideas: nodes.length, mist: !nodes.length && charted(), due: due.map((n) => n.id), trees };
     });
     if (!topics.length) topics.push({ id: null, name: "", biome: "bloom", mark: "kit", growth: 0.04, health: 1, ideas: 0, mist: charted(), due: [], trees: [] });
     return { id: isl.id, name: isl.name, hub: at.get(hubKey(isl)) || 0, landmark: isl.landmark, patron: i === 0 && isl.landmark === "arches" ? S.garden.patron || "none" : undefined, mountain: isl.landmark === "arches" || !!isl.mountain, topics };
