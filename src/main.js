@@ -16,6 +16,7 @@ import { demoBackup } from "./demo.js";
 import { growPrompt, readGrow, planGrow, growSummary } from "./notes.js";
 import { createEditor, textToBlocks, blocksToText } from "./blocks.js";
 import { datePicker, longDate } from "./datepick.js";
+import { createMiniWeb } from "./miniweb.js";
 
 const PALETTE = [["Blue", "#3b82f6"], ["Violet", "#8b5cf6"], ["Pink", "#ec4899"], ["Red", "#ef4444"], ["Orange", "#f97316"], ["Amber", "#f59e0b"], ["Green", "#22c55e"], ["Teal", "#14b8a6"], ["Cyan", "#06b6d4"]];
 const SWATCHES = [["Auto", ""], ...PALETTE];
@@ -508,7 +509,7 @@ function renderTop() {
   } else if (S.view === "tree") {
     const zone = S.zones.find((z) => z.id === S.tree.zoneId);
     put($("#top"), back(S.treeBack), el("div", { class: "crumb" }, el("h1", { text: S.tree.name }), el("span", { text: zone?.name || "" })), beta,
-      el("span", { class: "grow" }), el("button", { class: "btn" + (S.nside ? " on" : ""), id: "notesBtn", title: "Notes beside the graph (O)", "aria-label": "Notes beside the graph", "aria-pressed": String(!!S.nside), onclick: toggleSide }, icon(ICON.side), el("kbd", { text: "O" })),
+      el("span", { class: "grow" }), el("button", { class: "btn" + (S.nside ? " on" : ""), id: "notesBtn", title: "Notes beside the graph (O or [)", "aria-label": "Notes beside the graph", "aria-pressed": String(!!S.nside), onclick: toggleSide }, icon(ICON.side), el("kbd", { text: "O" })),
       swap, search, more(treeMenu));
   } else if (S.view === "isles") {
     const all = S.model.flatMap((q) => q.topics).filter((q) => q.id), ideas = S.nodes.filter((n) => treeOf(n.treeId)).length;
@@ -516,7 +517,7 @@ function renderTop() {
       el("div", { class: "tstats", id: "gstats" }, el("span", {}, el("b", { text: String(ideas) }), " ideas"), el("span", {}, el("b", { text: String(S.trees.length) }), " graphs"), el("span", {}, el("b", { text: String(all.length) }), " topics")),
       el("span", { class: "grow" }), waterBtn(() => water(null)),
       swap, search, add([{ label: "New knowledge graph", key: "N", run: () => newGraph() }, { label: "New topic", key: "Z", run: newZone }, { label: "Capture a thought", key: "I", run: capture }]),
-      ib("gFold", gfold ? "Show the panel" : "Hide the panel", ICON.panel, () => { gfold = !gfold; renderGarden(); renderTop(); }), more());
+      ib("gFold", (gfold ? "Show the panel" : "Hide the panel") + " (])", ICON.panel, () => { gfold = !gfold; renderGarden(); renderTop(); }), more());
   } else if (S.view === "garden") {
     put($("#top"), back("#/", "Garden"), el("div", { class: "crumb" }, el("h1", { text: "Watering" })), beta, el("span", { class: "grow" }),
       waterBtn(() => startReview(null)), swap, more());
@@ -615,7 +616,7 @@ async function capture() {
 function shortcuts() {
   const rows = [["↑ ↓ ← →", "Child, parent, siblings"], ["Tab", "Add a branch"], ["Enter", "Add a sibling"], ["R", "Rename"], ["Del", "Delete"], ["Space", "Notes"],
     ["L", "Link"], ["G", "Graft"], ["C", "Colour"], ["F", "Fly to idea"], ["0", "Fit view"], ["W A S D  Q E", "Fly"], ["/", "Search"], ["I", "Capture"],
-    ["1–9", "Garden: go to a hub, an island, then a topic"], ["0  Esc", "Garden: step back out"], ["W", "Garden: water"], ["D", "Garden: day or night"], ["S", "Garden: split a topic past 200%"], ["P", "Patches"], ["T", "Timeline"], ["M", "Meaning view"], ["K", "Tech tree"], ["1–9  Enter", "Tech tree: pick, then go in or open"], ["Space", "Tech tree: open or close an idea"], ["Esc", "Tech tree: let go, then step back a tier"], ["T  A  H", "Tech tree: this tier only, show all, back to the start"], ["B", "Tech tree: what an island grows from"], ["L", "Tech tree: tree or web"], ["Y", "Tech tree: simple or organic look"], ["J", "Tech tree web: jiggle while dragging, or hold still"], ["N  Z", "New tree, new zone"], ["G", "Garden: the knowledge graphs of what's picked"], ["O", "Notes; in a graph, notes beside it"], ["N  G", "Notes: new page, grow with Claude"], ["1–9  ↑ ↓", "Notes: pick a page"], ["← →", "Notes: topics"], ["A", "Notes: attach the page to a graph"], ["/", "Notes, while writing: blocks"], ["Tab  Shift+Tab", "Notes, while writing: indent a block"], ["Ctrl+B I U E K", "Notes, while writing: bold, italic, underline, code, link"], ["Ctrl+Shift+↑ ↓", "Notes, while writing: move a block"], ["Shift+Tab", "Garden, knowledge, notes"], ["Enter  V", "Garden: water the plant, water everything"], ["Esc", "Back"]];
+    ["1–9", "Garden: go to a hub, an island, then a topic"], ["0  Esc", "Garden: step back out"], ["W", "Garden: water"], ["D", "Garden: day or night"], ["S", "Garden: split a topic past 200%"], ["P", "Patches"], ["T", "Timeline"], ["M", "Meaning view"], ["K", "Tech tree"], ["1–9  Enter", "Tech tree: pick, then go in or open"], ["Space", "Tech tree: open or close an idea"], ["Esc", "Tech tree: let go, then step back a tier"], ["T  A  H", "Tech tree: this tier only, show all, back to the start"], ["B", "Tech tree: what an island grows from"], ["L", "Tech tree: tree or web"], ["Y", "Tech tree: simple or organic look"], ["J", "Tech tree web: jiggle while dragging, or hold still"], ["N  Z", "New tree, new zone"], ["G", "Garden: the knowledge graphs of what's picked"], ["O", "Notes; in a graph, notes beside it"], ["N  G", "Notes: new page, grow with Claude"], ["1–9  ↑ ↓", "Notes: pick a page"], ["← →", "Notes: topics"], ["A", "Notes: attach the page to a graph"], ["/", "Notes, while writing: blocks"], ["Tab  Shift+Tab", "Notes, while writing: indent a block"], ["Ctrl+B I U E K", "Notes, while writing: bold, italic, underline, code, link"], ["Ctrl+Shift+↑ ↓", "Notes, while writing: move a block"], ["Shift+Tab", "Garden, knowledge, notes"], ["[  ]", "Close or open the menu on the left, on the right"], ["Enter  V", "Garden: water the plant, water everything"], ["Esc", "Back"]];
   dialog({ title: "Shortcuts", ok: null, cancel: "Close", body: el("table", { class: "keys" }, rows.map(([k, d]) => el("tr", {}, el("td", {}, el("kbd", { text: k })), el("td", { text: d })))) });
 }
 async function exportBackup() {
@@ -775,17 +776,29 @@ function jump(id) {
 }
 
 // ---------- side panel ----------
+// With a notes page open on the left, the idea panel on the right covers the rest of the screen (no sliver of graph between),
+// and shows the graph as a flat web to pick ideas from.
+const isWide = () => S.view === "tree" && !!S.panel && document.body.dataset.nside === "page" && !matchMedia("(max-width:700px)").matches;
 function renderPanel() {
   const p = $("#panel");
   S.flush?.(); S.flush = null;
   if (S.panel === "node" && !(ideaView() && S.byId.get(S.sel))) S.panel = null;
   if (S.panel === "suggest" && S.view !== "meaning") S.panel = null;
   if (S.panel === "patches" && S.view !== "tree") S.panel = null;
-  if (!S.panel) { p.hidden = true; p.replaceChildren(); document.body.dataset.panel = ""; return; }
+  const wide = isWide(); document.body.dataset.wide = wide ? "1" : "";
+  if (!S.panel) { p.hidden = true; p.replaceChildren(); document.body.dataset.panel = ""; document.body.dataset.wide = ""; return; }
   p.hidden = false; document.body.dataset.panel = S.panel;
-  put(p, ...(S.panel === "node" ? nodePanel(S.byId.get(S.sel)) : S.panel === "patches" ? patchesPanel() : S.panel === "suggest" ? suggestPanel() : inboxPanel()).flat().filter(Boolean));
+  const body = (S.panel === "node" ? nodePanel(S.byId.get(S.sel)) : S.panel === "patches" ? patchesPanel() : S.panel === "suggest" ? suggestPanel() : inboxPanel()).flat().filter(Boolean);
+  if (!wide || S.panel !== "node") return put(p, ...body);
+  const host = el("div", { class: "wideweb" }), tree = S.tree, nodes = S.byTree.get(tree.id) || [], ids = new Set(nodes.map((n) => n.id)), looks = looksFor(tree, nodes, false);
+  put(p, el("div", { class: "wide" }, host, el("div", { class: "widecard" }, ...body)));
+  if (!S.mw) S.mw = createMiniWeb({ host, onPick: (id) => select(id) }); else S.mw.attach(host);
+  S.mw.setData({ nodes, rootId: tree.rootId, links: S.links.filter((l) => ids.has(l.fromId) && ids.has(l.toId)).map((l) => ({ a: l.fromId, b: l.toId })), colour: (id) => looks.get(id)?.color || T.limb });
+  S.mw.select(S.sel);
 }
-const panelClose = () => ib("panelClose", "Close", ICON.close, () => { S.panel = null; renderPanel(); });
+// a close button with its key shown: [ for the left side, ] for the right
+const closeBtn = (id, label, key, run) => el("button", { class: "ib keyed", id, type: "button", title: `${label} (${key})`, "aria-label": label, onclick: run }, icon(ICON.close), el("kbd", { text: key }));
+const panelClose = () => closeBtn("panelClose", "Close", "]", () => { S.panel = null; renderPanel(); });
 function nodePanel(n) {
   const save = async (patch, redraw) => { await safely(() => store.updateNode(n.id, patch)); await refresh({ panel: !!redraw }); };
   let body = n.body || "", pending = null;
@@ -1413,6 +1426,7 @@ function onKey(e) {
   if (k === "i") { stop(); return capture(); }
   if (k === "k") { stop(); return openTech(); }
   if (k === "o") { stop(); return openNotes(); }
+  if (k === "[" || k === "]") { stop(); return sideKey(k === "["); }
   if (S.view === "tech") return techKey(k, stop);
   if (S.view === "notes") return notesKey(k, stop);
   if (k === "t" && S.view !== "isles") { stop(); return toggleTimeline(); }
@@ -1836,18 +1850,27 @@ function renderSide() {
   const box = $("#nside"), on = S.nside && S.view === "tree" && S.tree;
   if (on && S.sp && (!pageOf(S.sp) || isFolder(pageOf(S.sp)))) S.sp = null;
   document.body.dataset.nside = on ? (S.sp ? "page" : "list") : "";
+  if (S.panel && (document.body.dataset.wide === "1") !== isWide()) queueMicrotask(renderPanel);
   if (!on) { if (!box.hidden) { flushPage(); if (S.view !== "notes") { S.ed?.destroy(); S.ed = null; } box.hidden = true; box.replaceChildren(); S.sideFor = null; } return; }
   const sig = (S.sp || "") + "/" + S.pages.length;
   if (S.sideFor === sig && !box.hidden) return drawPageList();
   flushPage(); S.ed?.destroy(); S.ed = null;
   S.sideFor = sig; box.hidden = false;
   const p = pageOf(S.sp);
-  put(box, notesSidebar(ib("sideClose", "Close (O)", ICON.close, toggleSide)),
+  put(box, notesSidebar(closeBtn("sideClose", "Close notes", "[", toggleSide)),
     p ? el("section", { class: "nmain" },
       el("div", { class: "pbar" }, el("div", { class: "pcrumb" }, pagePath(p).map((q) => [el("span", { text: q.title || "Untitled" }), el("span", { class: "sl", text: "/" })]), el("span", { class: "here", text: p.title || "Untitled" })),
         el("span", { class: "grow" }), ib("sideMore", "Page menu", ICON.more, (e) => pageMenu(p, e.currentTarget)), ib("sideShut", "Close the page", ICON.back, () => { flushPage(); S.sp = null; S.sideFor = null; renderSide(); })),
       el("div", { class: "nedit" }, pageView(p, true))) : null);
   drawPageList();
+}
+// [ closes or opens the menu on the left, ] the one on the right.
+function sideKey(left) {
+  if (S.view === "tree") { if (left) return toggleSide(); if (S.panel) { S.panel = null; return renderPanel(); } return togglePanel(); }
+  if (S.view === "meaning" && !left) { if (S.panel) { S.panel = null; return renderPanel(); } return togglePanel(); }
+  if (S.view === "notes" && left) { const off = document.body.dataset.nbar !== "off"; document.body.dataset.nbar = off ? "off" : ""; return; }
+  if (S.view === "isles" && !left) { gfold = !gfold; renderGarden(); renderTop(); return; }
+  if (S.panel && !left) { S.panel = null; renderPanel(); }
 }
 // Garden, Knowledge and Notes are three windows; Shift+Tab goes round them.
 const winOf = (v) => (v === "isles" || v === "garden" ? "garden" : v === "notes" ? "notes" : "knowledge");

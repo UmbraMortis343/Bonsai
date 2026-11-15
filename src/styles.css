@@ -496,3 +496,18 @@ body[data-window="garden"][data-gfold="1"] #gpanel{display:none}
 .nf{flex:1;border:0;background:none;border-radius:4px;padding:3px 4px;font-size:12px;font-weight:600;color:var(--muted)}
 .nf:hover{background:var(--hover)}
 .nf.on{background:var(--card);color:var(--ink);box-shadow:0 0 0 1px var(--line)}
+/* close buttons show their key */
+.ib.keyed{width:auto;padding:0 6px;gap:4px;display:inline-flex;align-items:center}
+.ib.keyed kbd{font-size:10px;padding:1px 4px}
+/* the idea panel, wide: covers the graph when a notes page is open on the left; a web of the graph beside the idea */
+body[data-wide="1"][data-panel]{--dr:0px}
+body[data-wide="1"] #stage{visibility:hidden}
+body[data-wide="1"] #panel{left:var(--dl);width:auto;bottom:52px;padding:0;display:block;overflow:hidden;container-type:inline-size}
+.wide{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(300px,1fr);height:100%}
+.wideweb{position:relative;min-height:0;border-right:1px solid var(--line);background:var(--bg)}
+.wideweb canvas{position:absolute;inset:0;display:block;cursor:grab;touch-action:none}
+.widecard{overflow:auto;display:flex;flex-direction:column;gap:10px;padding:12px}
+/* the notes window's sidebar can be put away with [ */
+body[data-nbar="off"] .notes{grid-template-columns:0 1fr}
+body[data-nbar="off"] .notes .nside-bar{display:none}
+@container (max-width:640px){ .wide{grid-template-columns:1fr;grid-template-rows:minmax(220px,45%) 1fr} .wideweb{border-right:0;border-bottom:1px solid var(--line)} }

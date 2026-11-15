@@ -189,6 +189,21 @@ await k("Escape"); await k("Escape");
 t.eq(await state(page, () => [bonsai.S.view, document.querySelector("#nside").hidden]), ["tree", true], "Esc closes the drawer, not the graph");
 t.eq((await pg("Lecture 6: Momentum")).blocks.some((b) => b.type === "bullet" && b.html === "Momentum in 2D"), true, "typing beside the graph is saved");
 
+// With a page open beside the graph, the idea panel covers the rest and shows the graph as a web to pick from; [ and ] close each side.
+await k("o"); await page.waitForSelector("#nside #nlist .nrow");
+await page.click('#nside .nrow:has-text("Lecture 6") .nname'); await page.waitForFunction(() => document.body.dataset.nside === "page");
+await page.evaluate(() => document.activeElement?.blur());
+await k(" "); await page.waitForSelector("#panel .wideweb canvas");
+t.eq(await state(page, () => [document.body.dataset.wide, getComputedStyle(document.querySelector("#stage")).visibility, Math.round(document.querySelector("#panel").getBoundingClientRect().left) === Math.round(document.querySelector("#nside").getBoundingClientRect().right)]), ["1", "hidden", true], "the panel covers the graph, from the notes to the edge");
+const pick = await state(page, () => { const n = bonsai.S.nodes.find((x) => x.title === "Collisions"); return { id: n.id, at: bonsai.S.mw.screenOf(n.id) }; });
+await page.mouse.click(pick.at.x, pick.at.y);
+await page.waitForFunction((id) => bonsai.S.sel === id, pick.id);
+t.eq(await page.inputValue("#nodeTitle"), "Collisions", "clicking an idea in the web opens it");
+await page.screenshot({ path: "tests/shots/wide-panel.png" });
+t.eq(await page.isVisible("#panelClose kbd") && await page.isVisible("#sideClose kbd"), true, "the close buttons show their keys");
+await k("]"); await page.waitForFunction(() => !bonsai.S.panel && document.body.dataset.wide === "");
+await k("["); await page.waitForFunction(() => document.querySelector("#nside").hidden);
+
 // Deleting a folder takes what's in it, and undo brings it all back.
 await page.click("#winNotes"); await page.waitForSelector("#nlist");
 await page.click('#nlist .nrow:has-text("Physics") .nname'); await page.waitForFunction(() => document.querySelector("#pageTitle")?.value === "Physics");
