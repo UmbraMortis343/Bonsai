@@ -1,48 +1,39 @@
-// Bell tower: a slim campanile on a stepped plinth, clock faces on every side, an open belfry
-// where four corner piers hold a big golden bell in plain view, and a tall steep spire.
+// Bell tower, after Big Ben (the Elizabeth Tower): a tall slender Gothic tower of pale stone ribbed with vertical
+// panels, a wider clock stage with a gold-framed dial on every side, an arcaded belfry with corner pinnacles,
+// and a steep slate spire with gold ribs.
 export default function build(a) {
-  const R = 4;                                                       // shaft half-width: x and z run -4..4
-  // a point on one face: dir 0 +x, 1 -x, 2 +z, 3 -z; u runs along the face, d outward from it
-  const F = (dir, u, y, d, m) => [() => a.set(R + d, y, u, m), () => a.set(-R - d, y, -u, m), () => a.set(-u, y, R + d, m), () => a.set(u, y, -R - d, m)][dir]();
+  const F = (dir, u, y, d, R, m) => [() => a.set(R + d, y, u, m), () => a.set(-R - d, y, -u, m), () => a.set(-u, y, R + d, m), () => a.set(u, y, -R - d, m)][dir]();
 
-  a.box(-11, 0, -11, 11, 0, 11, "stone2");                           // stepped plinth
+  a.box(-12, 0, -12, 12, 0, 12, "stone2");                           // plinth
   a.box(-9, 1, -9, 9, 1, 9, "stone");
-  a.box(-6, 2, -6, 6, 2, 6, "stone2");
+  a.box(-5, 2, -5, 5, 3, 5, "stone2");                               // base course
 
-  a.box(-R, 3, -R, R, 21, R, "stone");                               // shaft
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) a.box(sx * R, 3, sz * R, sx * (R - 1), 21, sz * (R - 1), "stone2");
-  for (const y of [3, 11, 21]) a.box(-R - 1, y, -R - 1, R + 1, y, R + 1, "trim");
+  const R = 4;                                                       // shaft: x and z -4..4
+  a.box(-R, 4, -R, R, 20, R, "stone");
   for (let dir = 0; dir < 4; dir++) {
-    for (let y = 5; y <= 8; y++) F(dir, 0, y, 0, "dark");             // slit windows
-    for (let u = -3; u <= 3; u++) for (let y = 12; y <= 20; y++) {    // clock face standing out from the wall
-      const r = Math.hypot(u, y - 16);
-      if (r <= 3.6) F(dir, u, y, 1, r <= 2.7 ? "stone" : "accent");
+    for (const u of [-3, -1, 1, 3]) for (let y = 4; y <= 20; y++) F(dir, u, y, 0, R, "stone2");      // vertical panel ribs
+    for (const u of [-2, 0, 2]) for (const y0 of [7, 12, 17]) for (let y = y0; y <= y0 + 2; y++) F(dir, u, y, 0, R, "dark");   // lancet windows
+    for (const y of [11, 16, 20]) for (let u = -R; u <= R; u++) F(dir, u, y, 0, R, "stone2");        // string courses
+  }
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) a.box(sx * R, 4, sz * R, sx * R, 20, sz * R, "stone2");
+  a.box(R, 4, -1, R, 7, 1, "dark");                                   // door
+
+  a.box(-5, 21, -5, 5, 21, 5, "stone2");                             // cornice
+  a.box(-5, 22, -5, 5, 31, 5, "stone");                              // clock stage
+  for (let dir = 0; dir < 4; dir++) {
+    for (let u = -4; u <= 4; u++) for (let y = 22; y <= 30; y++) {
+      const r = Math.hypot(u, y - 26);
+      F(dir, u, y, 1, 5, r > 4.2 ? "metal" : r > 3.5 ? "dark" : "stone");   // gold corners, black ring, big white dial
     }
-    for (const [u, y] of [[0, 16], [0, 17], [0, 18], [1, 16], [2, 16]]) F(dir, u, y, 1, "dark");
+    for (const [u, y] of [[0, 27], [0, 28], [0, 29], [1, 26], [2, 26], [3, 26]]) F(dir, u, y, 1, 5, "dark");   // hands
+    F(dir, 0, 26, 2, 5, "metal");                                     // the boss in the middle
   }
-  a.box(R, 4, -1, R, 8, 1, "dark"); F(0, 0, 9, 0, "dark");           // door on the front
-  a.box(R + 1, 3, -2, R + 3, 3, 2, "stone2");                         // step up to it
-
-  // belfry, wider than the shaft: a floor, four corner piers, round arches over wide open sides, a heavy cornice
-  const B = 5;
-  a.box(-B - 1, 22, -B - 1, B + 1, 22, B + 1, "stone2");
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) a.box(sx * B, 23, sz * B, sx * (B - 1), 32, sz * (B - 1), "stone");
-  for (let dir = 0; dir < 4; dir++) for (let u = -3; u <= 3; u++) {
-    const top = 32 - [2, 2, 1, 0][Math.abs(u)];
-    for (let y = top; y <= 32; y++) [() => a.set(B, y, u, "stone"), () => a.set(-B, y, u, "stone"), () => a.set(u, y, B, "stone"), () => a.set(u, y, -B, "stone")][dir]();
-  }
-  a.box(-B - 1, 33, -B - 1, B + 1, 33, B + 1, "trim");
-  // the bell: flared mouth, waisted body, crown, hung from a beam, with a clapper below
-  a.box(-B + 1, 32, 0, B - 1, 32, 0, "wood");
-  const bell = [[31, 1.6], [30, 2.6], [29, 2.8], [28, 3.0], [27, 3.2], [26, 3.6], [25, 4.1], [24, 4.3]];
-  for (const [y, r] of bell) a.cyl(0, y, 0, r, 1, "metal");
-  a.cyl(0, 24, 0, 3.3, 2, null);                                    // hollow mouth
-  a.box(0, 23, 0, 0, 25, 0, "dark");                                 // clapper
-
-  // steep spire with corner pinnacles
-  const spire = [5, 5, 4, 4, 4, 3, 3, 2, 2, 2, 1, 1, 1];
-  spire.forEach((s, i) => a.box(-s, 34 + i, -s, s, 34 + i, s, "roof"));
-  spire.forEach((s, i) => { for (const t of [-s, s]) { a.set(t, 34 + i, t, "roof2"); a.set(t, 34 + i, -t, "roof2"); a.set(-t, 34 + i, t, "roof2"); } });
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) { a.box(sx * 6, 34, sz * 6, sx * 6, 35, sz * 6, "stone2"); a.set(sx * 6, 36, sz * 6, "accent"); }
-  a.set(0, 47, 0, "metal");
+  a.box(-6, 32, -6, 6, 32, 6, "metal");                              // gilded band
+  a.box(-4, 33, -4, 4, 35, 4, "stone");                              // belfry
+  for (let dir = 0; dir < 4; dir++) for (const u of [-2, 0, 2]) for (let y = 33; y <= 34; y++) F(dir, u, y, 0, 4, "dark");
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) { a.box(sx * 5, 33, sz * 5, sx * 5, 36, sz * 5, "stone2"); a.set(sx * 5, 37, sz * 5, "metal"); }   // pinnacles
+  const spire = [4, 4, 3, 3, 3, 2, 2, 2, 1, 1, 1];                   // tall, slim slate spire, gold on the edges
+  spire.forEach((s, i) => { a.box(-s, 36 + i, -s, s, 36 + i, s, "trim"); for (const t of [-s, s]) { a.set(t, 36 + i, t, "metal"); a.set(t, 36 + i, -t, "metal"); a.set(-t, 36 + i, t, "metal"); } });
+  for (let dir = 0; dir < 4; dir++) for (const y of [38, 39]) F(dir, 0, y, 0, 3, "dark");   // dormers
+  a.box(0, 47, 0, 0, 47, 0, "metal");
 }
