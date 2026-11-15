@@ -49,7 +49,7 @@ export function createMiniWeb({ host, onPick }) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H); C = css();
     const f0 = P.get(hov) || P.get(sel), near = new Set();
     if (f0) { near.add(f0.n.id); if (f0.n.parentId) near.add(f0.n.parentId); for (const c of kids.get(f0.n.id) || []) near.add(c.id); for (const l of links) { if (l.a === f0.n.id) near.add(l.b); if (l.b === f0.n.id) near.add(l.a); } }
-    const z = Math.max(0.6, Math.min(1.4, view.k)), al = (on) => (f0 ? (on ? 0.85 : 0.12) : 0.5);
+    const z = Math.max(0.6, Math.min(1.4, view.k)), al = (on) => (f0 ? (on ? 0.85 : 0.3) : 0.5);
     ctx.lineCap = "round";
     for (const p of P.values()) {
       const q = P.get(p.n.parentId); if (!q) continue;
@@ -65,19 +65,22 @@ export function createMiniWeb({ host, onPick }) {
     ctx.setLineDash([]);
     for (const p of P.values()) {
       const x = SX(p.x), y = SY(p.y), r = (p.depth === 0 ? 7 : p.depth === 1 ? 5 : 3.6) * z;
-      ctx.globalAlpha = f0 && !near.has(p.n.id) ? 0.35 : 1; ctx.fillStyle = colour(p.n.id); ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = f0 && !near.has(p.n.id) && p.depth > 0 ? 0.55 : 1; ctx.fillStyle = colour(p.n.id); ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
       if (p.n.id === sel) { ctx.globalAlpha = 1; ctx.strokeStyle = C.ink; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.arc(x, y, r + 4, 0, Math.PI * 2); ctx.stroke(); }
     }
     // labels: the picked idea, what's near it, then the rest where they don't collide
-    const rank = (p) => (p.n.id === sel ? 0 : p.n.id === hov ? 1 : near.has(p.n.id) ? 2 : p.depth === 0 ? 3 : p.depth === 1 ? 4 : 5);
+    const rank = (p) => (p.n.id === sel ? 0 : p.depth === 0 ? 1 : p.n.id === hov ? 1 : near.has(p.n.id) ? 2 : p.depth === 1 ? 4 : 5);
     const boxes = [], free = (b) => boxes.every((o) => b.x1 < o.x0 || b.x0 > o.x1 || b.y1 < o.y0 || b.y0 > o.y1);
     ctx.textBaseline = "middle";
     for (const p of [...P.values()].sort((a, b) => rank(a) - rank(b))) {
       const rk = rank(p), font = rk <= 1 || p.depth === 0 ? "600 12px system-ui,sans-serif" : "500 11px system-ui,sans-serif"; ctx.font = font;
       let s = p.n.title; while (s.length > 4 && ctx.measureText(s).width > 150) s = s.slice(0, -2); if (s !== p.n.title) s = s.trimEnd() + "…";
-      const w = ctx.measureText(s).width, x = SX(p.x) + 9, y = SY(p.y), b = { x0: x - 4, y0: y - 9, x1: x + w + 4, y1: y + 9 };
-      if (rk > 1 && !free(b)) continue; boxes.push(b);
-      ctx.globalAlpha = f0 && !near.has(p.n.id) && rk > 1 ? 0.45 : 1;
+      // right of the dot, else left, else below, else above; the picked idea and the graph's start always get one
+      const w = ctx.measureText(s).width, cx = SX(p.x), cy = SY(p.y);
+      const spots = [[cx + 9, cy], [cx - 9 - w, cy], [cx - w / 2, cy + 16], [cx - w / 2, cy - 16]].map(([x, y]) => ({ x, y, b: { x0: x - 5, y0: y - 10, x1: x + w + 5, y1: y + 10 } }));
+      const spot = spots.find((o) => free(o.b)) || (rk <= 1 ? spots[0] : null);
+      if (!spot) continue; boxes.push(spot.b); const { x, y } = spot;
+      ctx.globalAlpha = f0 && !near.has(p.n.id) && rk > 1 ? 0.6 : 1;
       if (p.n.id === sel) { ctx.fillStyle = C.ink; ctx.fillRect(x - 5, y - 10, w + 10, 20); ctx.fillStyle = C.bg; ctx.fillText(s, x, y + 0.5); }
       else { ctx.lineWidth = 3; ctx.strokeStyle = C.bg; ctx.strokeText(s, x, y + 0.5); ctx.fillStyle = p.depth > 1 ? C.muted : C.ink; ctx.fillText(s, x, y + 0.5); }
     }
