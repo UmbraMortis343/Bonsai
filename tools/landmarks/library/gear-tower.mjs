@@ -1,47 +1,26 @@
-// Clockwork tower: square stone tower, big meshing gears on the +x and -x faces, clock faces, spire.
-function disc(a, cx, cy, cz, axis, sgn, fn) {
-  // draws in the plane of a tower face; u = along face, v = up; depth 2 outward
-  for (let u = -12; u <= 12; u++) for (let v = -12; v <= 12; v++) {
-    const m = fn(u, v); if (m === undefined) continue;
-    for (const d of [0, 1]) axis === "x" ? a.set(cx + d * sgn, cy + v, cz + u, m) : a.set(cx + u, cy + v, cz + d * sgn, m);
+// Gear tower (engineering): a stone column threaded with flat cogs that shrink toward the top and turn
+// against each other, with a glowing cap. Flat cogs show their teeth from every side.
+function cog(a, cx, y, cz, R, teeth, m, holes = true, phase = 0) {
+  for (let x = Math.floor(cx - R - 3); x <= cx + R + 3; x++) for (let z = Math.floor(cz - R - 3); z <= cz + R + 3; z++) {
+    const u = x - cx, v = z - cz, d = Math.hypot(u, v), ang = Math.atan2(v, u) + phase;
+    let on = d <= R || (d <= R + 2 && Math.floor((ang / (2 * Math.PI) + 1) * teeth * 2) % 2 === 0);
+    if (holes && d > 4 && d < R - 2.2) {                              // window between six spokes
+      let spoke = false; for (let k = 0; k < 6; k++) { const s = k * Math.PI / 3 + phase; if (u * Math.cos(s) + v * Math.sin(s) > 0 && Math.abs(-u * Math.sin(s) + v * Math.cos(s)) < 1.3) spoke = true; }
+      if (!spoke) on = false;
+    }
+    if (on) a.box(x, y, z, x, y + 1, z, m);
   }
-}
-function gear(a, cx, cy, cz, r, teeth, axis, sgn, m, phase = 0) {
-  disc(a, cx, cy, cz, axis, sgn, (u, v) => {
-    const d = Math.hypot(u, v), t = ((Math.atan2(v, u) + phase) / (2 * Math.PI) + 1) * teeth * 2;
-    if (d <= 1.2) return "glow";
-    if (d <= 2.6) return "dark";
-    if (d <= r - 2.4 && d > r - 3.6) return "dark";               // inner ring
-    if (d <= r) return m;
-    if (d <= r + 1.8 && Math.floor(t) % 2 === 0) return m;        // square teeth
-  });
-}
-function clock(a, cx, cy, cz, axis, sgn) {
-  disc(a, cx, cy, cz, axis, sgn, (u, v) => {
-    const d = Math.hypot(u, v);
-    if (d > 4.3) return;
-    if (d > 3.4) return "metal";
-    if ((u === 0 && v >= 0 && v <= 3) || (v === 0 && u >= 0 && u <= 2)) return "dark";
-    return "glow";
-  });
 }
 export default function build(a) {
-  a.box(-13, 0, -13, 13, 1, 13, "stone2");                       // paved base
-  a.box(-7, 2, -7, 7, 3, 7, "dark");
-  a.box(-5, 4, -5, 5, 34, 5, "stone");                           // shaft
-  for (const y of [4, 18, 34]) a.box(-6, y, -6, 6, y, 6, "trim");
-  for (const [x, z] of [[-5, -5], [5, -5], [-5, 5], [5, 5]]) a.box(x, 4, z, x, 34, z, "stone2");
-  a.box(-1, 4, 5, 1, 9, 5, "dark"); a.box(-1, 4, -5, 1, 9, -5, "dark");   // doors on z sides
-  a.box(-6, 35, -6, 6, 41, 6, "stone2");                         // clock stage
-  a.box(-7, 41, -7, 7, 41, 7, "metal");
-  for (const [x, z, ax, s] of [[6, 0, "x", 1], [-6, 0, "x", -1], [0, 6, "z", 1], [0, -6, "z", -1]]) clock(a, x, 38, z, ax, s);
-  for (let i = 0; i < 5; i++) a.box(-5 + i, 42 + i, -5 + i, 5 - i, 42 + i, 5 - i, "roof");
-  a.set(0, 47, 0, "metal");
-  // big gear + meshing smaller gear on +x and -x faces
-  for (const s of [1, -1]) {
-    gear(a, 6 * s, 14, -3 * s, 8, 10, "x", s, "metal");
-    gear(a, 6 * s, 26, 7 * s, 5, 7, "x", s, "accent", Math.PI / 7);
-  }
-  // narrow shaft windows on the z faces, so the back still reads as a tower
-  for (const s of [-1, 1]) for (const y of [14, 24]) a.box(-1, y, 5 * s, 1, y + 4, 5 * s, "dark");
+  a.box(-13, 0, -13, 13, 0, 13, "stone2");                           // paved base
+  a.cyl(0, 1, 0, 12.5, 1, "stone");
+  a.cyl(0, 2, 0, 5, 2, "stone2");
+  a.cyl(0, 2, 0, 3, 31, "stone");                                    // column
+  for (const y of [4, 10, 18, 26, 32]) a.cyl(0, y, 0, 3.6, 1, "trim");
+  cog(a, 0, 6, 0, 10.5, 14, "metal");
+  cog(a, 0, 14, 0, 7.8, 11, "accent", false, 0.2);
+  cog(a, 0, 22, 0, 5.6, 9, "metal", false);
+  cog(a, 0, 29, 0, 3.8, 7, "accent", false, 0.3);
+  a.ball(0, 33, 0, 2.2, "glow");                                     // cap
+  a.box(0, 35, 0, 0, 37, 0, "metal");
 }

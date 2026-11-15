@@ -2,6 +2,7 @@
 // landmarks and bones for one island, returned as meshes ready to draw.
 // Nothing here touches the page; isles.js draws and animates the result.
 import * as THREE from "./vendor/three.module.min.js";
+import { LIBRARY, MATS as LIB_MATS } from "./marks-lib.js";
 
 // ---------- noise ----------
 const hash2 = (x, z, s = 0) => { let h = (Math.imul(x | 0, 374761393) + Math.imul(z | 0, 668265263) + Math.imul(s | 0, 1442695041)) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
@@ -54,6 +55,23 @@ const mkBuf = (cap) => ({ pos: new Float32Array(cap * 12), col: new Float32Array
 const growBuf = (b) => { for (const k of ["pos", "col", "nor", "ext", "idx"]) { const a = new b[k].constructor(b[k].length * 2); a.set(b[k]); b[k] = a; } };
 const BUFS = [mkBuf(80000), mkBuf(4000), mkBuf(4000)], FIELDS = new Map(), GRIDS = new Map();
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+
+// ---------- the landmark library (tools/landmarks), baked into marks-lib.js ----------
+// A library landmark is a little voxel model facing +x. Each of its voxels is LIB_U world units at scale 1,
+// so it's about 10 units across; the island resamples it to its own voxel size when it lays it.
+export const LIB_U = 0.34;
+const LIBS = new Map();
+export function libModel(id) {   // decoded once: { w, h, d, x0, z0, g } with g[(y * d + z) * w + x] = 1 + index in LIB_MATS, 0 empty
+  if (!LIBS.has(id)) {
+    const e = LIBRARY[id]; if (!e) return null;
+    const [w, h, d] = e.size, g = new Uint8Array(w * h * d), b = typeof atob === "function" ? Uint8Array.from(atob(e.rle), (c) => c.charCodeAt(0)) : new Uint8Array(Buffer.from(e.rle, "base64"));
+    for (let i = 0, o = 0; i < b.length; i += 2) { g.fill(b[i], o, o + b[i + 1]); o += b[i + 1]; }
+    LIBS.set(id, { w, h, d, x0: e.at[0], z0: e.at[1], g, reach: Math.max(...[[e.at[0], e.at[1]], [e.at[0] + w, e.at[1]], [e.at[0], e.at[1] + d], [e.at[0] + w, e.at[1] + d]].map(([x, z]) => Math.hypot(x, z))) });
+  }
+  return LIBS.get(id);
+}
+// when a library voxel is smaller than the island's, small bright parts win the vote so they don't vanish
+const LIB_WEIGHT = { glow: 2.2, accent: 1.7, dark: 1.3, metal: 1.25, glass: 1.2 };
 
 // ---------- one island ----------
 let TOPICS = [];
@@ -286,7 +304,7 @@ export function buildWorld(isl, N) {
   const ELDER = { bloom: "bloom", glowcap: "glowcap", tropical: "jungle", lantern: "baobab", fern: "fiddle", highland: "crystal" };
 
   // --- landmarks: one library of shapes, built large at the centre of an island and small inside a topic that has filled its plot ---
-  const markVox = [], clearings = [], groundAt = (x, z) => { x = Math.min(N - 1, Math.max(0, Math.round(x))); z = Math.min(N - 1, Math.max(0, Math.round(z))); return ht[J(x, z)]; };
+  const markVox = [], clearings = [], marks = [], groundAt = (x, z) => { x = Math.min(N - 1, Math.max(0, Math.round(x))); z = Math.min(N - 1, Math.max(0, Math.round(z))); return ht[J(x, z)]; };
   let mossy = true;
   let probe = null;   // while the centrepiece is being laid: how far out its lower blocks reach
   const stamp = (x, y, z, m) => { if (!m) return; x = Math.round(x); y = Math.round(y); z = Math.round(z); if (probe && y <= probe.top) { const d = (Math.hypot(x - c, z - c) + 0.5) * s, k = sectorOf(Math.atan2(z - c, x - c)); if (d > probe.dir[k]) probe.dir[k] = d; if (d > probe.max) probe.max = d; } if (inb(x, y, z) && grid[I(x, y, z)] === 0) { put(x, y, z, m); if (MATS[m][4]) glowVox.push(I(x, y, z)); else if (mossy) markVox.push(I(x, y, z)); } };
@@ -410,10 +428,35 @@ export function buildWorld(isl, N) {
       ball(x + 3.7 * u, y0 + 0.8 * u, z + 2.3 * u, 0.9 * u, M.marble); rod(x + 3.9 * u, y0 + 1.3 * u, z + 2.7 * u, x + 4.2 * u, y0 + 2.7 * u, z + 3 * u, 0.4, M.marble); stamp(x + 4.2 * u, y0 + 2.7 * u, z + 3 * u + 1, M.brass);
     },
   };
-  const CENTRAL = { a: M.marble, b: M.marble2, trim: M.obs2, metal: M.brass, glow: M.goldGlow, roof: M.roofT, roof2: M.roofT2 };
+  // a library landmark, laid at (x, z) on floor y0 with u island voxels per world unit, its front turned toward angle `face`
+  const libLay = (id, x, z, y0, u, P, face = 0) => {
+    const L = libModel(id), k = u * LIB_U, r = ((Math.round(face / (Math.PI / 2)) % 4) + 4) % 4;
+    const mat = { stone: P.a, stone2: P.b, trim: P.trimL ?? P.b, metal: P.metal, roof: P.roofL ?? P.roof, roof2: P.roofL2 ?? P.roof2, glass: P.glass ?? M.glass, wood: P.wood ?? M.wood, glow: P.glow || P.metal, accent: P.accent ?? P.trim, dark: P.dark ?? M.crack };
+    const ids = LIB_MATS.map((n) => mat[n]), wt = LIB_MATS.map((n) => LIB_WEIGHT[n] || 1), votes = new Float32Array(LIB_MATS.length + 1);
+    const R = Math.ceil(L.reach * k) + 1, Hn = Math.ceil(L.h * k);
+    for (let dz = -R; dz <= R; dz++) for (let dx = -R; dx <= R; dx++) {
+      const ax = r === 0 ? dx : r === 1 ? dz : r === 2 ? -dx : -dz, az = r === 0 ? dz : r === 1 ? -dx : r === 2 ? -dz : dx;   // turned back into the model's frame
+      const lx0 = Math.floor(ax / k - L.x0), lx1 = Math.max(lx0, Math.ceil((ax + 1) / k - L.x0) - 1), lz0 = Math.floor(az / k - L.z0), lz1 = Math.max(lz0, Math.ceil((az + 1) / k - L.z0) - 1);
+      if (lx1 < 0 || lz1 < 0 || lx0 >= L.w || lz0 >= L.d) continue;
+      for (let i = 0; i < Hn; i++) {
+        const ly0 = Math.floor(i / k), ly1 = Math.max(ly0, Math.ceil((i + 1) / k) - 1); let n = 0, hit = 0; votes.fill(0);
+        for (let ly = ly0; ly <= ly1; ly++) for (let lz = lz0; lz <= lz1; lz++) for (let lx = lx0; lx <= lx1; lx++) {
+          n++; if (lx < 0 || lz < 0 || ly < 0 || lx >= L.w || lz >= L.d || ly >= L.h) continue;
+          const m = L.g[(ly * L.d + lz) * L.w + lx]; if (m) { hit++; votes[m] += wt[m - 1]; }
+        }
+        if (!hit || hit < n * 0.2) continue;
+        let best = 0; for (let m = 1; m < votes.length; m++) if (votes[m] > votes[best]) best = m;
+        stamp(x + dx, y0 + i, z + dz, ids[best - 1]);
+      }
+    }
+  };
+  for (const id in LIBRARY) LM[id] = (x, z, y0, u, P, v, face) => libLay(id, x, z, y0, u, P, face);
+  const CENTRAL = { a: M.marble, b: M.marble2, trim: M.obs2, metal: M.brass, glow: M.goldGlow, roof: M.roofT, roof2: M.roofT2, accent: M.teal };
   // a topic's landmark is weathered stone at 100%, clean stone with the topic's colour at 130%, bronze at 160% and gold at 200%
   const tierOf = (g) => (g >= 2 ? 3 : g >= 1.6 ? 2 : g >= 1.3 ? 1 : 0);
   const tierPal = (g, k) => [{ a: M.obs1, b: M.obs2, trim: M.obs2, metal: M.stone3, glow: 0, roof: M.obs1, roof2: M.obs2 }, { a: M.marble, b: M.marble2, trim: M[HS[k][0]], metal: M.bronze, glow: M[HS[k][4]], roof: M[HS[k][0]], roof2: M[HS[k][1]] }, { a: M.bronze, b: M.bronze2, trim: M[HS[k][0]], metal: M.brass, glow: M[HS[k][4]], roof: M.bronze2, roof2: M.bronze }, { a: M.gold, b: M.gold2, trim: M[HS[k][0]], metal: M.gold2, glow: M.goldGlow, roof: M.gold2, roof2: M.gold }][tierOf(g)];
+  // what a library landmark's other materials become at each tier: weathered all over at 100%, then real wood, glass and the topic's colour
+  const libPal = (g, k) => { const t = tierOf(g), P = tierPal(g, k); return Object.assign({}, P, t === 0 ? { trimL: M.obs2, roofL: M.obs1, roofL2: M.obs2, glass: M.obs2, wood: M.deadwood, accent: M.obs2, dark: M.ash } : { trimL: t === 1 ? M.obs2 : P.b, roofL: M.roofT, roofL2: M.roofT2, accent: M[HS[k][0]], dark: M.crack }); };
   if (arches) {   // weathered stone ribs spanning the hollow, with a figure beneath them if one has been chosen
     const hollowX = c + HOL[0] * R, hollowZ = c + HOL[1] * R;
     const rib = (ax, az, bx, bz, hgt, r, lx, lz, t0 = 0, t1 = Math.PI) => {
@@ -436,18 +479,24 @@ export function buildWorld(isl, N) {
     if (isl.probe) { probe = null; return null; }   // measured once, on the same small island every time, so every island agrees on it
     clearings.push([c, c, V(keep)]);
   }
-  const SCALE = { observatory: 0.46, pipes: 0.72, lighthouse: 0.8, windmill: 0.8, coil: 0.8, solids: 0.78, colonnade: 0.75, circle: 0.85, kit: 0.75 }, FOOT = { observatory: 8.5, pipes: 5.6, colonnade: 7.4, circle: 5.4, solids: 5 };
+  const SCALE = { pipes: 0.72, windmill: 0.8, coil: 0.8, solids: 0.78, colonnade: 0.75, circle: 0.85, kit: 0.75 }, FOOT = { pipes: 5.6, colonnade: 7.4, circle: 5.4, solids: 5 };
+  for (const id in LIBRARY) { SCALE[id] = 1; FOOT[id] = libModel(id).reach * LIB_U * 0.8; }
   TOPICS.forEach((t, i) => {   // a topic that has filled its plot gets a landmark of its own
     if (t.growth < 1 || !LM[t.mark]) return;
-    const a = seeds[i][2], q = t.biome === "highland" && isl.mountain ? [0.3, -0.36] : [Math.cos(a + 0.42) * 0.8, Math.sin(a + 0.42) * 0.8], sc = SCALE[t.mark] * (1 + 0.1 * tierOf(t.growth)), fr = Math.round(V((FOOT[t.mark] || 3.4) * sc));
-    let best = null, bv = 1e9;
-    for (let k = 0; k < 50; k++) { const X = Math.round(c + q[0] * R + (hash2(k, i, 141) - 0.5) * V(k < 8 ? 2 : 10)), Z = Math.round(c + q[1] * R + (hash2(k, i, 142) - 0.5) * V(k < 8 ? 2 : 10)); if (X < fr + 2 || Z < fr + 2 || X > N - fr - 3 || Z > N - fr - 3) continue;
-      let lo = 1e9, hi = -1e9, bad = false; for (let e = -1; e <= 1; e++) for (let f = -1; f <= 1; f++) { const jj = J(X + e * fr, Z + f * fr); if (ht[jj] < 0 || wd[jj] < 2 || flag[jj]) bad = true; lo = Math.min(lo, ht[jj]); hi = Math.max(hi, ht[jj]); }
-      const v = hi - lo + (biome[J(X, Z)] === i ? 0 : V(4)) + k * 0.02; if (!bad && v < bv) { bv = v; best = [X, Z, hi]; } }
+    const a = seeds[i][2], q = t.biome === "highland" && isl.mountain ? [0.3, -0.36] : [Math.cos(a + 0.42) * 0.8, Math.sin(a + 0.42) * 0.8];
+    let best = null, bv = 1e9, sc = 0, fr = 0;
+    for (const shrink of LIBRARY[t.mark] ? [1, 0.8, 0.65] : [1]) {   // a big library landmark that finds no level ground is tried smaller
+      sc = SCALE[t.mark] * (1 + 0.1 * tierOf(t.growth)) * shrink; fr = Math.round(V((FOOT[t.mark] || 3.4) * sc));
+      for (let k = 0; k < 50; k++) { const X = Math.round(c + q[0] * R + (hash2(k, i, 141) - 0.5) * V(k < 8 ? 2 : 10)), Z = Math.round(c + q[1] * R + (hash2(k, i, 142) - 0.5) * V(k < 8 ? 2 : 10)); if (X < fr + 2 || Z < fr + 2 || X > N - fr - 3 || Z > N - fr - 3) continue;
+        let lo = 1e9, hi = -1e9, bad = false; for (let e = -1; e <= 1; e++) for (let f = -1; f <= 1; f++) { const jj = J(X + e * fr, Z + f * fr); if (ht[jj] < 0 || wd[jj] < 2 || flag[jj]) bad = true; lo = Math.min(lo, ht[jj]); hi = Math.max(hi, ht[jj]); }
+        const v = hi - lo + (biome[J(X, Z)] === i ? 0 : V(4)) + k * 0.02; if (!bad && v < bv) { bv = v; best = [X, Z, hi]; } }
+      if (best) break;
+    }
     if (!best) return;
-    const [X, Z, hi] = best, P = tierPal(t.growth, i); mossy = tierOf(t.growth) === 0;
+    marks.push({ topic: i, mark: t.mark, x: (best[0] - c) * s, z: (best[1] - c) * s, size: +sc.toFixed(2) });   // where each topic's landmark went, and how big
+    const [X, Z, hi] = best, P = LIBRARY[t.mark] ? libPal(t.growth, i) : tierPal(t.growth, i); mossy = tierOf(t.growth) === 0;
     for (let dz = -fr; dz <= fr; dz++) for (let dx = -fr; dx <= fr; dx++) if (dx * dx + dz * dz <= fr * fr * 1.2) { const jj = J(X + dx, Z + dz); if (ht[jj] >= 0) for (let y = ht[jj] + 1; y <= hi; y++) stamp(X + dx, y, Z + dz, P.b); }   // a footing, so it stands level
-    LM[t.mark](X, Z, hi + 1, V(sc), P, (t.name.length + i) % 3); mossy = true; clearings.push([X, Z, fr * 1.35]);
+    LM[t.mark](X, Z, hi + 1, V(sc), P, (t.name.length + i) % 3, Math.atan2(Z - c, X - c)); mossy = true; clearings.push([X, Z, fr * (LIBRARY[t.mark] ? 1.75 : 1.35)]);   // a wider clearing keeps trees from hiding the library's taller shapes
   });
 
   // --- plants ---
@@ -576,7 +625,7 @@ export function buildWorld(isl, N) {
   const inside = path.map((p, i) => [p, i]).filter(([[px, pz]]) => Math.hypot(px, pz) < E), last = inside.length ? inside[inside.length - 1][0] : null;
   const lowest = (list) => list.reduce((a, b) => (b[2] < a[2] ? b : a), list[0]), foot1 = falls.length ? lowest(falls) : null, mid = cascade.length ? cascade[cascade.length >> 1] : null;
   return {
-    land: geo(land, true), glow: geo(glow, true), wet: geo(wet, false), quads: (land.i + glow.i + wet.i) / 6, timing: tm.slice(1).reduce((o, v, k, arr) => (k % 2 ? o : o + `${v} ${Math.round(arr[k + 1] - (k ? arr[k - 1] : tm[0]))}  `), ""), s, top: G + 3, ground: G, radius: Re, ringPeak: (() => { let m = 0; for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) { const o = Math.hypot(x - c, z - c) / R; if (o > 0.25 && o < 0.75 * E && z > c - 0.1 * R && ymax[J(x, z)] > m) m = ymax[J(x, z)]; } return m * s; })(),
+    land: geo(land, true), glow: geo(glow, true), wet: geo(wet, false), marks, quads: (land.i + glow.i + wet.i) / 6, timing: tm.slice(1).reduce((o, v, k, arr) => (k % 2 ? o : o + `${v} ${Math.round(arr[k + 1] - (k ? arr[k - 1] : tm[0]))}  `), ""), s, top: G + 3, ground: G, radius: Re, ringPeak: (() => { let m = 0; for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) { const o = Math.hypot(x - c, z - c) / R; if (o > 0.25 && o < 0.75 * E && z > c - 0.1 * R && ymax[J(x, z)] > m) m = ymax[J(x, z)]; } return m * s; })(),
     heightAt: (wx, wz) => { const x = Math.floor(wx / s + c), z = Math.floor(wz / s + c); if (x < 0 || z < 0 || x >= N || z >= N) return G; const h = ht[J(x, z)]; return h < 0 ? G : (h + 1) * s; },
     anchors: TOPICS.map((t, i) => { const x = Math.round(c + seeds[i][0] * R), z = Math.round(c + seeds[i][1] * R); return Wp(x, 0, z).setY(hw[J(x, z)] + (t.biome === "highland" && isl.mountain ? 4 : 11)); }),
     seeds: TOPICS.map((t, i) => { const x = Math.round(c + seeds[i][0] * R), z = Math.round(c + seeds[i][1] * R); return Wp(x, 0, z).setY(hw[J(x, z)]); }),

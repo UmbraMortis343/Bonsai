@@ -23,5 +23,8 @@ export default function build(a) { /* calls on a */ }
 
 `tools/landmarks/library/lighthouse.mjs` is a finished example, if you need one.
 
+## In the app
+The first comment line names the landmark and says what it's for. Once it's approved, give it a display name in `NAMES` in `tools/landmarks/bake.mjs`, run `node tools/landmarks/bake.mjs` (it writes `src/marks-lib.js`) and add the topic words it suits to `GUESS` in `src/marks.js`. The app turns the front (+x) to face out from the island's middle and shrinks a landmark that finds no level ground. At 100% it's weathered stone all over; from 130% wood, glass and `accent` take their real colours.
+
 ## Report
 One line per landmark: what it is and what is still wrong with it.

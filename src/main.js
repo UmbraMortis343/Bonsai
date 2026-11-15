@@ -17,6 +17,7 @@ import { growPrompt, readGrow, planGrow, growSummary } from "./notes.js";
 import { createEditor, textToBlocks, blocksToText } from "./blocks.js";
 import { datePicker, longDate } from "./datepick.js";
 import { createMiniWeb } from "./miniweb.js";
+import { MARK_LIST, guessMark } from "./marks.js";
 
 const PALETTE = [["Blue", "#3b82f6"], ["Violet", "#8b5cf6"], ["Pink", "#ec4899"], ["Red", "#ef4444"], ["Orange", "#f97316"], ["Amber", "#f59e0b"], ["Green", "#22c55e"], ["Teal", "#14b8a6"], ["Cyan", "#06b6d4"]];
 const SWATCHES = [["Auto", ""], ...PALETTE];
@@ -963,7 +964,7 @@ function renderTimeline() {
 // ---------- the garden: islands of topics ----------
 const BIOMES = [["highland", "Highlands"], ["tropical", "Jungle"], ["bloom", "Blossom"], ["lantern", "Lantern trees"], ["glowcap", "Mushrooms"], ["fern", "Ferns"]];
 const CENTRES = [["arches", "Stone arches"], ["academy", "Academy"], ["amphitheatre", "Amphitheatre"], ["statue", "Statue"]];
-const MARKS = [["kit", "Monument"], ["observatory", "Observatory"], ["pipes", "Organ pipes"], ["lighthouse", "Lighthouse"], ["windmill", "Windmill"], ["coil", "Coil mast"], ["solids", "Pyramid"], ["colonnade", "Colonnade"], ["circle", "Standing stones"]];
+const MARKS = MARK_LIST;
 const FULL_PLOT = 150;   // ideas that fill a topic's plot; past this the island grows
 const PREF = CHANNEL ? `bonsai-${CHANNEL}.` : "bonsai.";   // the beta keeps its own settings
 const pref = (k, d) => { try { return localStorage.getItem(PREF + k) || d; } catch { return d; } };
@@ -1001,7 +1002,7 @@ function gardenModel() {
   const model = S.garden.islands.map((isl, i) => {
     const topics = isl.zoneIds.map((id) => zone.get(id)).filter(Boolean).map((z, k) => {
       const trees = S.trees.filter((t) => t.zoneId === z.id), nodes = trees.flatMap((t) => S.byTree.get(t.id) || []), rev = nodes.filter((n) => srs.reviewable(n, kidsOf(n.id).length)), due = rev.filter((n) => srs.isDue(n, now)), o = S.garden.zone[z.id] || {};
-      return { id: z.id, name: z.name, biome: o.biome || BIOMES[k % 6][0], mark: o.mark || "kit", growth: Math.min(2, Math.pow(nodes.length / FULL_PLOT, 0.6)), health: rev.length ? 1 - due.length / rev.length : 1, ideas: nodes.length, mist: !nodes.length && charted(), due: due.map((n) => n.id), trees };
+      return { id: z.id, name: z.name, biome: o.biome || BIOMES[k % 6][0], mark: o.mark || guessMark(z.name), growth: Math.min(2, Math.pow(nodes.length / FULL_PLOT, 0.6)), health: rev.length ? 1 - due.length / rev.length : 1, ideas: nodes.length, mist: !nodes.length && charted(), due: due.map((n) => n.id), trees };
     });
     if (!topics.length) topics.push({ id: null, name: "", biome: "bloom", mark: "kit", growth: 0.04, health: 1, ideas: 0, mist: charted(), due: [], trees: [] });
     return { id: isl.id, name: isl.name, hub: at.get(hubKey(isl)) || 0, landmark: isl.landmark, patron: i === 0 && isl.landmark === "arches" ? S.garden.patron || "none" : undefined, mountain: isl.landmark === "arches" || !!isl.mountain, topics };

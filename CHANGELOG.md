@@ -2,6 +2,16 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.12.0 — 2026-11-16
+
+The landmark library comes into the garden.
+
+- A topic that fills its plot now raises one of 22 voxel landmarks: abacus, atom, bell tower, books, camera, cooking pot, DNA helix, easel, flask, gear tower, globe, lectern, lighthouse, observatory, quill, radio dish, ruined temple, scales, seated scholar, synth, trophy and yarn. Pick one under Landmark in the topic's panel; the older shapes are still there below them.
+- A topic with no landmark picked gets one from its name: Physics an atom, Leadership a lectern, Music a synth, Maths an abacus. Anything unrecognised keeps the monument.
+- Landmarks face out from the middle of the island, stand in a wider clearing so trees don't hide them, and shrink to fit on small islands.
+- Weathered stone at 100%; from 130% the wood, glass and the topic's own colour come through, and the trims and metal turn bronze at 160% and gold at 200%.
+- The bell tower and gear tower are redone: the bell hangs in an open belfry where you can see it, and the gear tower is a column of cogs.
+
 ## 0.11.0 — 2026-11-16
 
 Notes, a third window, and a cleaner look everywhere.

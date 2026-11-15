@@ -1,13 +1,14 @@
 {
   "name": "bonsai",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "private": true,
   "description": "Bonsai: grow a forest of linked notes. Zones are subjects, trees are topics.",
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
     "serve": "node scripts/serve.mjs dist 4173",
-    "test": "bash tests/runall.sh"
+    "test": "bash tests/runall.sh",
+    "marks": "node tools/landmarks/bake.mjs"
   },
   "devDependencies": {
     "playwright": "1.63.0",
