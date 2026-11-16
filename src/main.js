@@ -1,16 +1,16 @@
-// Bonsai: the 3D forest, the 3D tree, and everything you do in them.
+// Bonsai: the garden, the knowledge graphs in 3D, the tech tree, notes, and everything you do in them.
 import * as store from "./store.js";
 import * as srs from "./srs.js";
 import { Stage, THREE } from "./stage.js";
-import { Flora, grid, ring, pot } from "./flora.js";
-import { layoutTree, layoutForest } from "./layout.js";
+import { Flora, grid, ground } from "./flora.js";
+import { layoutTree, layoutRings } from "./layout.js";
 import { md } from "./md.js";
 import * as ai from "./ai.js";
 import { textFor, hashText } from "./semantic.js";
 import { $, el, put, toast, dialog, menu, overlayOpen, closeTop, closeAll } from "./dom.js";
 import { createIsles, QUALITY } from "./isles.js";
 import { readMap, missing, mergeMap, ISLE_MAX } from "./gardenmap.js";
-import { createTechTree } from "./techtree.js";
+import { createTechTree, HUES, shade } from "./techtree.js";
 import { CHANNEL } from "./channel.js";
 import { demoBackup } from "./demo.js";
 import { growPrompt, readGrow, planGrow, growSummary } from "./notes.js";
@@ -21,8 +21,6 @@ import { MARK_LIST, assignMarks } from "./marks.js";
 
 const PALETTE = [["Blue", "#3b82f6"], ["Violet", "#8b5cf6"], ["Pink", "#ec4899"], ["Red", "#ef4444"], ["Orange", "#f97316"], ["Amber", "#f59e0b"], ["Green", "#22c55e"], ["Teal", "#14b8a6"], ["Cyan", "#06b6d4"]];
 const SWATCHES = [["Auto", ""], ...PALETTE];
-// Garden colours: how well each idea is being kept alive.
-const G = { leaf: "#22c55e", thirsty: "#f59e0b", dry: "#a8a29e", stem: "#65a30d", pot: "#c2714f" };
 const DAY = 86400000;
 const ICON = {
   back: "M15 5l-7 7 7 7", fold: "M6 9l6 6 6-6", unfold: "M6 15l6-6 6 6", close: "M6 6l12 12M18 6L6 18", plus: "M12 5v14M5 12h14", more: "M5 12h.01M12 12h.01M19 12h.01",
@@ -36,7 +34,7 @@ const S = {
   view: "", zones: [], trees: [], nodes: [], links: [], inbox: [], patches: [], pages: [], allZones: [], allTrees: [], nzone: null, npage: null, nside: false,
   byId: new Map(), kids: new Map(), byTree: new Map(), near: new Set(), lastChild: new Map(),
   tree: null, sel: null, panel: null, pick: null, quick: null, review: null, cutoff: null, stitch: false, editBody: false,
-  flora: null, lay: null, forest: null, fsel: null, pendingSel: null,
+  flora: null, lay: null, forest: null, fsel: null, pendingSel: null, hues: new Map(), isleHues: new Map(), linksIn: new Map(), num: new Map(), byNum: [], jump: "",
   scope: null, mean: null, suggest: null, aiOn: false,
   garden: null, model: [], hubs: [], hub: -1, isle: -1, topic: -1, treeBack: "#/", meanBack: "#/", techBack: "#/", hashNow: null, water: undefined,
 };
@@ -45,7 +43,7 @@ let stage, isles, tech, T, labelEls = new Map(), decor = [], selMesh, playTimer 
 
 // Scene colours come from the stylesheet, so light and dark stay in step.
 function theme() {
-  const css = getComputedStyle(document.documentElement), v = (k) => css.getPropertyValue(k).trim();
+  const css = getComputedStyle(document.body), v = (k) => css.getPropertyValue(k).trim();   // the body, so the night colours count
   return { sky: v("--bg"), grid: v("--grid"), limb: v("--limb"), link: v("--sap"), ring: v("--ring"), root: v("--trunk"), ink: v("--ink") };
 }
 const byOrder = (a, b) => a.order - b.order || a.createdAt.localeCompare(b.createdAt);
@@ -74,8 +72,31 @@ async function load() {
     if (n.parentId != null) { if (!S.kids.has(n.parentId)) S.kids.set(n.parentId, []); S.kids.get(n.parentId).push(n); }
   }
   for (const l of S.kids.values()) l.sort(byOrder);
+  S.linksIn = new Map();
+  for (const l of links) { const t = S.byId.get(l.fromId)?.treeId; if (t && t === S.byId.get(l.toId)?.treeId) { if (!S.linksIn.has(t)) S.linksIn.set(t, []); S.linksIn.get(t).push({ a: l.fromId, b: l.toId }); } }
   await loadGarden();
+  // a topic's colour is the tech tree's: its island's, turned a little for each topic on it
+  S.hues = new Map(); S.isleHues = new Map();
+  S.garden.islands.forEach((q, i) => { const hue = HUES[i % HUES.length]; S.isleHues.set(q.id, hue); q.zoneIds.forEach((id, k) => S.hues.set(id, shade(hue, k))); });
 }
+const tint = (hex, k) => (/^#[0-9a-f]{6}$/i.test(hex) ? shade(hex, k) : hex);
+// A graph's shape, worked out once and kept until its ideas or the links between them change.
+const layCache = new Map();
+function layOf(tree) {
+  const nodes = S.byTree.get(tree.id) || [], links = S.linksIn.get(tree.id) || [];
+  const sig = tree.rootId + "|" + nodes.map((n) => n.id + ":" + n.parentId + ":" + n.order).join() + "|" + links.map((l) => l.a + ">" + l.b).join();
+  const hit = layCache.get(tree.id); if (hit?.sig === sig) return hit.lay;
+  const lay = layoutTree(nodes, tree.rootId, links); layCache.set(tree.id, { sig, lay });
+  return lay;
+}
+const discR = (lay) => Math.min(3.2, Math.max(1, lay.footprint * 0.5));
+// Ideas are numbered outward from the graph's start, so any of them can be reached by typing its number.
+function numberGraph(tree) {
+  S.num = new Map(); S.byNum = [];
+  const q = [S.byId.get(tree.rootId)];
+  for (let i = 0; i < q.length; i++) { const n = q[i]; if (!n) continue; S.byNum.push(n.id); S.num.set(n.id, S.byNum.length); for (const c of kidsOf(n.id)) q.push(c); }
+}
+const numTag = (id) => (S.view === "tree" && S.num.has(id) ? el("i", { class: "num", text: String(S.num.get(id)) }) : null);
 function dueList(treeId) {
   const live = new Set(S.trees.map((t) => t.id)), now = Date.now();
   return S.nodes.filter((n) => (treeId ? n.treeId === treeId : live.has(n.treeId)) && srs.reviewable(n, kidsOf(n.id).length) && srs.isDue(n, now)).sort((a, b) => srs.dueAt(a).localeCompare(srs.dueAt(b)));
@@ -98,20 +119,21 @@ function thirst(n, now = Date.now()) {
   return due + DAY <= now ? "dry" : due <= now ? "thirsty" : "ok";
 }
 function looksFor(tree, nodes, garden) {
-  const m = new Map(), now = Date.now(), memo = new Map();
+  const m = new Map(), now = Date.now(), memo = new Map(), hue = tree.color || S.hues.get(tree.zoneId) || T.root;
+  // Watering: the topic's colour while an idea is kept, ochre once it needs water, grey when it has dried out.
   if (garden) {
-    for (const n of nodes) { const t = thirst(n, now); m.set(n.id, { color: t === "dry" ? G.dry : t === "thirsty" ? G.thirsty : n.id === tree.rootId ? G.stem : G.leaf, status: "ok" }); }
+    for (const n of nodes) { const t = thirst(n, now); m.set(n.id, { color: t === "dry" ? T.limb : t === "thirsty" ? T.link : hue, status: "ok" }); }
     return m;
   }
-  // An idea takes its own colour, else its parent's. With no colours set, the
-  // trunk is neutral and each main branch gets its own colour.
+  // An idea takes its own colour, else the colour of the idea above it. With none set, a graph is its topic's
+  // colour (the tech tree's), turned a little for each idea hanging off the start so they can be told apart.
   const main = kidsOf(tree.rootId);
   const colorOf = (n) => {
-    if (!n || n.id === tree.rootId) return n?.color || tree.color || T.root;
+    if (!n || n.id === tree.rootId) return n?.color || hue;
     if (n.color) return n.color;
     if (!memo.has(n.id)) {
       const parent = S.byId.get(n.parentId);
-      memo.set(n.id, parent && parent.id === tree.rootId && !parent.color && !tree.color ? PALETTE[Math.max(0, main.indexOf(n)) % PALETTE.length][1] : colorOf(parent));
+      memo.set(n.id, parent && parent.id === tree.rootId && !parent.color ? tint(hue, Math.max(0, main.indexOf(n))) : colorOf(parent));
     }
     return memo.get(n.id);
   };
@@ -130,17 +152,16 @@ const addDecor = (m) => { decor.push(m); stage.world.add(m); return m; };
 const linkLabel = (l, pos) => ({ el: el("div", { class: "lbl link", dataset: { kind: "link", id: l.id }, text: l.label }), pos, kind: "link", id: l.id, anchor: "translate(-50%,-50%)" });
 
 function buildTree(animate) {
-  const tree = S.tree, all = S.byTree.get(tree.id) || [];
-  const lay = (S.lay = layoutTree(all, tree.rootId));
-  const nodes = shownNodes(tree), ids = new Set(nodes.map((n) => n.id));
+  const tree = S.tree, lay = (S.lay = layOf(tree)); numberGraph(tree);
+  const nodes = shownNodes(tree), ids = new Set(nodes.map((n) => n.id)), hue = tree.color || S.hues.get(tree.zoneId) || T.limb;
   const links = S.links.filter((l) => ids.has(l.fromId) && ids.has(l.toId)).map((l) => ({ id: l.id, a: l.fromId, b: l.toId, label: l.label }));
   const oldPos = animate && S.flora ? new Map([...S.flora.pos].map(([k, v]) => [k, v.clone()])) : null;
   clearScene();
-  const flora = (S.flora = new Flora([{ tree, nodes, layout: lay, offset: [0, 0], looks: looksFor(tree, nodes), passes: 0 }], links, T));
+  const flora = (S.flora = new Flora([{ tree, nodes, layout: lay, offset: [0, 0], looks: looksFor(tree, nodes) }], links, T));
   stage.world.add(flora.group); stage.pickables = [flora.nodeMesh];
-  addDecor(grid(Math.max(40, lay.footprint * 6), T.grid));
+  for (const m of ground({ glows: [{ x: 0, z: 0, r: Math.max(7, lay.footprint * 1.8), color: hue, k: 0.11 }], discs: [{ x: 0, z: 0, r: discR(lay), color: hue }] }, T.sky)) addDecor(m);
   const labels = nodes.map((n) => {
-    const e = el("div", { class: "lbl node" + (n.id === tree.rootId ? " trunk" : ""), dataset: { kind: "node", id: n.id }, text: n.title });
+    const e = el("div", { class: "lbl node" + (n.id === tree.rootId ? " trunk" : ""), dataset: { kind: "node", id: n.id, n: S.num.get(n.id) }, text: n.title });
     labelEls.set(n.id, e);
     return { el: e, pos: flora.pos.get(n.id), kind: "node", id: n.id, depth: lay.depth.get(n.id), r: flora.radii.get(n.id), tidy: true };
   });
@@ -176,46 +197,68 @@ function treeSpot(id) {
   const p = S.forest?.fl.trees.get(id), lay = S.forest?.lays.get(id);
   return p ? { target: new THREE.Vector3(p.x + lay.center[0], lay.center[1], p.z + lay.center[2]), radius: stage.fitDistance(lay.radius) * 0.88 } : null;
 }
-// Draws every tree on the floor: the knowledge forest, or (garden) the same
-// trees as plants coloured by how thirsty they are, with roots and pots.
 // The knowledge view can show just a hub, an island or a topic (#/forest/<id>), opened from the garden with G.
 function scopeOf(id) {
   if (!id || !S.garden) return null;
-  const z = S.zones.find((x) => x.id === id); if (z) return { id, name: z.name, zones: new Set([id]) };
-  const isl = S.garden.islands.find((q) => q.id === id); if (isl) return { id, name: isl.name, zones: new Set(isl.zoneIds) };
-  const hub = (S.garden.hubs || []).find((h) => h.id === id); if (hub) return { id, name: hub.name, zones: new Set(S.garden.islands.filter((q) => hubKey(q) === id).flatMap((q) => q.zoneIds)) };
+  const z = S.zones.find((x) => x.id === id); if (z) return { id, kind: "topic", name: z.name, zones: new Set([id]) };
+  const isl = S.garden.islands.find((q) => q.id === id); if (isl) return { id, kind: "isle", name: isl.name, zones: new Set(isl.zoneIds) };
+  const hub = (S.garden.hubs || []).find((h) => h.id === id); if (hub) return { id, kind: "hub", name: hub.name, zones: new Set(S.garden.islands.filter((q) => hubKey(q) === id).flatMap((q) => q.zoneIds)) };
   return null;
 }
 const openScope = (id) => { location.hash = "#/forest" + (id ? "/" + encodeURIComponent(id) : ""); };
+// Every graph in view stands on its disc, set out in rings: a topic's graphs round its name, an island's topics
+// round its name, a hub's islands round its name. Watering is the same picture, coloured by what needs water.
 function buildForest(garden = S.view === "garden") {
   clearScene();
   const cut = garden ? null : S.cutoff, born = (x) => cut == null || Date.parse(x.createdAt) <= cut;
-  const groups = S.zones.filter((z) => garden || !S.fscope || S.fscope.zones.has(z.id)).filter(born).map((z) => ({ z, trees: S.trees.filter((t) => t.zoneId === z.id && (born(t) || shownNodes(t).length > 1)) }));
-  const lays = new Map();
-  for (const g of groups) for (const t of g.trees) lays.set(t.id, layoutTree(S.byTree.get(t.id) || [], t.rootId));
-  const fl = layoutForest(groups.map((g) => ({ id: g.z.id, trees: g.trees.map((t) => ({ id: t.id, footprint: lays.get(t.id).footprint })) })));
-  S.forest = { fl, lays };
-  const items = [], shown = new Set(), labels = [], sags = new Map();
-  for (const g of groups) {
-    const zp = fl.zones.get(g.z.id);
-    const d = addDecor(ring(zp.r, g.z.color || T.ring)); d.position.x = zp.x; d.position.z = zp.z;
-    labels.push({ el: el("div", { class: "lbl zone", dataset: { kind: "zone", id: g.z.id }, text: g.z.name }), pos: new THREE.Vector3(zp.x, 0.05, zp.z + zp.r), kind: "zone", id: g.z.id, anchor: "translate(-50%,4px)" });
-    for (const t of g.trees) {
-      const p = fl.trees.get(t.id), lay = lays.get(t.id), nodes = shownNodes(t);
-      for (const n of nodes) shown.add(n.id);
-      items.push({ tree: t, nodes, layout: lay, offset: [p.x, p.z], looks: looksFor(t, nodes, garden), passes: garden ? passesOf(t.id) : 0 });
-      const dry = garden ? nodes.filter((n) => thirst(n) !== "ok").length : 0;
-      const e = el("div", { class: "lbl tree", dataset: { kind: "tree", id: t.id } }, t.name, dry ? el("span", { class: "thirst", text: String(dry) }) : null); labelEls.set(t.id, e);
-      // A plant sags as more of it dries out.
-      const sag = garden ? 1 - 0.3 * (dry / Math.max(1, nodes.length)) : 1; sags.set(t.id, sag);
-      labels.push({ el: e, pos: new THREE.Vector3(p.x, lay.height * sag + 0.75, p.z), kind: "tree", id: t.id });
-      if (garden) { const pt = addDecor(pot(G.pot)); pt.position.x = p.x; pt.position.z = p.z; }
+  const sc = garden ? null : S.fscope, g = S.garden, zoneBy = new Map(S.zones.map((z) => [z.id, z])), lays = new Map();
+  const far = !sc || sc.kind === "hub";   // looking at more than one island: topics a map named but nobody has filled stay out
+  const topic = (z) => { const trees = S.trees.filter((t) => t.zoneId === z.id && (born(t) || shownNodes(t).length > 1)); for (const t of trees) lays.set(t.id, layOf(t)); return { id: z.id, kind: "topic", z, trees, kids: trees.map((t) => ({ id: t.id, kind: "graph", r: lays.get(t.id).footprint })) }; };
+  const isle = (q) => ({ id: "isle:" + q.id, kind: "isle", q, kids: q.zoneIds.map((id) => zoneBy.get(id)).filter((z) => z && born(z) && (!sc || sc.zones.has(z.id))).map(topic).filter((t) => t.kids.length || !(far && charted())) });
+  const hub = (h) => ({ id: "hub:" + h.id, kind: "hub", h, kids: g.islands.filter((q) => hubKey(q) === h.id).map(isle).filter((q) => q.kids.length) });
+  let top;
+  if (sc?.kind === "topic") top = topic(zoneBy.get(sc.id));
+  else if (sc?.kind === "isle") top = isle(g.islands.find((q) => q.id === sc.id));
+  else if (sc?.kind === "hub") top = hub(hubsOf(g).find((h) => h.id === sc.id));
+  else { const hs = hubsOf(g).map(hub).filter((h) => h.kids.length); top = hs.length === 1 ? hs[0] : { id: "all", kind: "all", kids: hs }; }
+  const R = layoutRings(top), at = R.at, fl = { zones: new Map(), trees: new Map(), isles: new Map(), radius: R.radius, center: R.center };
+  S.forest = { fl, lays, rings: new Map() };
+  const items = [], shown = new Set(), labels = [], glows = [], discs = [], spokes = [];
+  const spoke = (a, b, from, to, color) => { const dx = b.x - a.x, dz = b.z - a.z, d = Math.hypot(dx, dz); if (d > from + to + 0.3) spokes.push({ x0: a.x + (dx / d) * from, z0: a.z + (dz / d) * from, x1: b.x - (dx / d) * to, z1: b.z - (dz / d) * to, color }); };
+  // names lie on the ground at the middle of their ring; where rings share a middle (an island with one topic) they stack
+  const name = (kind, id, text, p, depth, style, lift = 0, more = null) => labels.push({ el: el("div", { class: "lbl " + kind, dataset: { kind, id }, style }, text, more), pos: new THREE.Vector3(p.x, 0.05, p.z), kind, id, depth, tidy: true, dy: 10 - lift * 22, anchor: `translate(-50%,${-50 - lift * 120}%)` });
+  const walk = (t) => {
+    const p = at.get(t.id);
+    if (t.kind === "topic") {
+      const hue = S.hues.get(t.id) || T.limb; fl.zones.set(t.id, p);
+      glows.push({ x: p.x, z: p.z, r: p.r * 1.05, color: hue, k: 0.13 });
+      const waiting = garden ? t.trees.reduce((a, tr) => a + shownNodes(tr).filter((n) => thirst(n) !== "ok").length, 0) : 0;   // seen from far off, where the graphs' own names have faded
+      name("zone", t.id, t.z.name, p, -0.5, `color:${hue}`, 0, waiting ? el("span", { class: "thirst", text: String(waiting) }) : null);
+      for (const tr of t.trees) {
+        const q = at.get(tr.id), lay = lays.get(tr.id), nodes = shownNodes(tr), r = discR(lay); fl.trees.set(tr.id, q);
+        for (const n of nodes) shown.add(n.id);
+        items.push({ tree: tr, nodes, layout: lay, offset: [q.x, q.z], looks: looksFor(tr, nodes, garden) });
+        const dry = garden ? nodes.filter((n) => thirst(n) !== "ok").length : 0;
+        // a graph's disc: an ochre rim while anything on it needs water, and a ring inside for reviews passed
+        const rings = garden ? Math.min(4, Math.floor(Math.sqrt(passesOf(tr.id)))) : 0; S.forest.rings.set(tr.id, rings);
+        discs.push({ x: q.x, z: q.z, r, color: tr.color || hue, rim: dry ? T.link : null, rings });
+        spoke(p, q, 1.5, r, hue);
+        const e = el("div", { class: "lbl tree", dataset: { kind: "tree", id: tr.id } }, tr.name, dry ? el("span", { class: "thirst", text: String(dry) }) : null); labelEls.set(tr.id, e);
+        labels.push({ el: e, pos: new THREE.Vector3(q.x, lay.height + 0.75, q.z), kind: "tree", id: tr.id, depth: 1 });
+      }
+      return 1;
     }
-  }
-  const g = addDecor(grid(fl.radius * 3 + 60, T.grid)); g.position.x = Math.round(fl.center.x / 2) * 2; g.position.z = Math.round(fl.center.z / 2) * 2;
+    const text = t.kind === "isle" ? t.q.name : t.kind === "hub" ? t.h.name : "", id = t.kind === "isle" ? t.q.id : t.kind === "hub" ? t.h.id : "";
+    if (t.kind === "isle") fl.isles.set(id, p);
+    let under = 0;
+    for (const k of t.kids) { const n = walk(k); if (p.ring) spoke(p, at.get(k.id), t.kind === "isle" ? 2 : 2.6, t.kind === "isle" ? 1.5 : 2.2, t.kind === "isle" ? S.isleHues.get(id) || T.limb : T.limb); else under = n; }
+    if (text) name(t.kind, id, text, p, t.kind === "hub" ? -2 : -1.5, "", under);
+    return text ? under + 1 : under;
+  };
+  walk(top);
+  for (const m of ground({ glows, discs, spokes }, T.sky)) addDecor(m);
   const links = garden ? [] : S.links.filter((l) => shown.has(l.fromId) && shown.has(l.toId)).map((l) => ({ id: l.id, a: l.fromId, b: l.toId, label: l.label }));
-  const flora = (S.flora = new Flora(items, links, garden ? { ...T, limb: G.stem } : T));
-  if (garden) { for (const it of items) for (const n of it.nodes) { const v = flora.pos.get(n.id); if (v) v.y *= sags.get(it.tree.id); } flora.apply(); }
+  const flora = (S.flora = new Flora(items, links, T));
   stage.world.add(flora.group); stage.pickables = [flora.nodeMesh];
   stage.setLabels(labels); markSel();
 }
@@ -270,7 +313,7 @@ function buildMeaning() {
     const color = g.color || PALETTE[gi % PALETTE.length][1], sum = [0, 0, 0]; let k = 0, top = 0;
     for (const t of g.trees) {
       const every = S.byTree.get(t.id) || [], nodes = every.filter((n) => M.pos.has(n.id)); if (!nodes.length) continue;
-      const real = layoutTree(every, t.rootId);
+      const real = layOf(t);
       items.push({ tree: t, nodes, layout: { pos: M.pos, size: real.size, rootId: null }, offset: [0, 0], looks: new Map(nodes.map((n) => [n.id, { color, status: "ok" }])), passes: 0 });
       for (const n of nodes) { const p = M.pos.get(n.id); shown.add(n.id); depth.set(n.id, real.depth.get(n.id) || 0); all.push(p); sum[0] += p[0]; sum[1] += p[1]; sum[2] += p[2]; k++; top = Math.max(top, p[1]); }
     }
@@ -336,11 +379,12 @@ function placeSel() {
   if (!selMesh) { selMesh = new THREE.Mesh(new THREE.SphereGeometry(1, 28, 18), new THREE.MeshBasicMaterial({ color: T.ink, side: THREE.BackSide })); stage.scene.add(selMesh); }
   const p = ideaView() && S.sel && S.flora?.pos.get(S.sel);
   selMesh.visible = !!p;
-  if (p) { selMesh.position.copy(p); selMesh.scale.setScalar(S.flora.radii.get(S.sel) * 1.16 + 0.03); }
+  if (p) { selMesh.position.copy(p); selMesh.scale.setScalar(S.flora.radii.get(S.sel) * 1.1 + 0.025); }
 }
 function labelOpacity(L, dist) {
   if (S.view === "meaning") return L.kind === "group" || L.id === S.sel ? 1 : THREE.MathUtils.clamp(2.3 - dist / (stage.radius * 0.85), 0, 1);
-  if (S.view !== "tree") return L.kind === "zone" ? 1 : THREE.MathUtils.clamp(3.2 - dist / Math.max(30, stage.radius), 0, 1);
+  // rings read like a map: islands and hubs always named, topics from closer in, graphs from closer still
+  if (S.view !== "tree") return L.kind === "hub" || L.kind === "isle" ? 1 : L.kind === "zone" ? THREE.MathUtils.clamp((330 - dist) / 60, 0, 1) : L.id === S.fsel ? 1 : THREE.MathUtils.clamp((112 - dist) / 14, 0, 1);
   if (S.review) return L.id === S.sel ? 1 : 0;
   if (L.kind === "link") return THREE.MathUtils.clamp(2 - dist / (stage.radius * 1.1), 0, 1);
   if (L.id === S.sel || S.near.has(L.id)) return 1;
@@ -355,7 +399,7 @@ function labelOpacity(L, dist) {
 async function go() {
   await flushPage(); closeAll(); S.pick?.finish(null); stopPlay();
   if (!/^#\/notes/.test(location.hash)) { S.ed?.destroy(); S.ed = null; }
-  S.quick = null; S.review = null; S.cutoff = null; S.stitch = false;
+  S.quick = null; S.review = null; S.cutoff = null; S.stitch = false; endJump();
   await load();
   const m = location.hash.match(/^#\/tree\/([^/?]+)/), id = m && decodeURIComponent(m[1]);
   const mm = location.hash.match(/^#\/meaning(?:\/([^/?]+))?/), tm = location.hash.match(/^#\/techtree(?:\/([^/?]+))?/), nm = location.hash.match(/^#\/notes(?:\/([^/?]+))?/);
@@ -385,7 +429,7 @@ function showTree(id) {
   S.sel = jump || S.tree.rootId; S.pendingSel = null;
   if (S.panel !== "node" || !jump) S.panel = null;
   buildTree(false);
-  stage.setView({ target: vec(S.lay.center), radius: stage.fitDistance(S.lay.radius) * 0.88, theta: from === "forest" ? stage.theta : 0.6, phi: 1.2 });
+  stage.setView({ target: vec(S.lay.center), radius: stage.fitDistance(S.lay.radius) * 0.88, theta: from === "forest" ? stage.theta : 0.6, phi: 1.12 });
   renderChrome();
 }
 function showForest() {
@@ -404,7 +448,7 @@ function showGarden() {
   if (from) S.fsel = from;
   buildForest(true);
   const at = from && treeSpot(from);
-  stage.setView(at ? { ...at, radius: at.radius * 1.5, phi: 1.1 } : { ...forestView(), theta: stage.theta });
+  stage.setView(at ? { ...at, radius: at.radius * 1.5, phi: 1.05 } : { ...forestView(), theta: stage.theta });
   renderChrome();
   if (S.water !== undefined) { const w = S.water; S.water = undefined; if (w.treeId) S.fsel = w.treeId; reviewIds(w.ids); }
 }
@@ -412,7 +456,9 @@ function showGarden() {
 function toggleWindow() { goWindow({ garden: "knowledge", knowledge: "notes", notes: "garden" }[winOf(S.view)]); }
 function pickPlant(id) {
   S.fsel = treeOf(id) ? id : null; markSel(); renderActions();
-  const at = S.fsel && treeSpot(S.fsel); if (at) stage.flyTo({ ...at, radius: at.radius * 1.5 }, 420);
+  // bring its whole topic into view, so the graphs beside it can be picked next
+  const z = S.fsel && S.forest?.fl.zones.get(treeOf(S.fsel).zoneId), at = S.fsel && treeSpot(S.fsel);
+  if (z && at) stage.flyTo({ target: new THREE.Vector3(z.x, 1.5, z.z), radius: Math.max(at.radius * 1.5, stage.fitDistance(z.r * 0.85)) }, 420);
 }
 async function refresh({ animate = false, panel = true } = {}) {
   await load();
@@ -427,7 +473,7 @@ async function refresh({ animate = false, panel = true } = {}) {
     // Until the camera is moved by hand, keep the whole tree in view as it grows.
     if (animate && !stage.userMoved) stage.flyTo({ target: vec(S.lay.center), radius: stage.fitDistance(S.lay.radius) * 0.88 }, 420);
   } else {
-    // Re-frame the forest when a zone or tree was added or removed.
+    // Frame the rings again when a topic or graph was added or removed.
     const before = S.forest && `${S.forest.fl.zones.size}/${S.forest.fl.trees.size}`;
     buildForest();
     if (before !== `${S.forest.fl.zones.size}/${S.forest.fl.trees.size}` && S.cutoff == null) stage.flyTo(forestView());
@@ -449,7 +495,7 @@ function fitView() {
 }
 function forestView() {
   const f = S.forest.fl;
-  return { target: new THREE.Vector3(f.center.x, 1.5, f.center.z), radius: Math.min(520, stage.fitDistance(f.radius * 0.8 + 2)), phi: 1.02 };
+  return { target: new THREE.Vector3(f.center.x, 1.2, f.center.z), radius: Math.min(580, stage.fitDistance(f.radius * 0.76 + 2)), phi: 0.9 };
 }
 
 // ---------- selection ----------
@@ -461,7 +507,7 @@ function select(id, { fly = false } = {}) {
 }
 function ensureVisible(id) {
   const home = S.flora?.home.get(id); if (!home) return;
-  const p = stage.screenOf(home), right = stage.w - (S.panel && stage.w > 700 ? 380 : 0);
+  const p = stage.screenOf(home), right = stage.w;   // the stage already ends where a docked panel begins
   if (p.x < stage.w * 0.1 || p.x > right - stage.w * 0.08 || p.y < stage.h * 0.16 || p.y > stage.h * 0.86) stage.flyTo({ target: home }, 360);
 }
 function nav(key) {
@@ -473,17 +519,27 @@ function nav(key) {
   if (to) { select(to); ensureVisible(to); }
 }
 function stepForest(dir) {
-  if (!S.trees.length) return;
-  const i = S.trees.findIndex((t) => t.id === S.fsel);
-  S.fsel = S.trees[(i + dir + S.trees.length) % S.trees.length].id; markSel();
+  const list = S.trees.filter((t) => S.forest?.fl.trees.has(t.id)); if (!list.length) return;
+  const i = list.findIndex((t) => t.id === S.fsel);
+  S.fsel = list[(i + dir + list.length) % list.length].id; markSel();
   const p = S.forest.fl.trees.get(S.fsel); if (p) stage.flyTo({ target: new THREE.Vector3(p.x, 2, p.z) }, 320);
+}
+// Typing a number goes to that idea. Each digit lands at once; a second digit within a moment makes it a longer number.
+let jumpTimer = 0;
+function endJump() { clearTimeout(jumpTimer); if (S.jump) { S.jump = ""; if (S.view === "tree") renderActions(); } }
+function jumpDigit(d) {
+  const max = S.byNum.length; let buf = S.jump + d;
+  if (+buf < 1 || +buf > max) { buf = d; if (+buf < 1 || +buf > max) return endJump(); }
+  clearTimeout(jumpTimer); S.jump = +buf * 10 <= max ? buf : "";
+  if (S.jump) jumpTimer = setTimeout(endJump, 900);
+  const id = S.byNum[+buf - 1]; select(id); ensureVisible(id);
 }
 
 // ---------- hover card ----------
 function hideHover() { $("#hover").hidden = true; }
 function showHover(id, x, y) {
   const n = S.byId.get(id); if (!n || S.review) return hideHover();
-  const h = $("#hover"); put(h, el("b", { text: n.title }), n.note && el("span", { text: n.note })); h.hidden = false;
+  const h = $("#hover"); put(h, el("b", {}, numTag(id), n.title), n.note && el("span", { text: n.note })); h.hidden = false;
   h.style.left = Math.max(8, Math.min(innerWidth - h.offsetWidth - 8, x + 14)) + "px";
   h.style.top = (y + 18 + h.offsetHeight > innerHeight ? y - h.offsetHeight - 12 : y + 18) + "px";
 }
@@ -524,11 +580,11 @@ function renderTop() {
       waterBtn(() => startReview(null)), swap, more());
   } else if (S.fscope) {
     put($("#top"), back(S.forestBack || "#/"), el("div", { class: "crumb" }, el("h1", { text: S.fscope.name }), el("button", { class: "link", id: "scopeAll", type: "button", text: "Show all", onclick: () => openScope() })), beta, el("span", { class: "grow" }),
-      swap, search, add([{ label: "New tree", key: "N", run: () => newTree() }, { label: "New zone", key: "Z", run: newZone }, { label: "Capture a thought", key: "I", run: capture }]), more());
+      swap, search, add([{ label: "New knowledge graph", key: "N", run: () => newGraph() }, { label: "New topic", key: "Z", run: newZone }, { label: "Capture a thought", key: "I", run: capture }]), more());
   } else {
     put($("#top"), brand, beta, el("span", { class: "grow" }),
       S.inbox.length ? el("button", { class: "btn", id: "inboxBtn", onclick: () => { S.panel = S.panel === "inbox" ? null : "inbox"; renderPanel(); } }, "Inbox", el("span", { class: "thirst", text: String(S.inbox.length) })) : null,
-      swap, search, add([{ label: "New tree", key: "N", run: () => newTree() }, { label: "New zone", key: "Z", run: newZone }, { label: "Capture a thought", key: "I", run: capture }]), more());
+      swap, search, add([{ label: "New knowledge graph", key: "N", run: () => newGraph() }, { label: "New topic", key: "Z", run: newZone }, { label: "Capture a thought", key: "I", run: capture }]), more());
   }
 }
 // Beta only: put the demo islands back, as they were when the beta first opened.
@@ -558,9 +614,9 @@ function treeMenu(anchor) {
   menu(anchor, [
     { label: "Patches", key: "P", run: togglePatches }, { label: "Timeline", key: "T", run: toggleTimeline },
     { label: "Meaning view", key: "M", run: () => { S.pendingSel = S.sel; goMeaning(t.zoneId); } }, { label: "Tech tree", key: "K", run: openTech }, { label: "Fit view", key: "0", run: fitView },
-    "-", { label: "Rename", run: () => renameThing(t, store.updateTree, "Tree") }, { label: "Colour", run: () => colourThing(t, store.updateTree) },
-    S.zones.length > 1 && { label: "Move to zone", run: async () => {
-      const v = await dialog({ title: `Move ${t.name}`, fields: [{ name: "zoneId", label: "Zone", type: "select", value: t.zoneId, options: S.zones.map((z) => [z.id, z.name]) }], ok: "Move" });
+    "-", { label: "Rename", run: () => renameThing(t, store.updateTree, "Knowledge graph") }, { label: "Colour", run: () => colourThing(t, store.updateTree) },
+    S.zones.length > 1 && { label: "Move to topic", run: async () => {
+      const v = await dialog({ title: `Move ${t.name}`, fields: [{ name: "zoneId", label: "Topic", type: "select", value: t.zoneId, options: S.zones.map((z) => [z.id, z.name]) }], ok: "Move" });
       if (v && (await safely(() => store.updateTree(t.id, { zoneId: v.zoneId })))) refresh();
     } },
     { label: "Graft onto…", key: "G", run: graftWholeTree },
@@ -576,15 +632,15 @@ function zoneMenu(id, anchor) {
   const z = S.zones.find((x) => x.id === id); if (!z) return;
   const trees = S.trees.filter((t) => t.zoneId === id);
   menu(anchor, [
-    { label: "New tree", run: () => newTree(id) }, { label: "Meaning view", run: () => goMeaning(id) },
-    { label: "Rename", run: () => renameThing(z, store.updateZone, "Zone") }, { label: "Colour", run: () => colourThing(z, store.updateZone) },
-    trees.length > 1 && { label: "Merge into one tree", run: async () => {
-      const v = await dialog({ title: `Merge ${z.name}`, fields: [{ name: "into", label: "Trunk", type: "select", value: trees[0].id, options: trees.map((t) => [t.id, t.name]) }], ok: "Merge" });
+    { label: "New knowledge graph", run: () => newGraph(id) }, { label: "Only this topic", run: () => openScope(id) }, { label: "Meaning view", run: () => goMeaning(id) },
+    { label: "Rename", run: () => renameThing(z, store.updateZone, "Topic") }, { label: "Colour", run: () => colourThing(z, store.updateZone) },
+    trees.length > 1 && { label: "Merge into one graph", run: async () => {
+      const v = await dialog({ title: `Merge ${z.name}`, fields: [{ name: "into", label: "Into", type: "select", value: trees[0].id, options: trees.map((t) => [t.id, t.name]) }], ok: "Merge" });
       if (v && (await safely(() => store.mergeZone(id, v.into))) !== undefined) { await load(); goTree(v.into); }
     } },
     { label: "Archive", run: async () => { if (await safely(() => store.updateZone(id, { archived: true }))) { toast(`Archived ${z.name}`); refresh(); } } },
     { label: "Delete", danger: true, run: async () => {
-      if (await dialog({ title: `Delete ${z.name}${trees.length ? ` and its ${trees.length} tree${trees.length === 1 ? "" : "s"}` : ""}?`, ok: "Delete", danger: true })) { await safely(() => store.deleteZone(id)); refresh(); }
+      if (await dialog({ title: `Delete ${z.name}${trees.length ? ` and its ${trees.length} knowledge graph${trees.length === 1 ? "" : "s"}` : ""}?`, ok: "Delete", danger: true })) { await safely(() => store.deleteZone(id)); refresh(); }
     } },
   ]);
 }
@@ -597,27 +653,19 @@ async function colourThing(x, update) {
   if (v && (await safely(() => update(x.id, { color: v.color || null })))) refresh();
 }
 async function newZone() {
-  const v = await dialog({ title: "New zone", fields: [{ name: "name", label: "Subject", max: 80 }], ok: "Add" });
+  const v = await dialog({ title: "New topic", fields: [{ name: "name", label: "Topic", max: 80 }], ok: "Add" });
   const z = v && (await safely(() => store.createZone({ name: v.name })));
   if (!z) return;
-  await refresh(); newTree(z.id);
-}
-async function newTree(zoneId) {
-  if (!S.zones.length) return newZone();
-  zoneId = zoneId || treeOf(S.fsel)?.zoneId || S.zones[0].id;
-  const v = await dialog({ title: "New tree", ok: "Plant", fields: [{ name: "name", label: "Topic", max: 80 }, { name: "core", label: "Core idea", required: false },
-    S.zones.length > 1 && { name: "zoneId", label: "Zone", type: "select", value: zoneId, options: S.zones.map((z) => [z.id, z.name]) }].filter(Boolean) });
-  const t = v && (await safely(() => store.createTree({ zoneId: v.zoneId || zoneId, name: v.name, core: v.core })));
-  if (t) { await load(); goTree(t.id); }
+  await refresh(); newGraph(z.id);
 }
 async function capture() {
   const v = await dialog({ title: "Capture", fields: [{ name: "text", label: "Thought" }], ok: "Save" });
   if (v && (await safely(() => store.addInbox(v.text)))) { await refresh(); toast("In the inbox"); }
 }
 function shortcuts() {
-  const rows = [["↑ ↓ ← →", "Child, parent, siblings"], ["Tab", "Add a branch"], ["Enter", "Add a sibling"], ["R", "Rename"], ["Del", "Delete"], ["Space", "Notes"],
+  const rows = [["↑ ↓ ← →", "The idea under, the idea above, the ideas beside"], ["1–9", "Go to an idea by its number"], ["Tab", "Add an idea under"], ["Enter", "Add an idea beside"], ["R", "Rename"], ["Del", "Delete"], ["Space", "The idea's panel"], ["N", "Write the idea's notes"], ["X", "Make the idea its own graph"],
     ["L", "Link"], ["G", "Graft"], ["C", "Colour"], ["F", "Fly to idea"], ["0", "Fit view"], ["W A S D  Q E", "Fly"], ["/", "Search"], ["I", "Capture"],
-    ["1–9", "Garden: go to a hub, an island, then a topic"], ["0  Esc", "Garden: step back out"], ["W", "Garden: water"], ["D", "Garden: day or night"], ["S", "Garden: split a topic past 200%"], ["P", "Patches"], ["T", "Timeline"], ["M", "Meaning view"], ["K", "Tech tree"], ["1–9  Enter", "Tech tree: pick, then go in or open"], ["Space", "Tech tree: open or close an idea"], ["Esc", "Tech tree: let go, then step back a tier"], ["T  A  H", "Tech tree: this tier only, show all, back to the start"], ["B", "Tech tree: what an island grows from"], ["L", "Tech tree: tree or web"], ["Y", "Tech tree: simple or organic look"], ["J", "Tech tree web: jiggle while dragging, or hold still"], ["N  Z", "New tree, new zone"], ["G", "Garden: the knowledge graphs of what's picked"], ["O", "Notes; in a graph, notes beside it"], ["N  G", "Notes: new page, grow with Claude"], ["1–9  ↑ ↓", "Notes: pick a page"], ["← →", "Notes: topics"], ["A", "Notes: attach the page to a graph"], ["/", "Notes, while writing: blocks"], ["Tab  Shift+Tab", "Notes, while writing: indent a block"], ["Ctrl+B I U E K", "Notes, while writing: bold, italic, underline, code, link"], ["Ctrl+Shift+↑ ↓", "Notes, while writing: move a block"], ["Shift+Tab", "Garden, knowledge, notes"], ["[  ]", "Close or open the menu on the left, on the right"], ["Enter  V", "Garden: water the plant, water everything"], ["Esc", "Back"]];
+    ["1–9", "Garden: go to a hub, an island, then a topic"], ["0  Esc", "Garden: step back out"], ["W", "Garden: water"], ["D", "Garden: day or night"], ["S", "Garden: split a topic past 200%"], ["P", "Patches"], ["T", "Timeline"], ["M", "Meaning view"], ["K", "Tech tree"], ["1–9  Enter", "Tech tree: pick, then go in or open"], ["Space", "Tech tree: open or close an idea"], ["Esc", "Tech tree: let go, then step back a tier"], ["T  A  H", "Tech tree: this tier only, show all, back to the start"], ["B", "Tech tree: what an island grows from"], ["L", "Tech tree: tree or web"], ["Y", "Tech tree: simple or organic look"], ["J", "Tech tree web: jiggle while dragging, or hold still"], ["N  Z", "New knowledge graph, new topic"], ["G", "Garden: the knowledge graphs of what's picked"], ["O", "Notes; in a graph, notes beside it"], ["N  G", "Notes: new page, grow with Claude"], ["1–9  ↑ ↓", "Notes: pick a page"], ["← →", "Notes: topics"], ["A", "Notes: attach the page to a graph"], ["/", "Notes, while writing: blocks"], ["Tab  Shift+Tab", "Notes, while writing: indent a block"], ["Ctrl+B I U E K", "Notes, while writing: bold, italic, underline, code, link"], ["Ctrl+Shift+↑ ↓", "Notes, while writing: move a block"], ["Shift+Tab", "Garden, knowledge, notes"], ["[  ]", "Close or open the menu on the left, on the right"], ["Enter  V", "Watering: water the graph picked, water everything"], ["Esc", "Back"]];
   dialog({ title: "Shortcuts", ok: null, cancel: "Close", body: el("table", { class: "keys" }, rows.map(([k, d]) => el("tr", {}, el("td", {}, el("kbd", { text: k })), el("td", { text: d })))) });
 }
 async function exportBackup() {
@@ -630,7 +678,7 @@ async function importBackup(file) {
   let data; try { data = JSON.parse(await file.text()); } catch { data = null; }
   if (data?.app !== "bonsai") return toast("Not a Bonsai backup");
   const n = (data.nodes || []).length;
-  if (!(await dialog({ title: `Replace this device's forest with the backup (${n} idea${n === 1 ? "" : "s"})?`, ok: "Replace", danger: true }))) return;
+  if (!(await dialog({ title: `Replace everything on this device with the backup (${n} idea${n === 1 ? "" : "s"})?`, ok: "Replace", danger: true }))) return;
   if ((await safely(async () => { await store.importAll(data); return true; }))) { toast("Restored"); if (location.hash && location.hash !== "#/") location.hash = "#/"; else go(); }
 }
 
@@ -638,13 +686,14 @@ async function importBackup(file) {
 function renderActions() {
   const a = $("#actions");
   if (S.quick) {
-    const q = S.quick, rename = q.kind === "rename";
-    const input = el("input", { id: "quickInput", value: rename ? S.byId.get(q.id)?.title || "" : "", placeholder: rename ? "Name" : "New idea", maxLength: 140, autocomplete: "off", "aria-label": rename ? "Rename" : "New idea" });
+    const q = S.quick, rename = q.kind === "rename", goto = q.kind === "goto", what = rename ? "Name" : goto ? "Number" : "New idea";
+    const input = el("input", { id: "quickInput", value: rename ? S.byId.get(q.id)?.title || "" : "", placeholder: what, maxLength: 140, autocomplete: "off", inputMode: goto ? "numeric" : null, "aria-label": rename ? "Rename" : what });
     input.addEventListener("keydown", (e) => {
-      if (e.key === "Tab" && !rename) { e.preventDefault(); commitQuick(input.value, "child"); }
-      else if (e.key === "Enter" && e.shiftKey && !rename) { e.preventDefault(); commitQuick(input.value, "sibling"); }
+      if (rename || goto) return;
+      if (e.key === "Tab") { e.preventDefault(); commitQuick(input.value, "child"); }
+      else if (e.key === "Enter" && e.shiftKey) { e.preventDefault(); commitQuick(input.value, "sibling"); }
     });
-    put(a, el("form", { class: "quick", onsubmit: (e) => { e.preventDefault(); commitQuick(input.value); } }, input, el("button", { class: "btn primary", text: rename ? "Save" : "Add" }),
+    put(a, el("form", { class: "quick", onsubmit: (e) => { e.preventDefault(); commitQuick(input.value); } }, input, el("button", { class: "btn primary", text: rename ? "Save" : goto ? "Go" : "Add" }),
       ib("quickCancel", "Cancel", ICON.close, (e) => { e.preventDefault(); S.quick = null; renderActions(); })));
     a.hidden = false; input.focus(); input.select();
     return;
@@ -655,29 +704,38 @@ function renderActions() {
   if (plant) {
     const nodes = S.byTree.get(plant.id) || [], dry = nodes.filter((x) => thirst(x) !== "ok");
     put(a, el("div", { class: "plant" }, el("b", { text: plant.name }), el("span", { class: "muted", text: `${nodes.length} idea${nodes.length === 1 ? "" : "s"}${dry.length ? ` · ${dry.length} thirsty` : ""}` })),
-      el("button", { class: "btn primary", id: "waterBtn", onclick: () => startReview(plant.id) }, dry.length ? `Water ${dry.length}` : "Practise"),
-      dry.length ? el("button", { class: "btn", id: "allGood", text: "All good", onclick: () => passAll(dry.map((x) => x.id)) }) : null,
-      el("button", { class: "btn", id: "openTree", text: "Open", onclick: () => goTree(plant.id) }));
+      el("button", { class: "btn primary", id: "waterBtn", onclick: () => startReview(plant.id) }, dry.length ? `Water ${dry.length}` : "Practise", el("kbd", { text: "↵" })),
+      dry.length ? el("button", { class: "btn", id: "allGood", onclick: () => passAll(dry.map((x) => x.id)) }, "All good", el("kbd", { text: "A" })) : null,
+      el("button", { class: "btn", id: "openTree", onclick: () => goTree(plant.id) }, "Open", el("kbd", { text: "G" })));
     a.hidden = false;
     return;
   }
   const idea = S.view === "meaning" && !S.pick ? S.byId.get(S.sel) : null;
   if (idea) {
     put(a, el("div", { class: "plant" }, el("b", { text: idea.title }), el("span", { class: "muted", text: pathOf(idea) })),
-      el("button", { class: "btn", dataset: { act: "open" }, text: "Open", onclick: () => { S.pendingSel = idea.id; goTree(idea.treeId); } }),
-      el("button", { class: "btn", dataset: { act: "note" }, text: "Note", onclick: togglePanel }), el("button", { class: "btn", dataset: { act: "link" }, text: "Link", onclick: linkFrom }));
+      el("button", { class: "btn", dataset: { act: "open" }, onclick: () => { S.pendingSel = idea.id; goTree(idea.treeId); } }, "Open", el("kbd", { text: "↵" })),
+      el("button", { class: "btn", dataset: { act: "note" }, onclick: togglePanel }, "Notes", el("kbd", { text: "Space" })), el("button", { class: "btn", dataset: { act: "link" }, onclick: linkFrom }, "Link", el("kbd", { text: "L" })));
     a.hidden = false;
     return;
   }
   const n = S.view === "tree" && !S.review && !S.pick && S.cutoff == null ? S.byId.get(S.sel) : null;
   if (!n) { a.hidden = true; a.replaceChildren(); return; }
-  const b = (act, text, run) => el("button", { class: "btn", dataset: { act }, text, onclick: run });
-  put(a, b("add", "+ Branch", () => quick("child")), b("note", "Note", togglePanel), b("link", "Link", linkFrom), b("graft", "Graft", graft),
+  const key = (act, text, k, run, lap) => el("button", { class: "btn" + (lap ? " lap" : ""), dataset: { act }, onclick: run }, text, el("kbd", { text: k }));
+  const top = n.parentId == null;
+  put(a, key("add", "Add", "Tab", () => quick("child")), key("beside", "Beside", "↵", () => quick("sibling"), true), key("rename", "Rename", "R", () => quick("rename"), true),
+    key("note", "Notes", "Space", togglePanel), key("link", "Link", "L", linkFrom), key("graft", "Graft", "G", graft),
+    el("span", { class: "sep lap" }), key("goto", "Go to", S.jump ? S.jump + "…" : "1–9", () => quick("goto"), true), key("fit", "Fit", "0", fitView, true),
     ib("nodeMore", "More", ICON.more, (e) => menu(e.currentTarget, [
-      { label: "Rename", key: "R", run: () => quick("rename") }, { label: "Add sibling", key: "Enter", run: () => quick("sibling") },
-      n.parentId != null && { label: n.wasTree ? `Split ${n.wasTree.name} back out` : "Make its own tree", run: () => splitOut(n) },
-      n.parentId != null && { label: "Delete", key: "Del", danger: true, run: () => removeNode(n.id) }])));
+      { label: "Rename", key: "R", run: () => quick("rename") }, { label: "Add beside", key: "Enter", run: () => quick("sibling") },
+      { label: "Write notes", key: "N", run: editNotes }, { label: "Colour", key: "C", run: () => cycleColour(n) }, { label: "Fly to", key: "F", run: flyToSel },
+      !top && { label: n.wasTree ? `Split ${n.wasTree.name} back out` : "Make its own graph", key: "X", run: () => splitOut(n) },
+      !top && { label: "Delete", key: "Del", danger: true, run: () => removeNode(n.id) }])));
   a.hidden = false;
+}
+function flyToSel() { const home = S.flora?.home.get(S.sel); if (home) stage.flyTo({ target: home, radius: Math.min(stage.radius, 8) }); }
+function editNotes() {
+  if (!ideaView() || !S.byId.get(S.sel)) return;
+  S.panel = "node"; S.editBody = true; renderPanel(); $("#nodeBody")?.focus();
 }
 function quick(kind) {
   if (S.view !== "tree" || S.cutoff != null || S.review) return;
@@ -687,6 +745,7 @@ function quick(kind) {
 async function commitQuick(value, then) {
   const q = S.quick, v = value.trim(); S.quick = null;
   if (!q || !v) return renderActions();
+  if (q.kind === "goto") { const id = S.byNum[parseInt(v, 10) - 1]; renderActions(); if (id) { select(id); ensureVisible(id); } return; }
   if (q.kind === "rename") { await safely(() => store.updateNode(q.id, { title: v })); await refresh(); return; }
   const n = await safely(() => store.addNode(q.parentId, { title: v }));
   if (!n) return renderActions();
@@ -735,7 +794,7 @@ async function graftWholeTree() {
 async function splitOut(n) {
   const t = await safely(() => store.splitToTree(n.id)); if (!t) return;
   S.sel = n.parentId; await refresh({ animate: true });
-  toast(`Planted ${t.name}`, { label: "Open", run: () => goTree(t.id) });
+  toast(`${t.name} is its own graph`, { label: "Open", run: () => goTree(t.id) });
 }
 
 // ---------- picking another idea (search, link, graft, file) ----------
@@ -819,8 +878,11 @@ function nodePanel(n) {
   drawBody();
   const links = S.links.filter((l) => l.fromId === n.id || l.toId === n.id);
   const patches = S.patches.filter((p) => p.nodeIds.includes(n.id));
+  const trail = []; for (let q = S.byId.get(n.parentId); q; q = S.byId.get(q.parentId)) trail.unshift(q);
+  const under = S.view === "tree" ? kidsOf(n.id) : [], go = (id) => { select(id); ensureVisible(id); };
   return [
-    el("div", { class: "ph" }, el("input", { id: "nodeTitle", class: "title", value: n.title, maxLength: 140, "aria-label": "Title",
+    S.view === "tree" && trail.length ? el("div", { class: "trail" }, trail.map((q) => el("button", { class: "chip", type: "button", title: q.title, onclick: () => go(q.id) }, numTag(q.id), q.title))) : null,
+    el("div", { class: "ph" }, numTag(n.id), el("input", { id: "nodeTitle", class: "title", value: n.title, maxLength: 140, "aria-label": "Title",
       onchange: (e) => (e.target.value.trim() ? save({ title: e.target.value }) : (e.target.value = n.title)) }), panelClose()),
     el("input", { id: "nodeNote", class: "short", value: n.note || "", maxLength: 500, placeholder: "Short note", "aria-label": "Short note", onchange: (e) => save({ note: e.target.value }) }),
     bodyBox,
@@ -832,6 +894,8 @@ function nodePanel(n) {
         ib(null, "Remove link", ICON.close, async () => { await safely(() => store.deleteLink(l.id)); refresh(); }));
     })),
     patches.length && el("section", {}, el("h3", { text: "Patches" }), patches.map((p) => el("blockquote", {}, el("time", { text: fmtDate(p.createdAt) }), el("p", { text: p.text })))),
+    under.length ? el("section", { class: "ncards" }, under.map((k) => { const c = kidsOf(k.id).length; return el("button", { class: "ncard", type: "button", dataset: { id: k.id }, onclick: () => go(k.id) },
+      el("div", { class: "row" }, numTag(k.id), el("b", { text: k.title }), c ? el("span", { class: "muted", text: `+${c}` }) : null), k.note ? el("span", { class: "muted", text: k.note }) : null); })) : null,
   ];
 }
 function patchesPanel() {
@@ -847,11 +911,11 @@ function patchesPanel() {
   const saveStitch = async (e) => {
     e.preventDefault(); const v = stitch.value.trim(); if (!v) return;
     const body = `${root.body ? root.body + "\n\n" : ""}## Stitch · ${fmtDate(Date.now())}\n${v}`;
-    if (await safely(() => store.updateNode(root.id, { body }))) { S.stitch = false; S.panel = "node"; S.sel = root.id; await refresh(); toast("Stitched into the trunk"); }
+    if (await safely(() => store.updateNode(root.id, { body }))) { S.stitch = false; S.panel = "node"; S.sel = root.id; await refresh(); toast("Stitched into the start"); }
   };
   return [
     el("div", { class: "ph" }, el("h2", { text: "Patches" }), ps.length >= 2 && el("button", { class: "btn", id: "stitchBtn", text: "Stitch", onclick: () => { S.stitch = !S.stitch; renderPanel(); } }), panelClose()),
-    S.stitch && el("form", { class: "stack", onsubmit: saveStitch }, stitch, el("button", { class: "btn primary", text: "Save to trunk" })),
+    S.stitch && el("form", { class: "stack", onsubmit: saveStitch }, stitch, el("button", { class: "btn primary", text: "Save to the start" })),
     ps.map((p) => el("article", { class: "patch" }, el("div", { class: "row" }, el("time", { text: fmtDate(p.createdAt) }), el("span", { class: "grow" }),
       ib(null, "Delete patch", ICON.close, async () => { await safely(() => store.deletePatch(p.id)); refresh(); })), el("p", { text: p.text }),
       el("div", { class: "chips" }, p.nodeIds.filter((id) => S.byId.get(id)?.treeId === tree.id).map((id) => el("button", { class: "chip", text: S.byId.get(id).title, onclick: () => select(id, { fly: true }) }))))),
@@ -1022,8 +1086,9 @@ function crossLinks() {
 }
 function showWindow(garden, flat = false, notes = false) {
   $("#notes").hidden = !notes; if (!notes) $("#notes").replaceChildren(); flat ||= notes;
-  $("#stage").hidden = garden || flat; $("#isles").hidden = !garden; $("#tech").hidden = !flat || notes; if (!flat || notes) { tech?.setActive(false); document.body.classList.remove("night-ui"); } $("#gpanel").hidden = !garden; document.body.dataset.window = garden ? "garden" : notes ? "notes" : "";
+  $("#stage").hidden = garden || flat; $("#isles").hidden = !garden; $("#tech").hidden = !flat || notes; if (!flat || notes) { tech?.setActive(false); document.body.classList.toggle("night-ui", !garden && !notes && techNight()); } $("#gpanel").hidden = !garden; document.body.dataset.window = garden ? "garden" : notes ? "notes" : "";
   if (!garden) { isles?.setActive(false); stage.resize(); }   // the stage has no size while hidden; measure it again before anything is framed
+  if (!garden && !flat) retheme();
 }
 // The garden's renderer, made when first needed: by the garden, or by the tech tree for its pictures.
 function ensureIsles() {
@@ -1125,7 +1190,7 @@ function renderGarden() {
 async function newGraph(zoneId) {
   const NEW = "\u0000new", has = S.zones.length > 0;
   const v = await dialog({ title: "New knowledge graph", ok: "Create", fields: [
-    has ? { name: "zoneId", label: "Topic", type: "select", value: zoneId || S.model[S.isle]?.topics[Math.max(0, S.topic)]?.id || S.zones[0].id, options: [...S.zones.map((z) => [z.id, z.name]), [NEW, "New topic…"]] } : { name: "topic", label: "Topic", max: 80 },
+    has ? { name: "zoneId", label: "Topic", type: "select", value: zoneId || (S.view === "isles" ? S.model[S.isle]?.topics[Math.max(0, S.topic)]?.id : S.fscope?.kind === "topic" ? S.fscope.id : treeOf(S.fsel)?.zoneId) || S.zones[0].id, options: [...S.zones.map((z) => [z.id, z.name]), [NEW, "New topic…"]] } : { name: "topic", label: "Topic", max: 80 },
     { name: "name", label: "Name", max: 80 }] });
   if (!v) return;
   let zid = v.zoneId;
@@ -1216,7 +1281,7 @@ async function splitTopic(t) {
   const big = [...t.trees].sort((a, b) => (S.byTree.get(b.id) || []).length - (S.byTree.get(a.id) || []).length)[0];
   const list = el("div", { class: "rows", id: "splitParts" }), show = (id) => put(list, splitPlan(t, id).parts.map((p) => el("div", { class: "grow-row" }, el("b", { text: p.name }), el("span", { class: "muted", text: String(p.size) }))));
   show(big.id);
-  const ask = dialog({ title: `Split ${t.name}`, ok: "Split", fields: t.trees.length > 1 ? [{ name: "into", label: "Trunk", type: "select", value: big.id, options: t.trees.map((x) => [x.id, x.name]) }] : [], body: list });
+  const ask = dialog({ title: `Split ${t.name}`, ok: "Split", fields: t.trees.length > 1 ? [{ name: "into", label: "Start from", type: "select", value: big.id, options: t.trees.map((x) => [x.id, x.name]) }] : [], body: list });
   $("#f-into")?.addEventListener("change", (e) => show(e.target.value));
   const v = await ask; if (!v) return;
   const plan = splitPlan(t, v.into || big.id); if (!plan.parts.length) return toast("Nothing to split");
@@ -1243,12 +1308,12 @@ function renderEmpty() {
   const box = $("#empty"), show = (S.view === "forest" || S.view === "isles") && !S.zones.length && S.cutoff == null;
   box.hidden = !show;
   if (!show || box.firstChild) return;
-  const input = el("input", { id: "zoneName", placeholder: "First subject", maxLength: 80, required: true, "aria-label": "Zone name", autocomplete: "off" });
+  const input = el("input", { id: "zoneName", placeholder: "First topic", maxLength: 80, required: true, "aria-label": "Topic", autocomplete: "off" });
   box.append(el("form", { class: "row", onsubmit: async (e) => {
     e.preventDefault();
     const z = await safely(() => store.createZone({ name: input.value })); if (!z) return;
-    input.value = ""; await refresh(); newTree(z.id);
-  } }, input, el("button", { class: "btn primary", text: "Add zone" })));
+    input.value = ""; await refresh(); newGraph(z.id);
+  } }, input, el("button", { class: "btn primary", text: "Add topic" })));
 }
 
 // ---------- the tech tree: a flat map of every topic and idea ----------
@@ -1370,6 +1435,8 @@ function techKey(k, stop) {
   if (tech.key(k === " " ? " " : k)) stop();
 }
 
+function retheme() { T = theme(); stage.setTheme(T); selMesh?.material.color.set(T.ink); }
+
 // ---------- input ----------
 function onTap(hit, e) {
   hideHover();
@@ -1381,13 +1448,14 @@ function onTap(hit, e) {
   if (S.view === "forest") {
     if (!hit) return;
     if (hit.kind === "zone") return zoneMenu(hit.id, { left: e.clientX, right: e.clientX, top: e.clientY, bottom: e.clientY });
+    if (hit.kind === "isle" || hit.kind === "hub") return openScope(hit.id);   // an island's or hub's name narrows the view to it
     const treeId = hit.kind === "tree" ? hit.id : hit.kind === "node" ? S.byId.get(hit.id)?.treeId : S.byId.get(S.links.find((l) => l.id === hit.id)?.fromId)?.treeId;
     if (treeId) openTree(treeId);
     return;
   }
   if (S.review || S.cutoff != null) return;
   if (S.quick) { S.quick = null; }
-  if (!hit) return select(null);
+  if (!hit) return S.view === "tree" ? renderActions() : select(null);   // in a graph an idea always stays picked
   if (hit.kind === "group") { const L = stage.labels.find((x) => x.kind === "group" && x.id === hit.id); if (L) stage.flyTo({ target: L.pos, radius: Math.min(stage.radius, stage.fitDistance(S.lay.radius) * 0.5) }); return; }
   if (hit.kind === "link") { const l = S.links.find((x) => x.id === hit.id); if (l) { S.panel = "node"; select(l.fromId); } return; }
   if (e.pointerType === "mouse" || S.sel === hit.id) { S.panel = "node"; select(hit.id); }
@@ -1432,6 +1500,7 @@ function onKey(e) {
   if (k === "[" || k === "]") { stop(); return sideKey(k === "["); }
   if (S.view === "tech") return techKey(k, stop);
   if (S.view === "notes") return notesKey(k, stop);
+  if (S.view === "tree" && S.cutoff == null && /^[0-9]$/.test(k) && (S.jump || k !== "0")) { stop(); return jumpDigit(k); }
   if (k === "t" && S.view !== "isles") { stop(); return toggleTimeline(); }
   if (k === "0") { stop(); return S.view === "isles" ? pickHub(-1) : fitView(); }
   if (S.cutoff != null) return;
@@ -1440,11 +1509,13 @@ function onKey(e) {
     if (k === "v") { stop(); return startReview(null); }
     if (k.startsWith("Arrow")) { stop(); stepForest(k === "ArrowRight" || k === "ArrowUp" ? 1 : -1); return renderActions(); }
     if (k === "Enter" && treeOf(S.fsel)) { stop(); return startReview(S.fsel); }
+    if (k === "g" && treeOf(S.fsel)) { stop(); return goTree(S.fsel); }
+    if (k === "a" && treeOf(S.fsel)) { stop(); return passAll((S.byTree.get(S.fsel) || []).filter((x) => thirst(x) !== "ok").map((x) => x.id)); }
     return;
   }
   if (S.view === "forest") {
     if (k === "m") { stop(); return goMeaning(); }
-    if (k === "n") { stop(); return newTree(); }
+    if (k === "n") { stop(); return newGraph(); }
     if (k === "z") { stop(); return newZone(); }
     if (k.startsWith("Arrow")) { stop(); return stepForest(k === "ArrowRight" || k === "ArrowUp" ? 1 : -1); }
     if (k === "Enter" && treeOf(S.fsel)) { stop(); return openTree(S.fsel); }
@@ -1466,7 +1537,9 @@ function onKey(e) {
   else if (k === "r" || k === "F2") { stop(); if (n) quick("rename"); }
   else if (k === "Delete" || k === "Backspace") { stop(); if (n) removeNode(n.id); }
   else if (k === " ") { stop(); togglePanel(); }
-  else if (k === "f") { if (n) stage.flyTo({ target: S.flora.home.get(n.id), radius: Math.min(stage.radius, 8) }); }
+  else if (k === "f") flyToSel();
+  else if (k === "n") { stop(); editNotes(); }
+  else if (k === "x") { if (n && n.parentId != null) splitOut(n); }
   else if (k === "l") { stop(); linkFrom(); }
   else if (k === "g") { stop(); graft(); }
   else if (k === "c") { if (n) cycleColour(n); }
@@ -1900,13 +1973,13 @@ async function init() {
   stage.setTheme(T);
   stage.isPaused = () => overlayOpen() || !!S.review || S.view === "tech";
   stage.onTap = onTap; stage.labelOpacity = labelOpacity;
-  stage.labelRank = (L) => (L.id === S.sel ? 0 : S.near.has(L.id) ? 1 + L.depth * 0.01 : 2 + L.depth);
+  stage.labelRank = (L) => (L.id === S.sel || (!ideaView() && L.id === S.fsel) ? 0 : S.near.has(L.id) ? 1 + L.depth * 0.01 : 2 + L.depth);
   stage.onHover = (hit, e) => {
     stage.container.style.cursor = hit && !(S.view === "forest" && hit.kind === "link") ? "pointer" : "";
     if (hit?.kind === "node" && ideaView()) showHover(hit.id, e.clientX, e.clientY); else hideHover();
   };
   stage.container.addEventListener("pointerdown", hideHover);
-  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { T = theme(); stage.setTheme(T); selMesh?.material.color.set(T.ink); rebuild(); });
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { retheme(); rebuild(); });
   window.addEventListener("hashchange", go);
   window.addEventListener("keydown", (e) => { if (e.key === "Tab" && e.shiftKey && document.activeElement === document.body) e.preventDefault(); onKey(e); });
   $("#importFile").addEventListener("change", (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) importBackup(f); });

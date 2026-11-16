@@ -24,16 +24,16 @@ await key("Escape"); await page.waitForSelector("#review", { state: "hidden" });
 await key("0"); await page.waitForTimeout(900);   // the round leaves the camera on the last plant; 0 shows them all
 await page.click('.lbl.tree:has-text("Basic electronics")');
 await page.waitForSelector("#waterBtn");
-t.eq(await page.textContent("#waterBtn"), "Water 3", "thirsty in this plant");
-const limbsBefore = await state(page, () => bonsai.S.flora.limbMesh.count);
+t.eq(await page.textContent("#waterBtn"), "Water 3↵", "thirsty in this graph");
+const ringsBefore = await state(page, (id) => bonsai.S.forest.rings.get(id), ids.basic);
 await page.screenshot({ path: "tests/shots/garden-thirsty.png" });
 await page.click("#waterBtn"); await page.waitForSelector("#showAnswer");
 for (let i = 0; i < 3; i++) { await key(" "); await page.waitForSelector(".rate"); await key("3"); await page.waitForFunction((n) => !bonsai.S.review || bonsai.S.review.i === n, i + 1); }
 await page.waitForSelector("#review", { state: "hidden" });
 const passes = () => state(page, () => bonsai.S.nodes.reduce((a, n) => a + (n.srs?.passes || 0), 0));
 t.eq(await passes(), 3, "passes after watering");
-if (!((await state(page, () => bonsai.S.flora.limbMesh.count)) > limbsBefore)) t.fail("roots didn't grow after watering");
-t.eq(await page.textContent("#waterBtn"), "Practise", "plant still thirsty after watering");
+t.eq([ringsBefore, await state(page, (id) => bonsai.S.forest.rings.get(id), ids.basic)], [0, 1], "the graph's disc gains a ring after watering");
+t.eq(await page.textContent("#waterBtn"), "Practise↵", "graph still thirsty after watering");
 
 // "All good" passes a whole plant in one tap, and can be undone.
 await page.click('.lbl.tree:has-text("Op-amps")'); await page.waitForSelector("#allGood");
@@ -45,10 +45,10 @@ await page.waitForTimeout(500); await page.screenshot({ path: "tests/shots/garde
 
 // Back in the knowledge window the trees carry no roots or fading.
 await page.keyboard.press("Shift+Tab");
-await page.waitForSelector(".lbl.tree");
+await page.waitForFunction(() => bonsai.S.view !== "garden"); await page.waitForSelector(".lbl.tree");
 t.eq(await state(page, () => bonsai.S.view), "forest", "Shift+Tab returns to knowledge");
 await openTree(page, ids.basic);
-t.eq(await state(page, () => [bonsai.S.flora.limbMesh.count, bonsai.S.flora.ids.length]), [9, 9], "knowledge tree has no roots");
+t.eq(await state(page, () => [bonsai.S.flora.limbMesh.count, bonsai.S.flora.ids.length]), [9, 9], "a stick to each idea and nothing else");
 if (await page.$("#reviewBtn")) t.fail("review button in the knowledge window");
 
 // Patches attach to the ideas they mention; a stitch lands in the trunk's notes.
@@ -85,7 +85,7 @@ t.eq(await state(page, () => { const n = bonsai.S.nodes.find((x) => x.title === 
 await key("Escape");
 
 // Merge the zone into one tree, then split a grafted tree back out.
-await page.click('.lbl.zone:text-is("Electronics")'); await page.click('.mi:has-text("Merge into one tree")');
+await page.click('.lbl.zone:text-is("Electronics")'); await page.click('.mi:has-text("Merge into one graph")');
 await page.waitForSelector(".dialog"); await page.click(".dialog .btn.primary");
 await page.waitForSelector('.lbl.node:text-is("Negative feedback")');
 t.eq(await state(page, () => bonsai.S.trees.length), 2, "trees after merge");

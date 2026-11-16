@@ -2,6 +2,21 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.15.0 — 2026-11-16
+
+The knowledge view, redrawn in the tech tree's manner.
+
+- **Graphs are ball-and-stick structures.** Each stands on a disc, with a stem up to its first idea and the rest spreading out from there. No more leaning like a tree, no pots, no roots.
+- **Links inside a graph are straight bonds.** The structure settles itself so that no bond, and no stick, passes through an idea it doesn't join. Links from one graph to another are still thin arcs.
+- **Rings.** A topic's graphs sit in a ring round its name. An island shows its topics in a ring round its own name, each with its graphs round it; a hub does the same with its islands. Click an island's or hub's name to see only that; a topic's menu has Only this topic.
+- **The tech tree's colours.** A graph takes its topic's colour, turned a little for each idea that hangs off the start; a soft glow lies under each topic and thin spokes run from a name to what sits round it. Colours you set yourself are kept. The knowledge view goes dark when the garden is at night, as the tech tree does.
+- **Watering** is the same picture: an idea turns ochre when it needs water and grey once it has dried out, a graph with anything waiting has an ochre rim, each topic's name carries its count, and a graph's disc gains a ring as its reviews are passed. Picking a graph brings its whole topic into view. Enter waters it, A is All good, G opens it.
+- **Numbered ideas.** Every idea in a graph has a number, counted outward from the start. Type the number to go there: each digit lands at once, and a second digit typed straight after makes a longer number. Go to in the bar does the same by tapping.
+- **Every button in the bar shows its key:** Add (Tab), Beside (Enter), Rename (R), Notes (Space), Link (L), Graft (G), Go to (1–9), Fit (0). The ⋯ menu has the rest with theirs: Write notes (N), Colour (C), Fly to (F), Make its own graph (X), Delete (Del).
+- **The idea's panel** shows the idea's number, the ideas it hangs from as steps back, and a card for each idea under it; click a card to go there. Hovering an idea still only shows the small card on the graph.
+- **Words:** zones are topics and trees are knowledge graphs everywhere now, and trunks and branches are gone. A new graph asks only for its topic and its name.
+- Beta: the demo has links inside single graphs (Newton's laws, Numbers) to see the bonds.
+
 ## 0.14.0 — 2026-11-16
 
 - Eight more landmarks for theory topics, 44 in all: spacetime (Relativity), prism (Optics), dice (Probability, Statistics), orrery (Astrophysics, Cosmology), puzzle cube (Logic), computer (Computer science, Algorithms), light bulb (Design, Ideas) and brain (Psychology, Neuroscience).

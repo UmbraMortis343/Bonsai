@@ -3,6 +3,11 @@
 import { start, seed, state } from "./lib.mjs";
 
 const t = await start("run06-phone", 4306);
+// On a narrow screen some names give way to others, so an idea is tapped where it is drawn.
+const tapIdea = async (title) => {
+  const p = await page.evaluate((x) => { const S = bonsai.S, n = S.nodes.find((q) => q.title === x && q.treeId === S.tree.id), at = bonsai.stage.screenOf(S.flora.pos.get(n.id)), r = bonsai.stage.container.getBoundingClientRect(); return { x: r.left + at.x, y: r.top + at.y }; }, title);
+  await page.touchscreen.tap(p.x, p.y);
+};
 const page = await t.page({ viewport: { width: 390, height: 800 }, hasTouch: true, isMobile: true });
 await seed(page);
 await page.waitForSelector('.lbl.tree:text-is("Synthesis")');
@@ -21,7 +26,7 @@ await page.waitForSelector('.lbl.tree:text-is("Basic electronics")');
 await page.tap('.lbl.tree:text-is("Basic electronics")');
 await page.waitForSelector(".lbl.trunk");
 
-await page.tap('.lbl.node:text-is("Resistors")');
+await page.waitForTimeout(700); await tapIdea("Resistors");
 await page.waitForSelector('.lbl.sel:text-is("Resistors")');
 if (await page.isVisible("#panel")) t.fail("first tap opened the notes");
 await page.waitForSelector("#hover:not([hidden])");
@@ -33,8 +38,8 @@ await page.tap('[data-act="add"]'); await page.fill("#quickInput", "Colour code"
 await page.waitForSelector('.lbl.sel:text-is("Colour code")');
 t.eq(await state(page, () => bonsai.S.byId.get(bonsai.S.byId.get(bonsai.S.sel).parentId).title), "Resistors", "new branch parent");
 
-await page.tap('.lbl.node:text-is("Resistors")'); await page.waitForSelector('.lbl.sel:text-is("Resistors")');
-await page.tap('.lbl.node:text-is("Resistors")');
+await page.waitForTimeout(700); await tapIdea("Resistors"); await page.waitForSelector('.lbl.sel:text-is("Resistors")');
+await page.tap('.lbl.sel:text-is("Resistors")');
 await page.waitForSelector("#panel:not([hidden]) #nodeTitle");
 const box = await page.locator("#panel").boundingBox();
 if (Math.abs(box.width - 390) > 2 || Math.abs(box.y + box.height - 800) > 2) t.fail("notes aren't a bottom sheet on the phone");

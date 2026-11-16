@@ -7,14 +7,14 @@
 // Web: every idea at once, laid out by its connections, clustered by island; drag to reshape, positions kept.
 // Drawn on a 2D canvas. Positions scale with zoom; dots and words keep their size.
 
-const HUES = ["#378ADD", "#7F77DD", "#1D9E75", "#D85A30", "#D4537E", "#BA7517", "#0F9BA8", "#639922"];
+export const HUES = ["#378ADD", "#7F77DD", "#1D9E75", "#D85A30", "#D4537E", "#BA7517", "#0F9BA8", "#639922"];
 const TAU = Math.PI * 2, BAND = 170, STEP = 40, LABEL = 150;
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const wrap = (a) => ((a % TAU) + TAU) % TAU;
 const FONT = { hex: '600 13px system-ui,"Segoe UI",Roboto,sans-serif', key: '600 12px system-ui,"Segoe UI",Roboto,sans-serif', idea: '500 11.5px system-ui,"Segoe UI",Roboto,sans-serif', num: '600 10.5px system-ui,"Segoe UI",Roboto,sans-serif' };
 
 // a topic's colour: its island's, turned a little per topic so topics on one island can be told apart
-function shade(hex, k) {
+export function shade(hex, k) {
   if (!k) return hex;
   const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
   const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn;

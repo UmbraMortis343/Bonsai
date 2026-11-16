@@ -1,7 +1,7 @@
 {
   "name": "Bonsai",
   "short_name": "Bonsai",
-  "description": "Grow a forest of linked notes. Zones are subjects, trees are topics.",
+  "description": "Grow a garden of what you know. Topics hold knowledge graphs of linked ideas.",
   "id": "./",
   "start_url": "./",
   "scope": "./",

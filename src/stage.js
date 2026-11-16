@@ -77,6 +77,8 @@ export class Stage {
     this.camera.position.set(this.target.x + this.radius * sp * Math.sin(this.theta), Math.max(0.2, this.target.y + this.radius * Math.cos(this.phi)), this.target.z + this.radius * sp * Math.cos(this.theta));
     this.camera.lookAt(this.target);
     this.camera.updateMatrixWorld();
+    // the haze keeps its distance as the view pulls back, so a wide ring of graphs doesn't fade out
+    if (this.scene.fog) { this.scene.fog.near = Math.max(70, this.radius * 1.6); this.scene.fog.far = Math.max(460, this.radius * 5); }
   }
 
   invalidate() { if (!this.raf) this.raf = requestAnimationFrame(this.frame); }
@@ -133,7 +135,7 @@ export class Stage {
     const kept = [];
     for (const L of live) {
       if (L.tidy) {
-        const x0 = L.sx - L.w / 2, x1 = L.sx + L.w / 2, y0 = L.sy - 20, y1 = L.sy;
+        const x0 = L.sx - L.w / 2, x1 = L.sx + L.w / 2, y1 = L.sy + (L.dy || 0), y0 = y1 - 20;   // dy: where the label's foot sits when it isn't right over its point
         if (L.rank >= 1 && kept.some((k) => x0 < k[1] - 9 && x1 > k[0] + 9 && y0 < k[3] - 5 && y1 > k[2] + 5)) { L.op = 0; continue; }
         kept.push([x0, x1, y0, y1]);
       }

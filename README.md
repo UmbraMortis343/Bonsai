@@ -1,6 +1,6 @@
 # Bonsai
 
-Grow a forest of linked notes. Zones are subjects, trees are topics, and branches can be grafted between trees.
+Grow a garden of what you know. Topics hold knowledge graphs of linked ideas, kept alive by reviewing them, and ideas can be grafted from one graph to another.
 
 An installable 3D web app (PWA) for laptop and phone. Notes stay on each device for now; sync comes later.
 

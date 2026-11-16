@@ -121,7 +121,7 @@ export function childrenOf(nodes, parentId) {
 
 // ---------- zones ----------
 export async function createZone({ name, color = null }) {
-  name = clean(name, 80); if (!name) throw new Error("Give the zone a name.");
+  name = clean(name, 80); if (!name) throw new Error("Give the topic a name.");
   return tx(["zones", "events"], "readwrite", async (s) => {
     const all = await reqP(s.zones.getAll());
     const z = { id: uid(), name, color, order: all.length ? Math.max(...all.map((x) => x.order)) + 1 : 1, archived: false, createdAt: now(), updatedAt: now() };
@@ -131,8 +131,8 @@ export async function createZone({ name, color = null }) {
 }
 export async function updateZone(id, patch) {
   return tx(["zones"], "readwrite", async (s) => {
-    const z = await reqP(s.zones.get(id)); if (!z) throw new Error("That zone no longer exists.");
-    if ("name" in patch) { patch.name = clean(patch.name, 80); if (!patch.name) throw new Error("Give the zone a name."); }
+    const z = await reqP(s.zones.get(id)); if (!z) throw new Error("That topic no longer exists.");
+    if ("name" in patch) { patch.name = clean(patch.name, 80); if (!patch.name) throw new Error("Give the topic a name."); }
     const next = { ...z, ...pick(patch, ["name", "color", "order", "archived"]), updatedAt: now() };
     s.zones.put(next); return next;
   });
@@ -148,9 +148,9 @@ const listTreesRaw = (zoneId) => tx(["trees"], "readonly", (s) => reqP(s.trees.i
 // ---------- trees ----------
 // A tree always starts with its trunk: the core idea.
 export async function createTree({ zoneId, name, core, color = null }) {
-  name = clean(name, 80); if (!name) throw new Error("Give the tree a name.");
+  name = clean(name, 80); if (!name) throw new Error("Give the knowledge graph a name.");
   return tx(["zones", "trees", "nodes", "events"], "readwrite", async (s) => {
-    if (!(await reqP(s.zones.get(zoneId)))) throw new Error("That zone no longer exists.");
+    if (!(await reqP(s.zones.get(zoneId)))) throw new Error("That topic no longer exists.");
     const siblings = await reqP(s.trees.index("zoneId").getAll(zoneId));
     const t = { id: uid(), zoneId, name, color, rootId: null, order: siblings.length ? Math.max(...siblings.map((x) => x.order)) + 1 : 1, archived: false, createdAt: now(), updatedAt: now() };
     const root = newNode(t.id, null, { title: clean(core, 140) || name }, 1);
@@ -162,9 +162,9 @@ export async function createTree({ zoneId, name, core, color = null }) {
 }
 export async function updateTree(id, patch) {
   return tx(["trees", "zones"], "readwrite", async (s) => {
-    const t = await reqP(s.trees.get(id)); if (!t) throw new Error("That tree no longer exists.");
-    if ("name" in patch) { patch.name = clean(patch.name, 80); if (!patch.name) throw new Error("Give the tree a name."); }
-    if ("zoneId" in patch && !(await reqP(s.zones.get(patch.zoneId)))) throw new Error("That zone no longer exists.");
+    const t = await reqP(s.trees.get(id)); if (!t) throw new Error("That knowledge graph no longer exists.");
+    if ("name" in patch) { patch.name = clean(patch.name, 80); if (!patch.name) throw new Error("Give the knowledge graph a name."); }
+    if ("zoneId" in patch && !(await reqP(s.zones.get(patch.zoneId)))) throw new Error("That topic no longer exists.");
     const next = { ...t, ...pick(patch, ["name", "color", "order", "archived", "zoneId"]), updatedAt: now() };
     s.trees.put(next); return next;
   });
@@ -183,7 +183,7 @@ export async function graftTree(treeId, parentId) {
   return tx(["trees", "nodes", "patches", "events"], "readwrite", async (s) => {
     const t = await reqP(s.trees.get(treeId)); const p = await reqP(s.nodes.get(parentId));
     if (!t || !p) throw new Error("That no longer exists.");
-    if (p.treeId === treeId) throw new Error("A tree can't be grafted onto itself.");
+    if (p.treeId === treeId) throw new Error("A graph can't be grafted onto itself.");
     const nodes = await reqP(s.nodes.index("treeId").getAll(treeId));
     const sibs = await reqP(s.nodes.index("parentId").getAll(parentId));
     const order = sibs.length ? Math.max(...sibs.map((x) => x.order)) + 1 : 1;
@@ -227,7 +227,7 @@ export async function splitToTree(nodeId, { name, zoneId } = {}) {
 // Merges every other tree in a zone onto one tree's trunk.
 export async function mergeZone(zoneId, intoTreeId) {
   const trees = (await listTrees(zoneId)).filter((t) => t.id !== intoTreeId);
-  const into = await getTree(intoTreeId); if (!into) throw new Error("That tree no longer exists.");
+  const into = await getTree(intoTreeId); if (!into) throw new Error("That knowledge graph no longer exists.");
   for (const t of trees) await graftTree(t.id, into.rootId);
   return trees.length;
 }

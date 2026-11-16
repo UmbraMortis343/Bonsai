@@ -1,6 +1,6 @@
-// Laptop, keyboard first: plant a tree, grow it with Tab and Enter, move with
+// Laptop, keyboard first: make a knowledge graph, add ideas with Tab and Enter, move with
 // arrows, rename, write notes, link, colour, delete and undo, search, and go
-// between the forest and the tree.
+// between the rings of graphs and one graph.
 import { start, state } from "./lib.mjs";
 
 const t = await start("run05-tree", 4305);
@@ -10,9 +10,12 @@ const key = (k) => page.keyboard.press(k);
 const add = async (k, title, commit = "Enter") => { await key(k); await page.waitForSelector("#quickInput"); await page.keyboard.type(title); await key(commit); };
 
 await page.fill("#zoneName", "Electronics"); await page.press("#zoneName", "Enter");
-await page.fill("#f-name", "Basic electronics"); await page.fill("#f-core", "Ohm's law"); await page.press("#f-core", "Enter");
-await sel("Ohm's law");
-if (!(await page.isVisible('[data-act="add"]'))) t.fail("no action bar for the trunk");
+await page.waitForSelector("#f-name");
+t.eq(await page.locator(".dialog label").count(), 2, "a new graph asks only for its topic and its name");
+await page.fill("#f-name", "Basic electronics"); await page.press("#f-name", "Enter");
+await sel("Basic electronics");
+if (!(await page.isVisible('[data-act="add"]'))) t.fail("no action bar for the graph's start");
+await key("r"); await page.waitForSelector("#quickInput"); await page.fill("#quickInput", "Ohm's law"); await key("Enter"); await sel("Ohm's law");
 
 await add("Tab", "Resistors"); await sel("Resistors");
 await add("Enter", "Capacitors"); await sel("Capacitors");

@@ -56,7 +56,27 @@ body.night-ui #app{background:var(--bg)}
   text-shadow:0 0 2px var(--bg),0 0 4px var(--bg),0 0 7px var(--bg),0 0 10px var(--bg)}
 .lbl.trunk,.lbl.tree{font-weight:700;font-size:13px}
 .lbl.sel{background:var(--ink);color:var(--bg);text-shadow:none;padding:0 7px;z-index:2}
-.lbl.zone{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.lbl.zone{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.lbl.isle,.lbl.hub{font-size:13px;font-weight:700;color:var(--ink);max-width:240px}
+.lbl.zone .thirst{letter-spacing:0}
+#scopeAll{white-space:nowrap;flex:none}
+.lbl.hub{font-size:15px}
+.lbl.zone:hover,.lbl.isle:hover,.lbl.hub:hover,.lbl.tree:hover{text-decoration:underline;text-underline-offset:3px}
+/* an idea's number: on its label in the graph, in the hover card, in the panel and on its cards */
+.num,.lbl.node[data-n]::before{display:inline-block;min-width:16px;padding:0 4px;margin-right:5px;border:1px solid var(--line);border-radius:3px;background:var(--well);color:var(--muted);
+  font:600 10px/14px var(--font);font-style:normal;text-align:center;text-shadow:none;vertical-align:1px;font-variant-numeric:tabular-nums}
+.lbl.node[data-n]::before{content:attr(data-n)}
+.lbl.sel[data-n]::before{background:transparent;border-color:currentColor;color:inherit;opacity:.75}
+.trail{display:flex;flex-wrap:wrap;gap:4px}
+.trail .chip{max-width:170px;cursor:pointer}
+.ncards{display:grid;gap:5px}
+.ncard{display:grid;gap:2px;text-align:left;border:1px solid var(--line);border-radius:5px;background:var(--card);padding:7px 9px;min-width:0}
+.ncard:hover{background:var(--well);border-color:var(--muted)}
+.ncard .row{gap:0;min-width:0}
+.ncard b{flex:1;min-width:0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ncard>.muted{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ph>.num{flex:none;margin-right:0}
+@media (max-width:700px){ .actions .lap{display:none} .actions>.btn kbd{display:none} .lbl.node[data-n]::before{display:none} }
 .lbl.link{font-size:11px;font-style:italic;color:var(--sap)}
 
 .btn{border:1px solid var(--line);background:var(--card);border-radius:6px;padding:7px 13px;white-space:nowrap;display:inline-flex;align-items:center;gap:7px}

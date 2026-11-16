@@ -1,6 +1,6 @@
 // Pure logic: the 3D layout keeps ideas apart and above ground, review
 // scheduling, and the Markdown renderer's safety.
-import { layoutTree, layoutForest } from "../src/layout.js";
+import { layoutTree, layoutRings, crowding, nodeRadius } from "../src/layout.js";
 import * as srs from "../src/srs.js";
 import { md } from "../src/md.js";
 
@@ -14,18 +14,52 @@ grow("r", 1);
 const L = layoutTree(nodes, "r"), P = [...L.pos.values()];
 ok(P.length === nodes.length, "every idea has a place");
 ok(P.every((p) => p[1] > 0.5), "an idea is at or below the ground");
-ok(L.pos.get("r")[0] === 0 && L.pos.get("r")[2] === 0, "trunk isn't upright");
+ok(L.pos.get("r")[0] === 0 && L.pos.get("r")[2] === 0, "the stem isn't upright");
 let closest = Infinity;
 for (let i = 0; i < P.length; i++) for (let j = i + 1; j < P.length; j++) closest = Math.min(closest, Math.hypot(P[i][0] - P[j][0], P[i][1] - P[j][1], P[i][2] - P[j][2]));
 ok(closest > 0.3, `two ideas are almost on top of each other (${closest.toFixed(2)})`);
 ok(JSON.stringify([...layoutTree(nodes, "r").pos]) === JSON.stringify([...L.pos]), "layout changes between runs");
 ok(P.every((p) => Math.hypot(p[0] - L.center[0], p[1] - L.center[1], p[2] - L.center[2]) <= L.radius), "bounds don't contain the tree");
 
-const F = layoutForest([{ id: "a", trees: [{ id: "t1", footprint: 4 }, { id: "t2", footprint: 3 }, { id: "t3", footprint: 5 }] }, { id: "b", trees: [{ id: "t4", footprint: 2 }] }, { id: "c", trees: [] }]);
-const za = F.zones.get("a"), zb = F.zones.get("b"), zc = F.zones.get("c");
-ok(Math.hypot(za.x - zb.x, za.z - zb.z) > za.r + zb.r && Math.hypot(za.x - zc.x, za.z - zc.z) > za.r + zc.r, "zones overlap");
-const t1 = F.trees.get("t1"), t3 = F.trees.get("t3");
-ok(Math.hypot(t1.x - t3.x, t1.z - t3.z) > 5, "trees in a zone overlap");
+// Links inside a graph are straight bonds: over many graphs of every shape, no bond (or stick) may pass through an idea
+// it doesn't join, two ideas never touch, and the same graph always settles the same way.
+let seed = 11; const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
+const random = (count, links) => {
+  const ns = [{ id: "r", parentId: null, order: 0, createdAt: at }];
+  for (let i = 1; i < count; i++) ns.push({ id: "n" + i, parentId: ns[Math.floor(Math.pow(rnd(), 0.7) * ns.length)].id, order: i, createdAt: at });
+  const ls = []; for (let i = 0; i < links; i++) { const a = ns[Math.floor(rnd() * count)].id, b = ns[Math.floor(rnd() * count)].id; if (a !== b) ls.push({ a, b }); }
+  return [ns, ls];
+};
+let crowded = 0, touching = 0, bonds = 0, slow = 0;
+for (let k = 0; k < 250; k++) {
+  const count = 3 + Math.floor(rnd() * (k % 10 ? 40 : 150)), [ns, ls] = random(count, Math.floor(rnd() * Math.max(1, count / 4)));
+  const t0 = Date.now(), G = layoutTree(ns, "r", ls); slow = Math.max(slow, Date.now() - t0); bonds += G.bonds.length;
+  if (crowding(G) || G.tight) crowded++;
+  const Q = [...G.pos];
+  for (let i = 0; i < Q.length; i++) for (let j = i + 1; j < Q.length; j++) if (Math.hypot(Q[i][1][0] - Q[j][1][0], Q[i][1][1] - Q[j][1][1], Q[i][1][2] - Q[j][1][2]) < nodeRadius(G.size.get(Q[i][0]), Q[i][0] === "r") + nodeRadius(G.size.get(Q[j][0]), Q[j][0] === "r") + 0.1) touching++;
+  if (Q.some(([, p]) => p.some((v) => !isFinite(v)) || p[1] < 0.7)) ok(false, "an idea is nowhere, or under its disc");
+}
+ok(bonds > 500 && crowded === 0, `a bond passes through an idea in ${crowded} of 250 graphs (${bonds} bonds)`);
+ok(touching === 0, `${touching} pairs of ideas touch`);
+ok(slow < 1500, `a graph took ${slow} ms to settle`);
+const [ns, ls] = random(40, 8);
+ok(JSON.stringify([...layoutTree(ns, "r", ls).pos]) === JSON.stringify([...layoutTree(ns, "r", ls).pos]), "a linked graph settles differently between runs");
+const chain = [{ id: "r", parentId: null, order: 0, createdAt: at }, { id: "a", parentId: "r", order: 0, createdAt: at }, { id: "b", parentId: "a", order: 0, createdAt: at }];
+ok(layoutTree(chain, "r", [{ a: "r", b: "a" }, { a: "b", b: "b" }]).bonds.length === 0, "a link along a stick, or to itself, became a bond");
+
+// Rings: a topic's graphs sit round its name, all the same way out; an island's topics round the island's; nothing overlaps.
+const isle = { id: "isle", kind: "isle", kids: [{ id: "a", kind: "topic", kids: [{ id: "t1", kind: "graph", r: 4 }, { id: "t2", kind: "graph", r: 3 }, { id: "t3", kind: "graph", r: 5 }] }, { id: "b", kind: "topic", kids: [{ id: "t4", kind: "graph", r: 2 }] }, { id: "c", kind: "topic", kids: [] }] };
+const F = layoutRings(isle).at, far = (p, q) => Math.hypot(p.x - q.x, p.z - q.z);
+const za = F.get("a"), zb = F.get("b"), zc = F.get("c"), mid = F.get("isle");
+ok(far(za, zb) > za.r + zb.r && far(za, zc) > za.r + zc.r && far(zb, zc) > zb.r + zc.r, "topics overlap");
+ok(Math.abs(far(za, mid) - far(zb, mid)) < 1e-6 && Math.abs(far(zc, mid) - far(zb, mid)) < 1e-6 && far(za, mid) > 2, "topics aren't on one ring round the island's name");
+const d1 = far(F.get("t1"), za), d2 = far(F.get("t2"), za), d3 = far(F.get("t3"), za);
+ok(Math.abs(d1 - d2) < 1e-6 && Math.abs(d1 - d3) < 1e-6 && d1 > 5, "a topic's graphs aren't on one ring round its name");
+ok(far(F.get("t1"), F.get("t3")) >= 9 && far(F.get("t1"), F.get("t2")) >= 7 && far(F.get("t2"), F.get("t3")) >= 8, "graphs in a topic overlap");
+ok(far(F.get("t4"), zb) > 2, "a topic's only graph sits on its name");
+const all = layoutRings({ id: "all", kind: "all", kids: [1, 2, 3].map((h) => ({ id: "h" + h, kind: "hub", kids: [{ id: "i" + h, kind: "isle", kids: [{ id: "z" + h, kind: "topic", kids: Array.from({ length: h * 2 }, (_, k) => ({ id: `g${h}${k}`, kind: "graph", r: 3 })) }] }] })) });
+ok(far(all.at.get("z1"), all.at.get("z2")) > all.at.get("z1").r + all.at.get("z2").r && far(all.at.get("z3"), all.at.get("z2")) > all.at.get("z3").r + all.at.get("z2").r, "hubs overlap");
+ok([...all.at.values()].every((p) => p.kind !== "graph" || Math.hypot(p.x - all.center.x, p.z - all.center.z) <= all.radius), "the frame doesn't hold every graph");
 
 const day = 86400000, now = Date.parse("2026-06-01T00:00:00Z"), node = { createdAt: new Date(now - 5 * day).toISOString(), note: "x" };
 ok(srs.isDue(node, now) && srs.status(node, 0, now) === "overdue", "old unreviewed idea isn't overdue");

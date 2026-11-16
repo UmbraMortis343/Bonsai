@@ -1,8 +1,11 @@
-// Builds the 3D meshes for one or many trees: ideas as smooth spheres, branches
-// and surface roots as thin lines, cross-links as arcs.
+// Builds the 3D meshes for one or many knowledge graphs, as ball-and-stick structures: ideas as smooth
+// spheres, thin sticks between an idea and the ones under it, links inside a graph as straight bonds, and
+// links from one graph to another as arcs. Also the flat ground under them: glows, discs and spokes.
 import { THREE } from "./stage.js";
+import { nodeRadius } from "./layout.js";
+export { nodeRadius };
 
-const UP = new THREE.Vector3(0, 1, 0), GOLD = 2.399963229728653;
+const UP = new THREE.Vector3(0, 1, 0);
 const _d = new THREE.Vector3(), _q = new THREE.Quaternion(), _s = new THREE.Vector3(), _m = new THREE.Matrix4(), _c = new THREE.Color();
 const SPHERE = new THREE.SphereGeometry(1, 28, 18);
 const LIMB = new THREE.CylinderGeometry(1, 1, 1, 6, 1, true).translate(0, 0.5, 0);
@@ -13,65 +16,52 @@ function seg(m, a, b, r) {
   _q.setFromUnitVectors(UP, _d.multiplyScalar(1 / len)); _s.set(r, len, r);
   return m.compose(a, _q, _s);
 }
-const hash = (s) => { let h = 2166136261; for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619); return (h >>> 0) / 4294967296; };
-export const nodeRadius = (size, isRoot) => (isRoot ? 0.3 : 0.16) + 0.032 * Math.log2(size);
-export const limbRadius = (size) => Math.min(0.07, 0.014 + 0.008 * Math.sqrt(size));
+export const limbRadius = (size) => Math.min(0.06, 0.016 + 0.007 * Math.sqrt(size));
+const BOND = 0.019;
 
 export class Flora {
-  // items: [{tree, nodes, layout, offset: [x, z], looks: Map(id -> {color, status}), passes}]
+  // items: [{tree, nodes, layout, offset: [x, z], looks: Map(id -> {color, status})}]
   // links: [{id, a, b}] where both ideas are among the items
   constructor(items, links, theme) {
     this.group = new THREE.Group(); this.items = items; this.theme = theme;
     this.ids = []; this.index = new Map(); this.home = new Map(); this.radii = new Map();
-    const limbs = [], statics = [];
-    for (const it of items) {
+    const limbs = [], graphOf = new Map(), sky = new THREE.Color(theme.sky);
+    items.forEach((it, k) => {
       const base = new THREE.Vector3(it.offset[0], 0, it.offset[1]), L = it.layout, shown = new Set(it.nodes.map((n) => n.id));
       for (const n of it.nodes) {
         const p = L.pos.get(n.id); if (!p) continue;
-        this.index.set(n.id, this.ids.length); this.ids.push(n.id);
+        this.index.set(n.id, this.ids.length); this.ids.push(n.id); graphOf.set(n.id, k);
         this.home.set(n.id, new THREE.Vector3(p[0] + base.x, p[1], p[2] + base.z));
         this.radii.set(n.id, nodeRadius(L.size.get(n.id), n.id === L.rootId));
-        const parentShown = n.parentId != null && L.pos.has(n.parentId) && shown.has(n.parentId);
-        if (n.id === L.rootId) limbs.push({ from: base, to: n.id, r: limbRadius(L.size.get(n.id)) * 1.2 });
-        else if (parentShown) limbs.push({ from: n.parentId, to: n.id, r: limbRadius(L.size.get(n.id)) });
+        const parentShown = n.parentId != null && L.pos.has(n.parentId) && shown.has(n.parentId), color = it.looks.get(n.id)?.color || theme.limb;
+        if (n.id === L.rootId) limbs.push({ from: base, to: n.id, r: limbRadius(L.size.get(n.id)) * 1.2, color });   // the stem, up from the disc
+        else if (parentShown) limbs.push({ from: n.parentId, to: n.id, r: limbRadius(L.size.get(n.id)), color });
       }
-      // Surface roots: more and longer with every passed review.
-      const passes = it.passes || 0;
-      if (passes > 0 && L.rootId) {
-        const count = Math.min(14, 3 + Math.floor(Math.sqrt(passes) * 1.5)), reach = Math.min(L.footprint * 1.1, 0.7 + 0.4 * Math.sqrt(passes));
-        const r0 = limbRadius(L.size.get(L.rootId)) * 0.8, h0 = hash(it.tree.id);
-        for (let j = 0; j < count; j++) {
-          let a = j * GOLD + h0 * 6.28, len = reach * (0.6 + 0.4 * hash(it.tree.id + j)), prev = new THREE.Vector3(base.x, 0.03, base.z);
-          for (let k = 0; k < 3; k++) {
-            a += (hash(it.tree.id + j + "k" + k) - 0.5) * 0.9;
-            const next = new THREE.Vector3(prev.x + Math.cos(a) * len / 3, 0.03, prev.z + Math.sin(a) * len / 3);
-            statics.push(seg(new THREE.Matrix4(), prev, next, r0 * (1 - k * 0.25))); prev = next;
-          }
-        }
-      }
-    }
+    });
     this.limbs = limbs;
     const n = this.ids.length;
-    this.nodeMesh = new THREE.InstancedMesh(SPHERE, new THREE.MeshPhongMaterial({ shininess: 55, specular: 0x333333 }), Math.max(1, n));
+    this.nodeMesh = new THREE.InstancedMesh(SPHERE, new THREE.MeshPhongMaterial({ shininess: 40, specular: 0x222222 }), Math.max(1, n));
     this.nodeMesh.count = n; this.nodeMesh.userData = { kind: "node", ids: this.ids }; this.nodeMesh.frustumCulled = false;
-    this.limbMesh = new THREE.InstancedMesh(LIMB, new THREE.MeshBasicMaterial({ color: theme.limb }), Math.max(1, limbs.length + statics.length));
-    this.limbMesh.count = limbs.length + statics.length; this.limbMesh.frustumCulled = false;
-    statics.forEach((m, i) => this.limbMesh.setMatrixAt(limbs.length + i, m));
-    const sky = new THREE.Color(theme.sky);
     for (const it of items) for (const nd of it.nodes) {
       const i = this.index.get(nd.id); if (i == null) continue;
       const look = it.looks.get(nd.id); _c.set(look.color);
       if (look.status === "overdue") _c.lerp(sky, 0.66);
       this.nodeMesh.setColorAt(i, _c);
     }
-    // Cross-links.
-    this.links = links.filter((l) => this.index.has(l.a) && this.index.has(l.b));
+    // Links: a straight bond inside one graph, an arc between two.
+    const live = links.filter((l) => this.index.has(l.a) && this.index.has(l.b));
+    this.bonds = live.filter((l) => graphOf.get(l.a) === graphOf.get(l.b)); this.links = live.filter((l) => graphOf.get(l.a) !== graphOf.get(l.b));
+    // sticks take their idea's colour, let back toward the page so the ideas stand out; bonds take the link colour
+    this.limbMesh = new THREE.InstancedMesh(LIMB, new THREE.MeshBasicMaterial(), Math.max(1, limbs.length + this.bonds.length));
+    this.limbMesh.count = limbs.length + this.bonds.length; this.limbMesh.frustumCulled = false;
+    limbs.forEach((l, i) => this.limbMesh.setColorAt(i, _c.set(l.color).lerp(sky, 0.32)));
+    this.bonds.forEach((l, i) => this.limbMesh.setColorAt(limbs.length + i, _c.set(theme.link).lerp(sky, 0.12)));
     this.linkGeo = new THREE.BufferGeometry();
     this.linkGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(Math.max(1, this.links.length) * ARC * 6), 3));
     this.linkGeo.setDrawRange(0, this.links.length * ARC * 2);
-    this.linkMesh = new THREE.LineSegments(this.linkGeo, new THREE.LineBasicMaterial({ color: theme.link }));
+    this.linkMesh = new THREE.LineSegments(this.linkGeo, new THREE.LineBasicMaterial({ color: theme.link, transparent: true, opacity: 0.32 }));
     this.linkMesh.frustumCulled = false;
-    this.linkMid = new Map(this.links.map((l) => [l.id, new THREE.Vector3()]));
+    this.linkMid = new Map(live.map((l) => [l.id, new THREE.Vector3()]));
     this.group.add(this.limbMesh, this.nodeMesh, this.linkMesh);
     this.pos = new Map([...this.home].map(([k, v]) => [k, v.clone()]));
     this.apply();
@@ -79,13 +69,14 @@ export class Flora {
 
   // Writes this.pos (id -> Vector3) into the meshes.
   apply() {
-    const P = this.pos;
+    const P = this.pos, nl = this.limbs.length;
     this.ids.forEach((id, i) => { const r = this.radii.get(id); _m.compose(P.get(id), _q.identity(), _s.set(r, r, r)); this.nodeMesh.setMatrixAt(i, _m); });
     this.limbs.forEach((l, i) => this.limbMesh.setMatrixAt(i, seg(_m, typeof l.from === "string" ? P.get(l.from) : l.from, P.get(l.to), l.r)));
+    this.bonds.forEach((l, i) => { const a = P.get(l.a), b = P.get(l.b); this.limbMesh.setMatrixAt(nl + i, seg(_m, a, b, BOND)); this.linkMid.get(l.id).addVectors(a, b).multiplyScalar(0.5); });
     const arr = this.linkGeo.attributes.position.array; let o = 0;
     for (const l of this.links) {
       const a = P.get(l.a), b = P.get(l.b), d = a.distanceTo(b);
-      const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2 + d * 0.28 + 0.4, cz = (a.z + b.z) / 2;
+      const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2 + Math.min(14, d * 0.2) + 0.4, cz = (a.z + b.z) / 2;
       let px = a.x, py = a.y, pz = a.z;
       for (let k = 1; k <= ARC; k++) {
         const t = k / ARC, u = 1 - t;
@@ -106,20 +97,46 @@ export class Flora {
   }
 }
 
-// A faint floor grid, and a thin ring to mark a zone.
+// The flat ground, in the tech tree's manner: a soft glow under each topic, a disc under each graph with a
+// rim (and a ring inside it for reviews passed), and thin spokes from a name to what sits around it.
+// glows: [{ x, z, r, color, k }]   discs: [{ x, z, r, color, rim, rings }]   spokes: [{ x0, z0, x1, z1, color }]
+// → meshes to add to the scene (each has its own geometry and material)
+export function ground({ glows = [], discs = [], spokes = [] }, sky) {
+  const bg = new THREE.Color(sky), col = new THREE.Color(), out = [], SEG = 40;
+  const fan = (list, y, inner, outer, radius) => {
+    const pos = [], cols = [];
+    for (const g of list) {
+      const c0 = col.set(g.color).lerp(bg, 1 - inner(g)).toArray(), c1 = col.set(g.color).lerp(bg, 1 - outer(g)).toArray(), r = radius(g);
+      for (let i = 0; i < SEG; i++) {
+        const a = (i / SEG) * Math.PI * 2, b = ((i + 1) / SEG) * Math.PI * 2;
+        pos.push(g.x, y, g.z, g.x + Math.cos(b) * r, y, g.z + Math.sin(b) * r, g.x + Math.cos(a) * r, y, g.z + Math.sin(a) * r); cols.push(...c0, ...c1, ...c1);
+      }
+    }
+    if (!pos.length) return;
+    const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute("color", new THREE.Float32BufferAttribute(cols, 3));
+    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, depthWrite: false, fog: false, side: THREE.DoubleSide })); m.frustumCulled = false; m.renderOrder = -2 + y; out.push(m);
+  };
+  fan(glows, 0, (g) => g.k ?? 0.13, () => 0, (g) => g.r);
+  fan(discs, 0.012, () => 0.2, () => 0.12, (g) => g.r);
+  const pos = [], cols = [];
+  const line = (x0, z0, x1, z1, c) => { pos.push(x0, 0.02, z0, x1, 0.02, z1); cols.push(...c, ...c); };
+  const loop = (x, z, r, c) => { for (let i = 0; i < SEG; i++) { const a = (i / SEG) * Math.PI * 2, b = ((i + 1) / SEG) * Math.PI * 2; line(x + Math.cos(a) * r, z + Math.sin(a) * r, x + Math.cos(b) * r, z + Math.sin(b) * r, c); } };
+  for (const s of spokes) line(s.x0, s.z0, s.x1, s.z1, col.set(s.color).lerp(bg, 0.5).toArray());
+  for (const d of discs) {
+    loop(d.x, d.z, d.r, col.set(d.rim || d.color).lerp(bg, d.rim ? 0.1 : 0.35).toArray());
+    for (let k = 1; k <= (d.rings || 0); k++) loop(d.x, d.z, d.r * (1 - k * 0.17), col.set(d.color).lerp(bg, 0.55).toArray());
+  }
+  if (pos.length) {
+    const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute("color", new THREE.Float32BufferAttribute(cols, 3));
+    const m = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ vertexColors: true, depthWrite: false })); m.frustumCulled = false; m.renderOrder = -1; out.push(m);
+  }
+  return out;
+}
+
+// A faint floor grid, for the meaning view.
 export function grid(size, color) {
   const cells = Math.min(240, Math.max(10, Math.round(size / 2)));
   const g = new THREE.GridHelper(cells * 2, cells, color, color);
   g.position.y = -0.01;
   return g;
-}
-export function ring(radius, color) {
-  const pts = [];
-  for (let i = 0; i <= 96; i++) { const a = (i / 96) * Math.PI * 2; pts.push(new THREE.Vector3(Math.cos(a) * radius, 0.02, Math.sin(a) * radius)); }
-  return new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color }));
-}
-export function pot(color) {
-  const m = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.36, 0.46, 24), new THREE.MeshPhongMaterial({ color, shininess: 20 }));
-  m.position.y = 0.23;
-  return m;
 }

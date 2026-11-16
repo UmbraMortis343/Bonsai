@@ -241,6 +241,9 @@ const LINKS = [
   ["Lorentz force", "Forces"], ["Gradient", "Derivatives"], ["Integrals", "Area and volume"], ["Eigenvalues", "Standing waves"], ["Pythagoras", "Vector addition"],
   ["Particles", "Kinetic theory"], ["Units", "SI units"], ["Feedback", "Asking questions"], ["Planning", "Fair tests", "try, measure, adjust"], ["Presenting", "Clear writing"], ["Graphs", "Functions"],
   ["Geometric sequences", "Harmonics"], ["Repeating patterns", "Polyrhythm"], ["Coulomb's law", "Weight", "inverse square"], ["Energy transfer", "Work"], ["Density", "Weight"],
+  // links inside one graph: these are the straight bonds
+  ["2nd law", "Forces", "the F in F = ma"], ["Free-body diagrams", "Tension"], ["Free-body diagrams", "Friction"], ["Weight", "Acceleration", "g"], ["Impulse", "Inertia"],
+  ["Projectiles", "SUVAT"], ["Momentum", "Work"], ["Division", "Fractions", "a fraction is a division"], ["Place value", "Decimals"], ["Ratios", "Division"],
 ];
 
 import { textToBlocks } from "./blocks.js";
