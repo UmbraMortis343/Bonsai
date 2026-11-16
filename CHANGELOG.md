@@ -2,6 +2,11 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.15.2 — 2026-11-16
+
+- Names no longer run into each other: where two would touch, the lesser one gives way (a graph's name to its topic's, a link's label to an idea's, a far idea to a near one). The picked one always shows.
+- At night the glow under topics and graphs is much fainter.
+
 ## 0.15.1 — 2026-11-16
 
 - A graph's first idea no longer has a line down to the ground: the structure floats over its disc.

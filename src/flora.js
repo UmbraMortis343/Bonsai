@@ -102,6 +102,7 @@ export class Flora {
 // → meshes to add to the scene (each has its own geometry and material)
 export function ground({ glows = [], discs = [], spokes = [] }, sky) {
   const bg = new THREE.Color(sky), col = new THREE.Color(), out = [], SEG = 40;
+  const dim = bg.r + bg.g + bg.b < 1 ? 0.4 : 1;   // on a dark page a colour shows far more for the same share, so the glow is held back
   const fan = (list, y, inner, outer, radius) => {
     const pos = [], cols = [];
     for (const g of list) {
@@ -115,8 +116,8 @@ export function ground({ glows = [], discs = [], spokes = [] }, sky) {
     const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute("color", new THREE.Float32BufferAttribute(cols, 3));
     const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, depthWrite: false, fog: false, side: THREE.DoubleSide })); m.frustumCulled = false; m.renderOrder = -2 + y; out.push(m);
   };
-  fan(glows, 0, (g) => g.k ?? 0.13, () => 0, (g) => g.r);
-  fan(discs, 0.012, () => 0.2, () => 0.12, (g) => g.r);
+  fan(glows, 0, (g) => (g.k ?? 0.13) * dim, () => 0, (g) => g.r);
+  fan(discs, 0.012, () => 0.2 * (dim < 1 ? 0.6 : 1), () => 0.12 * (dim < 1 ? 0.6 : 1), (g) => g.r);
   const pos = [], cols = [];
   const line = (x0, z0, x1, z1, c) => { pos.push(x0, 0.02, z0, x1, 0.02, z1); cols.push(...c, ...c); };
   const loop = (x, z, r, c) => { for (let i = 0; i < SEG; i++) { const a = (i / SEG) * Math.PI * 2, b = ((i + 1) / SEG) * Math.PI * 2; line(x + Math.cos(a) * r, z + Math.sin(a) * r, x + Math.cos(b) * r, z + Math.sin(b) * r, c); } };

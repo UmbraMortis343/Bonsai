@@ -135,15 +135,27 @@ export class Stage {
     const kept = [];
     for (const L of live) {
       if (L.tidy) {
-        const x0 = L.sx - L.w / 2, x1 = L.sx + L.w / 2, y1 = L.sy + (L.dy || 0), y0 = y1 - 20;   // dy: where the label's foot sits when it isn't right over its point
-        if (L.rank >= 1 && kept.some((k) => x0 < k[1] - 9 && x1 > k[0] + 9 && y0 < k[3] - 5 && y1 > k[2] + 5)) { L.op = 0; continue; }
+        let x0 = L.sx - L.w / 2, x1 = L.sx + L.w / 2, y1 = L.sy + (L.dy || 0), y0 = y1 - 20;   // dy: where the label's foot sits when it isn't right over its point
+        // no two names may touch: the lesser one moves to its second place if it has one (alt), else goes,
+        // when their boxes come within a few pixels of each other
+        const hits = () => kept.some((k) => x0 < k[1] + 6 && x1 > k[0] - 6 && y0 < k[3] + 2 && y1 > k[2] - 2);
+        L.at = null;
+        if (L.rank >= 1 && hits()) {
+          let ok = false;
+          if (L.alt) {
+            v.copy(L.alt.pos).project(cam); const sx = (v.x * 0.5 + 0.5) * this.w, sy = (-v.y * 0.5 + 0.5) * this.h;
+            x0 = sx - L.w / 2; x1 = sx + L.w / 2; y1 = sy + (L.alt.dy || 0); y0 = y1 - 20;
+            if (!hits()) { ok = true; L.sx = sx; L.sy = sy; L.at = L.alt.anchor; }
+          }
+          if (!ok) { L.op = 0; continue; }
+        }
         kept.push([x0, x1, y0, y1]);
       }
     }
     for (const L of this.labels) {
       if (L.op < 0.03) { if (L.shown) { L.el.style.display = "none"; L.shown = false; } continue; }
       if (!L.shown) { L.el.style.display = ""; L.shown = true; }
-      L.el.style.transform = `translate(${L.sx.toFixed(1)}px,${L.sy.toFixed(1)}px) ${L.anchor || "translate(-50%,-100%)"}`;
+      L.el.style.transform = `translate(${L.sx.toFixed(1)}px,${L.sy.toFixed(1)}px) ${L.at || L.anchor || "translate(-50%,-100%)"}`;
       L.el.style.opacity = L.op > 0.97 ? "" : L.op.toFixed(2);
     }
   }

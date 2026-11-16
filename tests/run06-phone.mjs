@@ -17,7 +17,10 @@ await page.tap("#winGarden"); await page.waitForSelector("body[data-isles=ready]
 await page.waitForSelector(".tag.isle"); await page.waitForTimeout(600); await page.screenshot({ path: "tests/shots/isles-phone.png" });
 t.eq(await state(page, () => document.querySelector("#top").scrollWidth <= 390), true, "garden top bar fits the phone");
 await page.evaluate(() => { location.hash = "#/garden"; }); await page.waitForSelector(".lbl.tree");
-await page.tap('.lbl.tree:has-text("Synthesis")'); await page.waitForSelector("#waterBtn");
+// names give way to each other on a narrow screen, so the graph itself is tapped
+await page.waitForTimeout(800);
+{ const p = await page.evaluate(() => { const S = bonsai.S, tr = S.trees.find((x) => x.name === "Synthesis"), at = bonsai.stage.screenOf(S.flora.pos.get(tr.rootId)), r = bonsai.stage.container.getBoundingClientRect(); return { x: r.left + at.x, y: r.top + at.y }; }); await page.touchscreen.tap(p.x, p.y); }
+await page.waitForSelector("#waterBtn");
 const card = await page.locator("#actions").boundingBox();
 if (card.x < 0 || card.x + card.width > 390) t.fail("plant card wider than the screen");
 await page.waitForTimeout(500); await page.screenshot({ path: "tests/shots/garden-phone.png" });

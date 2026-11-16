@@ -149,7 +149,7 @@ function clearScene() {
   decor = []; stage.pickables = []; labelEls = new Map();
 }
 const addDecor = (m) => { decor.push(m); stage.world.add(m); return m; };
-const linkLabel = (l, pos) => ({ el: el("div", { class: "lbl link", dataset: { kind: "link", id: l.id }, text: l.label }), pos, kind: "link", id: l.id, anchor: "translate(-50%,-50%)" });
+const linkLabel = (l, pos) => ({ el: el("div", { class: "lbl link", dataset: { kind: "link", id: l.id }, text: l.label }), pos, kind: "link", id: l.id, depth: 8, tidy: true, dy: 10, anchor: "translate(-50%,-50%)" });   // a link's label gives way to every idea's name
 
 function buildTree(animate) {
   const tree = S.tree, lay = (S.lay = layOf(tree)); numberGraph(tree);
@@ -244,7 +244,9 @@ function buildForest(garden = S.view === "garden") {
         discs.push({ x: q.x, z: q.z, r, color: tr.color || hue, rim: dry ? T.link : null, rings });
         spoke(p, q, 1.5, r, hue);
         const e = el("div", { class: "lbl tree", dataset: { kind: "tree", id: tr.id } }, tr.name, dry ? el("span", { class: "thirst", text: String(dry) }) : null); labelEls.set(tr.id, e);
-        labels.push({ el: e, pos: new THREE.Vector3(q.x, lay.height + 0.75, q.z), kind: "tree", id: tr.id, depth: 1 });
+        // a graph's name floats over it; where that would run into another name it drops to the far side of its disc from the topic's name
+        const out = Math.hypot(q.x - p.x, q.z - p.z) || 1, ax = q.x + ((q.x - p.x) / out) * r, az = q.z + ((q.z - p.z) / out) * r;
+        labels.push({ el: e, pos: new THREE.Vector3(q.x, lay.height + 0.75, q.z), kind: "tree", id: tr.id, depth: 1, tidy: true, alt: { pos: new THREE.Vector3(ax, 0.05, az), anchor: "translate(-50%,2px)", dy: 22 } });
       }
       return 1;
     }
