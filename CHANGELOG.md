@@ -2,6 +2,10 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.15.1 — 2026-11-16
+
+- A graph's first idea no longer has a line down to the ground: the structure floats over its disc.
+
 ## 0.15.0 — 2026-11-16
 
 The knowledge view, redrawn in the tech tree's manner.

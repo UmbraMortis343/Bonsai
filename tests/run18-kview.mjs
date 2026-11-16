@@ -92,7 +92,7 @@ t.eq(await state(page, () => bonsai.S.trees.some((x) => x.name === "Capacitors")
 
 // ---- watering: the same rings, discs for pots, a ring on the disc for reviews passed
 await page.evaluate(() => { location.hash = "#/garden"; }); await page.waitForFunction(() => bonsai.S.view === "garden" && bonsai.S.forest);
-t.eq(await state(page, () => [bonsai.S.forest.fl.zones.size, bonsai.S.forest.fl.trees.size, bonsai.S.forest.rings.size, bonsai.S.flora.limbMesh.count === bonsai.S.flora.ids.length]), [2, 4, 4, true], "every graph on its disc; a stick to each idea and nothing else");
+t.eq(await state(page, () => [bonsai.S.forest.fl.zones.size, bonsai.S.forest.fl.trees.size, bonsai.S.forest.rings.size, bonsai.S.flora.limbMesh.count === bonsai.S.flora.ids.length - 4]), [2, 4, 4, true], "every graph over its disc; sticks only between ideas, none down to the ground");
 await key("0"); await page.waitForTimeout(900);   // it opened on the graph just left; step back to see them all
 await page.click('.lbl.tree:has-text("Synthesis")'); await page.waitForSelector("#waterBtn kbd");
 t.eq(await state(page, () => [...document.querySelectorAll("#actions .btn")].every((b) => b.querySelector("kbd"))), true, "the watering bar shows its keys");

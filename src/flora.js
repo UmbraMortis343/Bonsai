@@ -1,5 +1,5 @@
-// Builds the 3D meshes for one or many knowledge graphs, as ball-and-stick structures: ideas as smooth
-// spheres, thin sticks between an idea and the ones under it, links inside a graph as straight bonds, and
+// Builds the 3D meshes for one or many knowledge graphs, as ball-and-stick structures floating over a disc
+// (nothing joins the first idea to the ground): ideas as smooth spheres, thin sticks between an idea and the ones under it, links inside a graph as straight bonds, and
 // links from one graph to another as arcs. Also the flat ground under them: glows, discs and spokes.
 import { THREE } from "./stage.js";
 import { nodeRadius } from "./layout.js";
@@ -34,8 +34,7 @@ export class Flora {
         this.home.set(n.id, new THREE.Vector3(p[0] + base.x, p[1], p[2] + base.z));
         this.radii.set(n.id, nodeRadius(L.size.get(n.id), n.id === L.rootId));
         const parentShown = n.parentId != null && L.pos.has(n.parentId) && shown.has(n.parentId), color = it.looks.get(n.id)?.color || theme.limb;
-        if (n.id === L.rootId) limbs.push({ from: base, to: n.id, r: limbRadius(L.size.get(n.id)) * 1.2, color });   // the stem, up from the disc
-        else if (parentShown) limbs.push({ from: n.parentId, to: n.id, r: limbRadius(L.size.get(n.id)), color });
+        if (parentShown) limbs.push({ from: n.parentId, to: n.id, r: limbRadius(L.size.get(n.id)), color });
       }
     });
     this.limbs = limbs;

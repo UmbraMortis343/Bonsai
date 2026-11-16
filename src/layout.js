@@ -26,7 +26,7 @@ export function layoutTree(nodes, rootId, links = []) {
   while (stack.length) { const n = stack.pop(); order.push(n); for (const c of kids.get(n.id) || []) stack.push(c); }
   for (let i = order.length - 1; i >= 0; i--) out.size.set(order[i].id, 1 + (kids.get(order[i].id) || []).reduce((a, c) => a + out.size.get(c.id), 0));
 
-  const stem = 1.5 + 0.4 * Math.log2(out.size.get(root.id) + 1);
+  const stem = 1.3 + 0.36 * Math.log2(out.size.get(root.id) + 1);   // how high the first idea floats over its disc
   const dir = new Map([[root.id, [0, 1, 0]]]), rest = new Map();
   out.pos.set(root.id, [0, stem, 0]); out.depth.set(root.id, 0);
   for (const n of order) {

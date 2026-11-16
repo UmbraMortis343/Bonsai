@@ -48,7 +48,7 @@ await page.keyboard.press("Shift+Tab");
 await page.waitForFunction(() => bonsai.S.view !== "garden"); await page.waitForSelector(".lbl.tree");
 t.eq(await state(page, () => bonsai.S.view), "forest", "Shift+Tab returns to knowledge");
 await openTree(page, ids.basic);
-t.eq(await state(page, () => [bonsai.S.flora.limbMesh.count, bonsai.S.flora.ids.length]), [9, 9], "a stick to each idea and nothing else");
+t.eq(await state(page, () => [bonsai.S.flora.limbMesh.count, bonsai.S.flora.ids.length]), [8, 9], "a stick between ideas and nothing else: none down to the ground");
 if (await page.$("#reviewBtn")) t.fail("review button in the knowledge window");
 
 // Patches attach to the ideas they mention; a stitch lands in the trunk's notes.
