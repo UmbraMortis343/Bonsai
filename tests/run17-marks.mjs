@@ -19,7 +19,7 @@ execFileSync("node", ["tools/landmarks/bake.mjs", fresh], { stdio: "ignore" });
 ok(readFileSync(fresh, "utf8") === readFileSync("src/marks-lib.js", "utf8"), "src/marks-lib.js is stale: run node tools/landmarks/bake.mjs");
 
 const ids = Object.keys(LIBRARY);
-ok(ids.length >= 36, `only ${ids.length} landmarks in the library`);
+ok(ids.length >= 44, `only ${ids.length} landmarks in the library`);
 for (const id of ids) {
   const grid = makeGrid(); (await import(pathToFileURL(`tools/landmarks/library/${id}.mjs`).href)).default(grid.a);
   const L = libModel(id), want = stats(grid).voxels; let got = 0; for (const v of L.g) if (v) got++;
@@ -31,13 +31,16 @@ for (const id of ids) {
 const world = (mark, growth, n) => buildWorld({ id: `m-${mark}-${growth}-${n}`, landmark: "academy", size: Math.sqrt(Math.max(3, n) / 6), E: 1, seed: 4, topics: Array.from({ length: n }, (_, k) => ({ name: "T" + k, biome: ["highland", "bloom", "fern", "tropical", "glowcap", "lantern"][k], growth: k === 1 ? growth : 0.3, health: 1, mark: k === 1 ? mark : "none" })) }, Math.round(104 * Math.sqrt(Math.max(3, n) / 6) / 2) * 2);
 for (const id of ids) for (const g of [1, 2]) for (const n of [3, 6]) { const m = world(id, g, n).marks; ok(m.length === 1 && m[0].mark === id, `${id} at ${g * 100}% found no ground on a ${n}-topic island`); }
 
-for (const [name, want] of [["Physics", "atom"], ["Leadership", "lectern"], ["Music", "synth"], ["Maths", "abacus"], ["World history", "ruined-temple"], ["Knitting", "yarn"], ["Organic chemistry", "flask"], ["Something else", "kit"]]) ok(guessMark(name) === want, `${name} guessed ${guessMark(name)}, want ${want}`);
+for (const [name, want] of [["Physics", "atom"], ["Leadership", "lectern"], ["Music", "synth"], ["Maths", "abacus"], ["World history", "ruined-temple"], ["Knitting", "yarn"], ["Organic chemistry", "flask"], ["Relativity", "spacetime"], ["Optics", "prism"], ["Probability", "dice"], ["Astrophysics", "orrery"], ["Astronomy", "observatory"], ["Logic", "cube"], ["Computer science", "computer"], ["Machine learning", "computer"], ["Design", "lightbulb"], ["Psychology", "brain"], ["Something else", "kit"]]) ok(guessMark(name) === want, `${name} guessed ${guessMark(name)}, want ${want}`);
 
 // every topic in the beta's demo gets a landmark of its own: none is the plain monument, and no two share one
 const { demoBackup } = await import("../src/demo.js");
 const demo = demoBackup(), given = assignMarks(demo.zones.map((z) => ({ id: z.id, name: z.name })));
 for (const z of demo.zones) ok(given.get(z.id) !== "kit", `demo topic ${z.name} has no landmark guessed for it`);
 ok(new Set(given.values()).size === demo.zones.length, "two demo topics share a landmark");
+// the topics on his Bonsai Map too
+const mine = assignMarks("Physics,Electronics,Maths,Music,Writing,Drawing,Design,History,Philosophy".split(",").map((n) => ({ id: n, name: n })));
+ok(![...mine.values()].includes("kit") && new Set(mine.values()).size === mine.size, `map topics: ${JSON.stringify([...mine])}`);
 // a landmark picked by hand is kept, and a guess steps aside for it
 const two = assignMarks([{ id: "a", name: "Physics" }, { id: "b", name: "Quantum physics" }, { id: "c", name: "Mechanics", picked: "atom" }]);
 ok(two.get("c") === "atom" && two.get("a") !== "atom" && two.get("b") !== "atom", `picked and guessed landmarks clash: ${JSON.stringify([...two])}`);

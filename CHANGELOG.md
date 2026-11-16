@@ -2,6 +2,11 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.14.0 — 2026-11-16
+
+- Eight more landmarks for theory topics, 44 in all: spacetime (Relativity), prism (Optics), dice (Probability, Statistics), orrery (Astrophysics, Cosmology), puzzle cube (Logic), computer (Computer science, Algorithms), light bulb (Design, Ideas) and brain (Psychology, Neuroscience).
+- Design no longer falls back to the monument next to Drawing's easel: it gets the light bulb.
+
 ## 0.13.0 — 2026-11-16
 
 No two topics share a landmark.
