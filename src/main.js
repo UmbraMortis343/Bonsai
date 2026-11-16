@@ -17,7 +17,7 @@ import { growPrompt, readGrow, planGrow, growSummary } from "./notes.js";
 import { createEditor, textToBlocks, blocksToText } from "./blocks.js";
 import { datePicker, longDate } from "./datepick.js";
 import { createMiniWeb } from "./miniweb.js";
-import { MARK_LIST, guessMark } from "./marks.js";
+import { MARK_LIST, assignMarks } from "./marks.js";
 
 const PALETTE = [["Blue", "#3b82f6"], ["Violet", "#8b5cf6"], ["Pink", "#ec4899"], ["Red", "#ef4444"], ["Orange", "#f97316"], ["Amber", "#f59e0b"], ["Green", "#22c55e"], ["Teal", "#14b8a6"], ["Cyan", "#06b6d4"]];
 const SWATCHES = [["Auto", ""], ...PALETTE];
@@ -1000,10 +1000,11 @@ const saveGarden = async () => { await safely(() => store.setMeta("garden", S.ga
 // (o.fill, beta only: the demo's Workshop topics count as fuller than they are, to show every landmark tier)
 function gardenModel() {
   const zone = new Map(S.zones.map((z) => [z.id, z])), now = Date.now(), hubs = hubsOf(S.garden), at = new Map(hubs.map((h, k) => [h.id, k]));
+  const marks = assignMarks(S.garden.islands.flatMap((isl) => isl.zoneIds).map((id) => zone.get(id)).filter(Boolean).map((z) => ({ id: z.id, name: z.name, picked: S.garden.zone[z.id]?.mark })));   // no two topics share a guessed landmark
   const model = S.garden.islands.map((isl, i) => {
     const topics = isl.zoneIds.map((id) => zone.get(id)).filter(Boolean).map((z, k) => {
       const trees = S.trees.filter((t) => t.zoneId === z.id), nodes = trees.flatMap((t) => S.byTree.get(t.id) || []), rev = nodes.filter((n) => srs.reviewable(n, kidsOf(n.id).length)), due = rev.filter((n) => srs.isDue(n, now)), o = S.garden.zone[z.id] || {};
-      return { id: z.id, name: z.name, biome: o.biome || BIOMES[k % 6][0], mark: o.mark || guessMark(z.name), growth: Math.min(2, Math.pow((nodes.length + (CHANNEL ? o.fill || 0 : 0)) / FULL_PLOT, 0.6)), health: rev.length ? 1 - due.length / rev.length : 1, ideas: nodes.length, mist: !nodes.length && charted(), due: due.map((n) => n.id), trees };
+      return { id: z.id, name: z.name, biome: o.biome || BIOMES[k % 6][0], mark: marks.get(z.id), growth: Math.min(2, Math.pow((nodes.length + (CHANNEL ? o.fill || 0 : 0)) / FULL_PLOT, 0.6)), health: rev.length ? 1 - due.length / rev.length : 1, ideas: nodes.length, mist: !nodes.length && charted(), due: due.map((n) => n.id), trees };
     });
     if (!topics.length) topics.push({ id: null, name: "", biome: "bloom", mark: "kit", growth: 0.04, health: 1, ideas: 0, mist: charted(), due: [], trees: [] });
     return { id: isl.id, name: isl.name, hub: at.get(hubKey(isl)) || 0, landmark: isl.landmark, patron: i === 0 && isl.landmark === "arches" ? S.garden.patron || "none" : undefined, mountain: isl.landmark === "arches" || !!isl.mountain, topics };

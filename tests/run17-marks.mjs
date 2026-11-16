@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { buildWorld, libModel } from "../src/isles-world.js";
 import { LIBRARY } from "../src/marks-lib.js";
-import { MARK_LIST, guessMark } from "../src/marks.js";
+import { MARK_LIST, guessMark, assignMarks } from "../src/marks.js";
 import { makeGrid, stats } from "../tools/landmarks/kit.mjs";
 
 let failed = false;
@@ -19,7 +19,7 @@ execFileSync("node", ["tools/landmarks/bake.mjs", fresh], { stdio: "ignore" });
 ok(readFileSync(fresh, "utf8") === readFileSync("src/marks-lib.js", "utf8"), "src/marks-lib.js is stale: run node tools/landmarks/bake.mjs");
 
 const ids = Object.keys(LIBRARY);
-ok(ids.length >= 22, `only ${ids.length} landmarks in the library`);
+ok(ids.length >= 36, `only ${ids.length} landmarks in the library`);
 for (const id of ids) {
   const grid = makeGrid(); (await import(pathToFileURL(`tools/landmarks/library/${id}.mjs`).href)).default(grid.a);
   const L = libModel(id), want = stats(grid).voxels; let got = 0; for (const v of L.g) if (v) got++;
@@ -33,9 +33,14 @@ for (const id of ids) for (const g of [1, 2]) for (const n of [3, 6]) { const m 
 
 for (const [name, want] of [["Physics", "atom"], ["Leadership", "lectern"], ["Music", "synth"], ["Maths", "abacus"], ["World history", "ruined-temple"], ["Knitting", "yarn"], ["Organic chemistry", "flask"], ["Something else", "kit"]]) ok(guessMark(name) === want, `${name} guessed ${guessMark(name)}, want ${want}`);
 
-// every topic in the beta's demo gets a landmark of its own, not the plain monument
+// every topic in the beta's demo gets a landmark of its own: none is the plain monument, and no two share one
 const { demoBackup } = await import("../src/demo.js");
-for (const z of demoBackup().zones) ok(guessMark(z.name) !== "kit", `demo topic ${z.name} has no landmark guessed for it`);
+const demo = demoBackup(), given = assignMarks(demo.zones.map((z) => ({ id: z.id, name: z.name })));
+for (const z of demo.zones) ok(given.get(z.id) !== "kit", `demo topic ${z.name} has no landmark guessed for it`);
+ok(new Set(given.values()).size === demo.zones.length, "two demo topics share a landmark");
+// a landmark picked by hand is kept, and a guess steps aside for it
+const two = assignMarks([{ id: "a", name: "Physics" }, { id: "b", name: "Quantum physics" }, { id: "c", name: "Mechanics", picked: "atom" }]);
+ok(two.get("c") === "atom" && two.get("a") !== "atom" && two.get("b") !== "atom", `picked and guessed landmarks clash: ${JSON.stringify([...two])}`);
 
 if (failed) process.exit(1);
 console.log(`PASS run17-marks (${ids.length} landmarks)`);

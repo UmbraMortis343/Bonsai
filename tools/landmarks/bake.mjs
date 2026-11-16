@@ -10,7 +10,7 @@ import { makeGrid, MATERIALS, SIZE, HEIGHT } from "./kit.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url)), lib = join(here, "library"), out = resolve(process.argv[2] || join(here, "../../src/marks-lib.js"));
 // what each landmark is called in the app; a file without a name here is named from its file name
-const NAMES = { abacus: "Abacus", atom: "Atom", "bell-tower": "Clock tower", books: "Books", camera: "Camera", "cooking-pot": "Cooking pot", "dna-helix": "DNA helix", easel: "Easel", flask: "Flask", "gear-tower": "Steam engine", globe: "Globe", lectern: "Lectern", lighthouse: "Lighthouse", observatory: "Observatory", quill: "Quill", "radio-dish": "Radio dish", "ruined-temple": "Ruined temple", scales: "Scales", "seated-figure": "Seated scholar", synth: "Synth", trophy: "Trophy", yarn: "Yarn" };
+const NAMES = { abacus: "Abacus", atom: "Atom", "bell-tower": "Clock tower", books: "Books", camera: "Camera", "cooking-pot": "Cooking pot", "dna-helix": "DNA helix", easel: "Easel", flask: "Flask", "gear-tower": "Steam engine", globe: "Globe", lectern: "Lectern", lighthouse: "Lighthouse", observatory: "Observatory", quill: "Quill", "radio-dish": "Radio dish", "ruined-temple": "Ruined temple", scales: "Scales", "seated-figure": "Seated scholar", synth: "Synth", trophy: "Trophy", yarn: "Yarn", compass: "Compass", nautilus: "Nautilus", blackboard: "Blackboard", curve: "Curve", vectors: "Vectors", "newtons-cradle": "Newton's cradle", "wind-turbine": "Wind turbine", crane: "Crane", magnet: "Magnet", circuit: "Circuit", signpost: "Signpost", marquee: "Marquee", harp: "Harp", drum: "Drum" };
 const H = SIZE / 2, entries = [];
 for (const f of readdirSync(lib).filter((f) => f.endsWith(".mjs")).sort()) {
   const id = f.slice(0, -4), grid = makeGrid();

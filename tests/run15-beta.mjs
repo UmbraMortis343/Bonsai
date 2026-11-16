@@ -15,7 +15,7 @@ const due = await state(page, () => bonsai.S.nodes.filter((n) => Date.parse(n.sr
 t.eq(due > 30 && due < 120, true, "some ideas are due, so watering and dim ideas can be tried");
 await page.goto(t.url + "#/"); await page.waitForFunction(() => bonsai.S.model?.some((i) => i.name === "Workshop"), null, { timeout: 120000 });
 const shop = await state(page, () => bonsai.S.model.find((i) => i.name === "Workshop").topics.map((q) => [q.mark, Math.round(q.growth * 10) / 10]));
-t.eq(shop, [["camera", 1], ["yarn", 1.3], ["cooking-pot", 1.6], ["radio-dish", 2], ["globe", 1.2], ["gear-tower", 1.8]], "the Workshop shows a landmark at every tier, guessed from the topic names");
+t.eq(shop, [["camera", 1], ["yarn", 1.3], ["cooking-pot", 1.6], ["circuit", 2], ["globe", 1.2], ["crane", 1.8]], "the Workshop shows a landmark at every tier, guessed from the topic names");
 await page.evaluate(() => { localStorage.clear(); });
 await page.evaluate(() => bonsai.store.createZone({ name: "Scratch" }));
 await page.reload(); await page.waitForFunction(() => window.bonsai && bonsai.S.zones.length > 0);

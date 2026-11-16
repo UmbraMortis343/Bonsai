@@ -2,6 +2,13 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.13.0 — 2026-11-16
+
+No two topics share a landmark.
+
+- 14 new landmarks, 36 in all: blackboard, circuit, compass, crane, curve, drum, harp, magnet, marquee, nautilus, Newton's cradle, signpost, vectors and wind turbine.
+- Topics with no landmark picked get the best one nobody else has yet: Algebra a blackboard, Calculus a curve, Linear algebra vectors, Mechanics Newton's cradle, Energy a wind turbine, Electromagnetism a magnet, Electronics a circuit, Engineering a crane, Harmony a harp, Rhythm a drum, Coaching a signpost, Running events a marquee. One you've picked yourself is kept, and the guesses step around it.
+
 ## 0.12.0 — 2026-11-16
 
 The landmark library comes into the garden.
