@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bonsai Exams</title>
+<style>
+/* Bonsai's own look: white, black and an earth green, warm greys, ochre for what's waiting.
+   Slight corners, docked bars: a top bar, the paper in the middle, an action bar at the foot. */
+:root{
+  --bg:#ffffff; --card:#ffffff; --ink:#1d1d1b; --muted:#6f6e69; --line:#e5e4df; --well:#f4f3ef; --hover:rgb(29 29 27 / .05);
+  --accent:#3e7a4b; --accent-ink:#ffffff; --sap:#93703f; --danger:#b5483e; --ghost:#a3a19a;
+  --font:ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+  --bg:#151514; --card:#1c1c1b; --ink:#ebeae6; --muted:#9a9892; --line:#2d2d2b; --well:#232321; --hover:rgb(255 255 255 / .05);
+  --accent:#7fb489; --accent-ink:#10190f; --sap:#c39b64; --danger:#df6a5e; --ghost:#5d5c58; color-scheme:dark; } }
+:root[data-theme="dark"]{
+  --bg:#151514; --card:#1c1c1b; --ink:#ebeae6; --muted:#9a9892; --line:#2d2d2b; --well:#232321; --hover:rgb(255 255 255 / .05);
+  --accent:#7fb489; --accent-ink:#10190f; --sap:#c39b64; --danger:#df6a5e; --ghost:#5d5c58; color-scheme:dark; }
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.45 var(--font);display:flex;flex-direction:column}
+button,input,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+[hidden]{display:none!important}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+h1,h2,h3,p,ol,ul{margin:0}
+kbd{font:600 11px/1 var(--font);border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:2px 5px;color:var(--muted);background:var(--well);white-space:nowrap}
+.top{flex:none;height:52px;display:flex;align-items:center;gap:12px;padding:0 16px;border-bottom:1px solid var(--line);background:var(--card)}
+.top h1{font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.top .sub{color:var(--muted);font-size:13px;white-space:nowrap}
+.top .grow{flex:1}
+.seg{display:inline-flex;gap:2px;padding:2px;border-radius:6px;background:var(--well)}
+.seg button{border:1px solid transparent;background:transparent;border-radius:4px;padding:5px 10px;font-size:13px;color:var(--muted)}
+.seg button.on{color:var(--ink);background:var(--card);border-color:var(--line);font-weight:600}
+main{flex:1;min-height:0;overflow:auto;padding:20px 16px 28px}
+.col{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+.bar{flex:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 16px;border-top:1px solid var(--line);background:var(--card);min-height:56px}
+.bar .grow{flex:1}
+.bar .said{color:var(--muted);font-size:13px}
+.btn{border:1px solid var(--line);background:var(--card);border-radius:6px;padding:7px 13px;white-space:nowrap;display:inline-flex;align-items:center;gap:7px}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.btn.primary kbd{background:transparent;color:inherit;border-color:currentColor;opacity:.75}
+.btn.live{border-color:var(--sap);color:var(--sap);font-weight:600}
+.btn:disabled{opacity:.45;cursor:default}
+.muted{color:var(--muted)}
+/* home: a tier, then its sections with a cell per level */
+.tier{display:flex;flex-direction:column;gap:6px}
+.tier>header{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;padding-bottom:6px;border-bottom:1px solid var(--line)}
+.tier>header h2{font-size:17px}
+.tier>header .src{color:var(--muted);font-size:13px;flex:1;min-width:0}
+.tier>header .n{font-variant-numeric:tabular-nums;font-size:13px;color:var(--muted)}
+.heads,.row{display:grid;grid-template-columns:minmax(0,1fr) repeat(3,88px);gap:6px;align-items:center}
+.heads{font-size:12px;color:var(--muted);padding:2px 8px}
+.heads span{display:flex;gap:6px;align-items:center;justify-content:center}
+.row{padding:4px 4px 4px 8px;border-radius:6px;border:1px solid transparent}
+.row.on{border-color:var(--ink);background:var(--well)}
+.row .name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cell{border:1px solid var(--line);background:var(--card);border-radius:5px;padding:5px 6px 7px;font-size:13px;font-variant-numeric:tabular-nums;position:relative;overflow:hidden;text-align:center}
+.cell:hover:not(:disabled){border-color:var(--muted)}
+.cell i{position:absolute;left:0;bottom:0;height:3px;background:var(--accent)}
+.cell.full{border-color:var(--accent);color:var(--accent);font-weight:600}
+.cell.some i{background:var(--sap)}
+.cell:disabled{color:var(--ghost);cursor:default}
+.cell.link{padding:5px 10px 7px;white-space:nowrap}
+.meter{height:4px;border-radius:2px;background:var(--well);overflow:hidden;width:120px;align-self:center}
+.meter i{display:block;height:100%;background:var(--accent)}
+/* a paper */
+.ask{font-size:20px;line-height:1.35;font-weight:600;text-wrap:balance}
+.opts{display:flex;flex-direction:column;gap:8px}
+.opt{display:flex;gap:10px;align-items:flex-start;text-align:left;border:1px solid var(--line);background:var(--card);border-radius:6px;padding:11px 12px}
+.opt:hover{border-color:var(--ink)}
+.opt kbd{margin-top:2px}
+.cues{display:flex;flex-wrap:wrap;gap:6px;list-style:none;padding:0}
+.cues li{border:1px solid var(--line);border-radius:4px;padding:2px 8px;font-size:13px;color:var(--muted)}
+.probs{padding-left:22px;display:flex;flex-direction:column;gap:10px}
+.box{display:flex;flex-direction:column;gap:6px}
+.box textarea{width:100%;min-height:132px;resize:vertical;border:1px solid var(--line);border-radius:6px;background:var(--card);padding:10px 12px;line-height:1.5}
+.box .livetext{min-height:1.45em;color:var(--sap);font-size:14px}
+.shots{display:flex;gap:8px;flex-wrap:wrap}
+.shots figure{margin:0;position:relative}
+.shots img{height:84px;border-radius:5px;border:1px solid var(--line);display:block}
+.shots button{position:absolute;top:3px;right:3px;border:1px solid var(--line);background:var(--card);border-radius:4px;padding:0 6px;line-height:20px}
+.turn{border-left:3px solid var(--line);padding-left:12px;display:flex;flex-direction:column;gap:4px}
+.turn .q{font-weight:600}
+.wait{display:flex;flex-direction:column;align-items:center;gap:14px;padding:64px 0;color:var(--muted)}
+.wait .dots{display:flex;gap:6px}
+.wait .dots i{width:8px;height:8px;border-radius:2px;background:var(--accent);animation:hop 1s infinite ease-in-out}
+.wait .dots i:nth-child(2){animation-delay:.15s}.wait .dots i:nth-child(3){animation-delay:.3s}
+@keyframes hop{0%,80%,100%{opacity:.25}40%{opacity:1}}
+@media (prefers-reduced-motion:reduce){ .wait .dots i{animation:none;opacity:.6} }
+/* results */
+.sum{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.sum b{font-size:22px;font-variant-numeric:tabular-nums}
+.marks{display:flex;flex-direction:column;gap:6px;list-style:none;padding:0}
+.mark{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 10px;width:100%;text-align:left;border:1px solid var(--line);background:var(--card);border-radius:6px;padding:9px 12px}
+.mark .tick{width:22px;height:22px;border-radius:4px;border:1.5px solid var(--ghost);display:grid;place-items:center;font-weight:700;font-size:13px;color:transparent;grid-row:span 3}
+.mark.shown .tick{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.mark .t{font-weight:600}
+.mark:not(.shown) .t{color:var(--muted)}
+.mark .note,.mark .why{font-size:13px;color:var(--muted)}
+.mark .why{color:var(--sap)}
+.mark.changed{border-style:dashed}
+.note-line{color:var(--sap);font-size:13px}
+.out{width:100%;min-height:120px;font:12px/1.4 ui-monospace,Menlo,Consolas,monospace;border:1px solid var(--line);border-radius:6px;background:var(--well);padding:8px}
+.plain{list-style:none;padding:0;display:flex;flex-direction:column;gap:4px}
+.plain li{display:flex;gap:10px;justify-content:space-between;border-bottom:1px solid var(--line);padding:6px 0;font-variant-numeric:tabular-nums}
+@media (max-width:560px){
+  .heads,.row{grid-template-columns:minmax(0,1fr) repeat(3,58px);gap:4px}
+  .bar kbd,.heads kbd,.opt kbd,.top kbd,.mark kbd{display:none}
+  .ask{font-size:18px}
+  .top .sub{display:none}
+}
+</style>
+</head>
+<body>
+<header class="top" id="top"><h1>Bonsai Exams</h1></header>
+<main id="main"><div class="col"><div class="wait"><div class="dots"><i></i><i></i><i></i></div><p>Loading</p></div></div></main>
+<footer class="bar" id="bar"></footer>
+<script>
+(() => {
+"use strict";
+/*__LOGIC__*/
+// The topic maps this page was built with (tools/exams/maps). A row in the `maps` collection with the same id replaces one; a new id adds one.
+const BUILT = /*__MAPS__*/[];
+
+const $ = (s) => document.querySelector(s);
+function el(tag, at = {}, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(at)) {
+    if (v == null || v === false) continue;
+    if (k === "class") e.className = v; else if (k === "text") e.textContent = v;
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v); else e.setAttribute(k, v === true ? "" : v);
+  }
+  for (const c of kids.flat()) if (c != null && c !== false) e.append(c);
+  return e;
+}
+const kbd = (k) => el("kbd", { text: k });
+const X = { maps: [], marks: {}, topic: "", row: 0, keys: {}, view: "load", paper: null, box: null, listening: false, db: null, sample: null, dict: null, dl: null, photos: 0, note: "" };
+const LEVEL = ["", "Recall", "Explain", "Apply", "Connect"];
+
+// ---------- frame ----------
+function top(title, sub, right = []) {
+  $("#top").replaceChildren(...[el("h1", { text: title }), sub ? el("span", { class: "sub", text: sub }) : null, el("span", { class: "grow" }), ...right].filter(Boolean));
+}
+// The docked action bar. Each action: { id, label, key, run, primary, live, off }. Its key works when no field has the caret.
+function bar(actions, said = "") {
+  X.keys = {};
+  const kids = actions.filter(Boolean).map((a) => {
+    if (a.key && !a.off) for (const k of [].concat(a.keys || a.key)) X.keys[k.toLowerCase()] = a.run;
+    return el("button", { class: "btn" + (a.primary ? " primary" : "") + (a.live ? " live" : ""), type: "button", id: a.id, disabled: a.off, onclick: a.run }, a.label, a.key ? kbd(a.show || a.key) : null);
+  });
+  $("#bar").replaceChildren(...kids, el("span", { class: "grow" }), el("span", { class: "said", id: "said", text: said || X.note }));
+  X.note = "";
+}
+const say = (t) => { const s = $("#said"); if (s) s.textContent = t; else X.note = t; };
+const show = (...kids) => { $("#main").replaceChildren(el("div", { class: "col" }, ...kids)); $("#main").scrollTop = 0; if (X.box && !X.box.node.isConnected) X.box = null; };
+addEventListener("keydown", (e) => {
+  const typing = e.target.matches?.("textarea, input");
+  if (typing) {
+    if (e.key === "Escape") e.target.blur();
+    else if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && X.keys.mark) { e.preventDefault(); X.keys.mark(); }
+    return;
+  }
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const run = X.keys[e.key === " " ? "space" : e.key.toLowerCase()];
+  if (run) { e.preventDefault(); run(); }
+});
+
+// ---------- data ----------
+const tiers = () => X.maps.filter((m) => m.topic === X.topic).sort((a, b) => a.order - b.order);
+const topics = () => [...new Set(X.maps.map((m) => m.topic))];
+const knownIn = (topic) => (key) => X.maps.some((m) => m.topic === topic && (X.marks[m.id]?.ideas?.[key] || 0) > 0);
+async function saveMarks(map, items, level) {
+  const cur = JSON.parse(JSON.stringify(X.marks[map.id] || {})); cur.ideas ||= {}; cur.links ||= {};
+  for (const it of items) if (it.shown) { if (level === 4) cur.links[it.key] = 1; else cur.ideas[it.key] = Math.max(cur.ideas[it.key] || 0, level); }
+  cur.updatedAt = new Date().toISOString(); X.marks[map.id] = cur;
+  await X.db.doc("marks/" + map.id).set(cur);
+}
+async function boot() {
+  if (!window.claude?.use) return lost("Open this page in Claude to sit an exam.");
+  const [db, sample, dict, dl] = await Promise.all(["db", "sample", "dictation", "downloads"].map((n) => window.claude.use(n).catch(() => null)));
+  X.db = db; X.sample = sample; X.dict = dict; X.dl = dl;
+  if (!db) return lost("Sign in to Claude to sit an exam.");
+  if (sample) sample.limits().then((c) => { X.photos = c?.images?.maxCount || 0; }).catch(() => {});
+  if (dict) {
+    dict.onFinal(({ text }) => { const ta = X.box?.ta; if (!ta) return; ta.value += ta.value ? text : text.trimStart(); X.box.live.textContent = ""; });
+    dict.onPartial(({ text }) => { if (X.box) X.box.live.textContent = text; });
+    dict.onState(({ state, reason }) => { X.listening = state !== "idle"; const b = $("#speak"); if (b) { b.classList.toggle("live", X.listening); b.firstChild.textContent = X.listening ? "Stop" : "Speak"; } if (state === "idle" && X.box) X.box.live.textContent = ""; if (reason === "not_granted" || reason === "unavailable") { X.dict = null; b?.remove(); } });
+  }
+  const slow = setTimeout(() => { if (X.view === "load") lost("Your exams can't be reached yet."); }, 10000);
+  const byId = new Map(BUILT.map((text) => readMap(text)).map((m) => [m.id, m]));
+  try { for (const d of (await db.collection("maps").get()).docs) { const m = readMap(d.data()?.text); if (m.id && m.graphs.length) byId.set(m.id, m); } } catch {}
+  X.maps = [...byId.values()].filter((m) => m.id && m.graphs.length);
+  db.collection("marks").onSnapshot((s) => {
+    for (const d of s.docs) X.marks[d.id] = d.data();
+    if (X.view === "load") { clearTimeout(slow); const want = decodeURIComponent(location.hash.slice(1)); X.topic = topics().find((t) => t.toLowerCase() === want) || topics()[0] || ""; home(); }
+    else if (X.view === "home") home();
+  }, () => { clearTimeout(slow); if (X.view === "load") lost("Your exams can't be reached."); });
+}
+function lost(text) { X.view = "lost"; top("Bonsai Exams"); show(el("div", { class: "wait" }, el("p", { text }))); bar([]); }
+
+// ---------- home ----------
+function rowsOf() { return tiers().flatMap((m) => m.graphs.map((g) => ({ m, g }))); }
+function home() {
+  X.view = "home"; X.paper = null;
+  const ts = tiers(), rows = rowsOf(), known = knownIn(X.topic); X.row = Math.max(0, Math.min(X.row, rows.length - 1));
+  if (!ts.length) { top("Bonsai Exams"); show(el("div", { class: "wait" }, el("p", { text: "No topic maps yet." }))); return bar([]); }
+  top("Bonsai Exams", "", [topics().length > 1 ? el("div", { class: "seg", id: "topics" }, topics().map((t) => el("button", { type: "button", class: t === X.topic ? "on" : "", text: t, onclick: () => pickTopic(t) }))) : null]);
+  let n = 0; const kids = [];
+  for (const m of ts) {
+    const p = progress(m, X.marks[m.id], known);
+    kids.push(el("section", { class: "tier" },
+      el("header", {}, el("h2", { text: m.tier }), el("span", { class: "src", text: m.source }), el("span", { class: "meter" }, el("i", { style: `width:${(100 * p.shown / p.of).toFixed(1)}%` })), el("span", { class: "n", text: `${p.shown} / ${p.of}` }),
+        el("button", { type: "button", class: "cell link" + (p.connect.of && p.connect.n === p.connect.of ? " full" : p.connect.n ? " some" : ""), disabled: !p.connect.ready || !X.sample, id: "connect-" + m.id, onclick: () => sitConnect(m) }, `Connect ${p.connect.n}/${p.connect.of} `, rows[X.row]?.m === m ? kbd("4") : null, p.connect.of ? el("i", { style: `width:${(100 * p.connect.n / p.connect.of).toFixed(1)}%` }) : null)),
+      el("div", { class: "heads" }, el("span", {}), el("span", {}, "Recall", kbd("1")), el("span", {}, "Explain", kbd("2")), el("span", {}, "Apply", kbd("3"))),
+      m.graphs.map((g, k) => {
+        const at = n++, q = p.graphs[k];
+        const cell = (lv, c) => el("button", { type: "button", class: "cell" + (c.of && c.n === c.of ? " full" : c.n ? " some" : ""), disabled: !c.of || !X.sample, "aria-label": `${LEVEL[lv]}, ${g.name}: ${c.n} of ${c.of}`, onclick: () => { X.row = at; sit(m, g, lv); } }, c.of ? `${c.n}/${c.of}` : "–", c.of ? el("i", { style: `width:${(100 * c.n / c.of).toFixed(1)}%` }) : null);
+        return el("div", { class: "row" + (at === X.row ? " on" : ""), "data-row": at, onclick: () => { if (X.row !== at) { X.row = at; home(); } } }, el("span", { class: "name", text: g.name }), cell(1, q.recall), cell(2, q.explain), cell(3, q.apply));
+      }),
+    ));
+  }
+  show(...kids, X.sample ? null : el("p", { class: "note-line", text: "Claude isn't available in this view, so papers can't be set or marked here." }));
+  const cur = () => rowsOf()[X.row], move = (d) => { X.row = Math.max(0, Math.min(rows.length - 1, X.row + d)); home(); document.querySelector(".row.on")?.scrollIntoView({ block: "nearest" }); };
+  const next = () => { const r = cur(), q = progress(r.m, X.marks[r.m.id]).graphs[r.m.graphs.indexOf(r.g)]; sit(r.m, r.g, q.recall.n < q.recall.of ? 1 : q.explain.n < q.explain.of ? 2 : q.apply.of && q.apply.n < q.apply.of ? 3 : 1); };
+  bar([
+    { id: "next", label: "Sit next", key: "Enter", show: "↵", run: next, primary: true, off: !X.sample },
+    { id: "export", label: "Export", key: "E", run: exportView },
+    topics().length > 1 ? { id: "topic", label: "Topic", key: "T", run: () => pickTopic(topics()[(topics().indexOf(X.topic) + 1) % topics().length]) } : null,
+  ]);
+  Object.assign(X.keys, { arrowdown: () => move(1), arrowup: () => move(-1), j: () => move(1), k: () => move(-1) });
+  if (X.sample) Object.assign(X.keys, { 1: () => sit(cur().m, cur().g, 1), 2: () => sit(cur().m, cur().g, 2), 3: () => sit(cur().m, cur().g, 3), 4: () => sitConnect(cur().m) });
+}
+function pickTopic(t) { X.topic = t; X.row = 0; try { location.hash = t.toLowerCase(); } catch {} home(); }
+function sit(m, g, lv) {
+  const c = progress(m, X.marks[m.id]).graphs[m.graphs.indexOf(g)][["", "recall", "explain", "apply"][lv]];
+  if (!c.of) return say(`No ${LEVEL[lv]} paper here`);
+  X.paper = { m, g, level: lv }; (lv === 1 ? sitRecall : lv === 2 ? sitExplain : sitApply)();
+}
+
+// ---------- asking Claude ----------
+const WHY = { not_granted: "Claude wasn't allowed on this page.", sampling_disabled: "Claude isn't available for this account.", rate_limited: "Too many requests just now. Try again in a minute.", invalid_json: "The reply couldn't be read. Try again.", session_expired: "Sign in to Claude again.", refused: "Claude declined that. Change the answer and try again.", image_rejected: "A photo couldn't be read. Try a smaller or clearer one.", prompt_too_large: "That answer is too long to mark in one go." };
+async function ask(prompt, label, images) {
+  X.ctl = new AbortController(); busy(label);
+  try { return await X.sample.json(prompt, { cache: false, signal: X.ctl.signal, ...(images?.length ? { images } : {}) }); }
+  finally { X.ctl = null; }
+}
+function busy(label) {
+  X.view = "busy"; show(el("div", { class: "wait" }, el("div", { class: "dots" }, el("i"), el("i"), el("i")), el("p", { text: label })));
+  bar([{ id: "stop", label: "Stop", key: "Escape", show: "Esc", run: () => X.ctl?.abort() }]);
+}
+function failed(e, retry) {
+  if (e?.code === "cancelled") return home();
+  X.view = "fail"; show(el("div", { class: "wait" }, el("p", { text: WHY[e?.code] || "That didn't go through. Try again." })));
+  bar([{ id: "retry", label: "Try again", key: "R", run: retry, primary: true }, { id: "back", label: "Back", key: "Escape", show: "Esc", run: home }]);
+}
+const head = () => top(X.paper.g ? X.paper.g.name : X.paper.m.tier, `${X.paper.m.tier} · ${LEVEL[X.paper.level]}`);
+
+// ---------- the answer box: speak, type or photograph ----------
+function answerBox({ photos = true } = {}) {
+  const ta = el("textarea", { id: "answer", "aria-label": "Your answer", placeholder: X.dict ? "Speak, or type here" : "Type, or use your keyboard's microphone" });
+  const live = el("p", { class: "livetext", "aria-live": "polite" }), shots = el("div", { class: "shots" }), files = [];
+  const draw = () => shots.replaceChildren(...files.map((f, i) => el("figure", {}, el("img", { src: URL.createObjectURL(f), alt: "Photo " + (i + 1) }), el("button", { type: "button", "aria-label": "Remove photo " + (i + 1), text: "×", onclick: () => { files.splice(i, 1); draw(); } }))));
+  const pick = el("input", { type: "file", id: "photo", accept: "image/*", multiple: true, hidden: true, onchange: (e) => { for (const f of e.target.files) if (files.length < X.photos) files.push(f); e.target.value = ""; draw(); } });
+  X.box = { ta, live, files, node: el("div", { class: "box" }, ta, live, shots, pick), canPhoto: photos && X.photos > 0, text: () => ta.value.trim() };
+  return X.box;
+}
+function speak() {
+  if (!X.dict) return;
+  if (X.dict.active()) { X.dict.stop().catch(() => {}); return; }
+  X.dict.start().catch((e) => { if (e?.code === "not_granted" || e?.code === "unavailable") { X.dict = null; $("#speak")?.remove(); say("Dictation is off here. Type, or use your keyboard's microphone."); } else if (e?.code !== "stopped" && e?.code !== "dismissed") say("Dictation didn't start. Try again."); });
+}
+const answerActs = (markLabel, mark) => [
+  X.dict ? { id: "speak", label: X.listening ? "Stop" : "Speak", key: "S", run: speak, live: X.listening } : null,
+  X.box?.canPhoto ? { id: "addphoto", label: "Photo", key: "P", run: () => $("#photo").click() } : null,
+  { id: "mark", label: markLabel, key: "mark", keys: ["mark", "Enter"], show: "↵", run: mark, primary: true },
+];
+async function settle() { if (X.dict?.active()) await X.dict.stop().catch(() => {}); }
+
+// ---------- Recall ----------
+async function sitRecall() {
+  const P = X.paper; head();
+  try {
+    const lv = X.marks[P.m.id]?.ideas || {}, todo = recallIdeas(P.g).filter((i) => !lv[i.key]);   // a re-sit asks only what hasn't been shown
+    const qs = readRecall(await ask(recallPrompt(P.m, P.g, todo.length ? todo : recallIdeas(P.g)), "Setting the paper"), P.g);
+    if (!qs.length) throw { code: "invalid_json" };
+    P.qs = qs.map((q) => ({ ...q, order: shuffle(4) })); P.i = 0; P.picks = []; question();
+  } catch (e) { failed(e, sitRecall); }
+}
+function question() {
+  const P = X.paper, q = P.qs[P.i]; X.view = "paper"; head();
+  const pick = (n) => { P.picks[P.i] = n < 0 ? -1 : q.order[n]; if (++P.i < P.qs.length) return question(); results(P.qs.map((x, k) => { const idea = P.g.ideas.find((i) => i.key === x.key), ok = P.picks[k] === 0; return { key: x.key, title: x.title, note: idea.note, shown: ok, why: ok ? "" : `${x.q} ${x.options[0]}` }; }), "", { asked: P.qs.map((x, k) => ({ q: x.q, right: x.options[0], picked: P.picks[k] < 0 ? "" : x.options[P.picks[k]] })) }); };
+  show(el("p", { class: "muted", text: `${P.i + 1} / ${P.qs.length}` }), el("p", { class: "ask", id: "ask", text: q.q }),
+    el("div", { class: "opts" }, q.order.map((o, n) => el("button", { type: "button", class: "opt", "data-opt": n, onclick: () => pick(n) }, kbd(String(n + 1)), el("span", { text: q.options[o] })))));
+  bar([{ id: "skip", label: "Don't know", key: "0", keys: ["0", "space"], run: () => pick(-1) }, { id: "back", label: "Leave", key: "Escape", show: "Esc", run: home }]);
+  for (let n = 0; n < 4; n++) X.keys[String(n + 1)] = () => pick(n);
+}
+
+// ---------- Explain ----------
+function sitExplain() { const P = X.paper; P.turns = []; P.got = new Map(); P.follows = 0; P.q = ""; P.feedback = ""; explainView(); }
+function explainView() {
+  const P = X.paper; X.view = "paper"; head();
+  const box = answerBox();
+  show(
+    P.turns.map((t) => el("div", { class: "turn" }, t.q ? el("p", { class: "q", text: t.q }) : null, el("p", { class: "muted", text: t.a || "Handwritten" }))),
+    P.q ? [P.feedback ? el("p", { text: P.feedback }) : null, el("p", { class: "ask", id: "ask", text: P.q })]
+        : [el("p", { class: "ask", id: "ask", text: `Talk through ${P.g.name}.` }), el("ul", { class: "cues" }, explainCues(P.g).map((c) => el("li", { text: c })))],
+    box.node);
+  bar([...answerActs("Mark", markExplain), P.turns.length ? { id: "finish", label: "Finish", key: "F", run: explainDone } : null, { id: "back", label: "Leave", key: "Escape", show: "Esc", run: async () => { await settle(); home(); } }]);
+}
+async function markExplain() {
+  const P = X.paper, box = X.box; await settle();
+  const a = box.text(), files = [...box.files]; if (!a && !files.length) return say("Nothing to mark yet");
+  const turns = [...P.turns.map((t) => ({ ...t, a: t.a || "(handwritten, marked earlier)" })), { q: P.q, a }], keys = explainIdeas(P.g).map((i) => i.key);
+  const run = async () => {
+    try {
+      const r = readMarks(await ask(explainPrompt(P.m, P.g, turns, { photos: files.length, follows: 2 - P.follows, had: [...P.got.keys()] }), "Marking", files), keys);
+      for (const m of r.marks) if (m.shown) P.got.set(m.key, m.why); else if (!P.got.has(m.key)) (P.missed ||= new Map()).set(m.key, m.why);
+      P.turns.push({ q: P.q, a, photos: files.length }); P.feedback = r.feedback;
+      if (r.follow && P.follows < 2 && P.got.size < keys.length) { P.follows++; P.q = r.follow; explainView(); } else explainDone();
+    } catch (e) { failed(e, run); }
+  };
+  run();
+}
+function explainDone() {
+  const P = X.paper;
+  results(explainIdeas(P.g).map((i) => ({ key: i.key, title: i.title, note: i.note, shown: P.got.has(i.key), why: P.got.get(i.key) || P.missed?.get(i.key) || "" })), P.feedback, { turns: P.turns });
+}
+
+// ---------- Apply ----------
+async function sitApply() {
+  const P = X.paper; head();
+  try {
+    const lv = X.marks[P.m.id]?.ideas || {}, todo = applyIdeas(P.g).filter((i) => (lv[i.key] || 0) < 3);
+    P.probs = readProblems(await ask(applySetPrompt(P.m, P.g, todo.length ? todo : applyIdeas(P.g)), "Setting problems"), P.g);
+    if (!P.probs.length) throw { code: "invalid_json" };
+    applyView();
+  } catch (e) { failed(e, sitApply); }
+}
+function applyView(keep = "") {
+  const P = X.paper; X.view = "paper"; head();
+  const box = answerBox(); box.ta.value = keep;
+  show(el("ol", { class: "probs", id: "probs" }, P.probs.map((p) => el("li", { text: p.q }))), box.node);
+  bar([...answerActs("Mark", markApply), { id: "back", label: "Leave", key: "Escape", show: "Esc", run: async () => { await settle(); home(); } }]);
+}
+async function markApply() {
+  const P = X.paper, box = X.box; await settle();
+  const a = box.text(), files = [...box.files]; if (!a && !files.length) return say("Nothing to mark yet");
+  const run = async () => {
+    try {
+      const r = readMarks(await ask(applyMarkPrompt(P.m, P.g, P.probs, a, { photos: files.length }), "Marking", files), P.probs.map((p) => p.key));
+      results(P.probs.map((p, k) => ({ key: p.key, title: p.title, note: p.q, shown: r.marks[k].shown, why: [r.marks[k].why, r.marks[k].shown ? "" : p.guide].filter(Boolean).join(" ") })), r.feedback, { problems: P.probs, answer: a.slice(0, 8000), photos: files.length });
+    } catch (e) { failed(e, run); }
+  };
+  run();
+}
+
+// ---------- Connect ----------
+function sitConnect(m) {
+  const all = connectPairs(m, knownIn(m.topic), X.marks[m.id]), todo = all.filter((p) => !p.done);
+  if (!all.length) return say("Connect opens once both ideas of a pair are shown");
+  X.paper = { m, g: null, level: 4, pairs: (todo.length ? todo : all).map((p) => ({ ...p, answer: "" })), i: 0 }; connectView();
+}
+function connectView() {
+  const P = X.paper, p = P.pairs[P.i]; X.view = "paper"; head();
+  const box = answerBox({ photos: false });
+  show(el("p", { class: "muted", text: `${P.i + 1} / ${P.pairs.length}` }), el("p", { class: "ask", id: "ask", text: `How are ${p.a} and ${p.b} connected?` }), box.node);
+  const next = async () => { await settle(); p.answer = box.text(); if (++P.i < P.pairs.length) return connectView(); markConnect(); };
+  bar([X.dict ? { id: "speak", label: X.listening ? "Stop" : "Speak", key: "S", run: speak, live: X.listening } : null,
+    { id: "mark", label: P.i + 1 < P.pairs.length ? "Next" : "Mark", key: "mark", keys: ["mark", "Enter"], show: "↵", run: next, primary: true },
+    { id: "back", label: "Leave", key: "Escape", show: "Esc", run: async () => { await settle(); home(); } }]);
+}
+async function markConnect() {
+  const P = X.paper, said = P.pairs.filter((p) => p.answer);
+  if (!said.length) return home();
+  try {
+    const r = readMarks(await ask(connectMarkPrompt(P.m, said), "Marking"), said.map((p) => p.key));
+    results(said.map((p, k) => ({ key: p.key, title: `${p.a} and ${p.b}`, note: p.answer, shown: r.marks[k].shown, why: [r.marks[k].why, r.marks[k].shown ? "" : p.label].filter(Boolean).join(" · ") })), r.feedback, {});
+  } catch (e) { failed(e, markConnect); }
+}
+
+// ---------- results: what was shown, which he can overrule before it is saved ----------
+function results(items, feedback, record) {
+  const P = X.paper; X.view = "results"; head();
+  for (const it of items) it.was = it.shown;
+  const sum = el("b", { id: "score" }), list = el("ul", { class: "marks", id: "marks" });
+  const draw = () => {
+    sum.textContent = `${items.filter((i) => i.shown).length} / ${items.length}`;
+    list.replaceChildren(...items.map((it, n) => el("li", {}, el("button", { type: "button", class: "mark" + (it.shown ? " shown" : "") + (it.shown !== it.was ? " changed" : ""), "aria-pressed": String(it.shown), onclick: () => { it.shown = !it.shown; draw(); } },
+      el("span", { class: "tick", text: "✓" }), el("span", { class: "t" }, it.title, n < 9 ? [" ", kbd(String(n + 1))] : null), it.note ? el("span", { class: "note", text: it.note }) : null, it.why ? el("span", { class: "why", text: it.why }) : null))));
+  };
+  draw();
+  show(el("div", { class: "sum" }, sum, el("span", { class: "muted", text: "shown" })), feedback ? el("p", { text: feedback }) : null, list);
+  const save = async () => {
+    bar([], "Saving");
+    try {
+      await saveMarks(P.m, items, P.level);
+      X.db.collection("sittings").add({ map: P.m.id, graph: P.g?.name || "", level: P.level, at: new Date().toISOString(), feedback: feedback || "", marks: items.map((i) => ({ key: i.key, title: i.title, shown: i.shown, why: i.why, ...(i.shown !== i.was ? { changed: true } : {}) })), ...record }).catch(() => {});
+      X.note = `${items.filter((i) => i.shown).length} shown`; home();
+    } catch { X.note = "Couldn't save. Try again."; results(items, feedback, record); }
+  };
+  bar([{ id: "save", label: "Save", key: "Enter", show: "↵", run: save, primary: true }, { id: "again", label: "Sit again", key: "R", run: () => sit(P.m, P.g, P.level), off: P.level === 4 }, { id: "back", label: "Discard", key: "Escape", show: "Esc", run: home }]);
+  items.slice(0, 9).forEach((it, n) => { X.keys[String(n + 1)] = () => { it.shown = !it.shown; draw(); }; });
+}
+
+// ---------- export for the app ----------
+function exportView(whole = false) {
+  X.view = "export"; top("Export", X.topic);
+  const all = tiers(), sat = all.filter((m) => Object.values(X.marks[m.id]?.ideas || {}).some((l) => l > 0)), use = whole || !sat.length ? all : sat, known = knownIn(X.topic);
+  const text = JSON.stringify(exportExam(use, X.marks)), out = el("textarea", { class: "out", id: "out", readonly: true, hidden: true, "aria-label": "Export text" }); out.value = text;
+  show(el("div", { class: "seg", id: "scope" }, el("button", { type: "button", class: use === all ? "" : "on", text: "Tiers sat", disabled: !sat.length, onclick: () => exportView(false) }), el("button", { type: "button", class: use === all ? "on" : "", text: "Whole map", onclick: () => exportView(true) })),
+    el("ul", { class: "plain" }, use.map((m) => { const p = progress(m, X.marks[m.id], known); return el("li", {}, el("span", { text: m.tier }), el("span", { class: "muted", text: `${p.shown} shown · ${p.of - p.shown} greyed · ${p.connect.n} links` })); })),
+    el("p", { class: "muted", text: "In Bonsai: Menu, Import exam." }), out);
+  const copy = () => navigator.clipboard.writeText(text).then(() => say("Copied"), () => { out.hidden = false; out.select(); say("Select all and copy"); });
+  const file = () => X.dl.save({ filename: `bonsai-exam-${X.topic.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.json`, data: text }).then(() => say("Saved"), (e) => say(e?.code === "declined" ? "" : "Couldn't save the file. Copy it instead."));
+  bar([{ id: "copy", label: "Copy", key: "C", run: copy, primary: true }, X.dl ? { id: "file", label: "Save file", key: "D", run: file } : null, { id: "whole", label: use === all ? "Tiers sat" : "Whole map", key: "W", run: () => exportView(use !== all), off: !sat.length }, { id: "back", label: "Back", key: "Escape", show: "Esc", run: home }]);
+}
+
+boot();
+})();
+</script>
+</body>
+</html>

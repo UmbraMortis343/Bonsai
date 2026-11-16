@@ -1,0 +1,226 @@
+map: physics-igcse
+topic: Physics
+tier: IGCSE
+order: 1
+source: Cambridge IGCSE Physics (0625)
+
+graph: Measurement
+Measurement | Putting numbers and units on physical quantities
+  Length and volume | Measured with rulers, measuring cylinders and micrometers
+    Micrometer | A screw gauge for lengths to about 0.01 mm
+    Volume by displacement | An object's volume is the water it pushes aside
+  Time intervals | Measured with clocks and timers
+    ! Timing many swings | Time several oscillations and divide to cut the error in one
+  Scalars and vectors | A scalar has size only, a vector has size and direction
+    ! Adding two vectors at right angles | Draw them head to tail and find the resultant by Pythagoras or scale drawing
+  Averaging readings | Repeating and averaging reduces random error
+
+graph: Motion
+Motion | How position changes with time
+  Speed | Distance travelled per unit time
+    Average speed | Total distance divided by total time
+    Velocity | Speed in a stated direction
+  Acceleration | Change of velocity per unit time
+    Deceleration | A negative acceleration: slowing down
+    ! Using a = Δv / t | Find acceleration from a change in velocity and the time taken
+  Distance–time graphs | The gradient gives the speed
+  Speed–time graphs | The gradient gives acceleration and the area gives distance
+    ! Distance from a speed–time graph | Add the areas under the line
+  Free fall | Falling under gravity alone, about 9.8 m/s² near Earth
+    Terminal velocity | Constant speed reached when air resistance balances weight
+
+graph: Forces
+Forces | Pushes and pulls that change motion or shape
+  Mass and weight | Mass is the amount of matter, weight the pull of gravity on it
+    Gravitational field strength | Force per unit mass, about 9.8 N/kg on Earth
+    ! Using W = mg | Weight is mass times gravitational field strength
+  Resultant force | The single force equal to all the forces acting together
+    Balanced forces | Zero resultant: at rest or at constant velocity
+    Force and acceleration | A resultant force makes a mass accelerate: F = ma
+    ! Using F = ma | Relate resultant force, mass and acceleration
+  Friction | A force opposing motion between surfaces or through a fluid
+  Stretching springs | Extension is proportional to load up to a limit
+    Spring constant | Force per unit extension
+    Limit of proportionality | Beyond it, extension is no longer proportional to load
+  Moments | The turning effect of a force: force times perpendicular distance from the pivot
+    Principle of moments | In equilibrium, clockwise moments equal anticlockwise moments
+    Centre of gravity | The point where all the weight seems to act
+    ! Balancing a beam | Use the principle of moments to find an unknown force or distance
+  Momentum | Mass times velocity
+    Impulse | Force times time, equal to the change in momentum
+    Conservation of momentum | Total momentum is unchanged when no external force acts
+    ! Solving a collision | Equate total momentum before and after
+
+graph: Energy
+Energy | The capacity to do work, moved between stores
+  Energy stores | Kinetic, gravitational, chemical, elastic, nuclear, internal, electrostatic
+    Kinetic energy | Energy of motion: ½mv²
+    Gravitational potential energy | Energy of height: mgh
+  Conservation of energy | Energy is never made or destroyed, only transferred
+    ! Falling object energy | Set the loss in mgh equal to the gain in ½mv²
+  Work | Force times distance moved in the direction of the force
+    ! Using W = Fd | Work done equals energy transferred
+  Power | Work done, or energy transferred, per unit time
+  Efficiency | Useful output over total input
+    ! Calculating efficiency | Useful energy or power out divided by total in, as a percentage
+  Energy resources | Sources we draw energy from
+    Renewable resources | Replaced as they are used: solar, wind, hydro, tidal, geothermal
+    Fossil fuels | Coal, oil and gas: a store of chemical energy that runs out and emits CO₂
+    Nuclear fuel | Energy released by fission in a reactor
+
+graph: Density and pressure
+Density | Mass per unit volume
+  ! Using ρ = m / V | Find density from measured mass and volume
+  Floating and sinking | An object floats in a liquid of greater density
+  Pressure | Force per unit area
+    ! Using p = F / A | The same force on a smaller area gives a larger pressure
+    Pressure in liquids | Increases with depth and with the liquid's density
+    ! Using Δp = ρgΔh | Pressure change with depth in a liquid
+
+graph: Thermal physics
+Thermal physics | Heat, temperature and the particles behind them
+  Kinetic particle model | Matter is made of moving particles
+    States of matter | Solids hold shape, liquids flow, gases fill their container
+    Brownian motion | Random jiggling of visible specks, evidence for moving molecules
+    Gas pressure | Caused by particles colliding with the walls
+    Absolute zero | The lowest temperature, −273 °C, where particles have least energy
+    ! Boyle's law at constant temperature | pV stays constant for a fixed mass of gas
+  Thermal expansion | Most materials expand when heated
+  Specific heat capacity | Energy needed to raise 1 kg by 1 °C
+    ! Using ΔE = mcΔθ | Energy to change the temperature of a mass
+  Changes of state | Melting, boiling, condensing, freezing at fixed temperatures
+    Evaporation | Faster particles escape from a liquid's surface, cooling it
+    Boiling | Bubbles form throughout the liquid at one temperature
+  Thermal energy transfer | Energy moves from hot to cold
+    Conduction | Transfer through a material by particle vibration and free electrons
+    Convection | Transfer by a fluid moving as density changes
+    Thermal radiation | Transfer by infrared waves; needs no medium
+    Good absorbers and emitters | Dull black surfaces absorb and emit best, shiny ones worst
+
+graph: Waves
+Waves | Transfers of energy without transfer of matter
+  Wave features | Wavelength, frequency, amplitude, crest, trough, speed
+    Frequency | Number of waves passing a point each second
+    Wavelength | Distance between matching points on neighbouring waves
+    ! Using v = fλ | Wave speed is frequency times wavelength
+  Transverse waves | Vibration at right angles to the direction of travel
+  Longitudinal waves | Vibration along the direction of travel
+  Reflection of waves | Bouncing off a surface
+  Refraction of waves | Change of speed, and often direction, in a new medium
+  Diffraction | Spreading through a gap or round an edge
+  Sound | A longitudinal wave made by vibrating sources
+    Pitch and loudness | Higher frequency is higher pitch, larger amplitude is louder
+    Echoes | Reflected sound
+    Ultrasound | Sound above 20 kHz, used for scans and sonar
+    ! Speed of sound from an echo | Distance there and back divided by the time
+
+graph: Light
+Light | A transverse wave we can see
+  Law of reflection | Angle of incidence equals angle of reflection
+    Plane mirror image | Virtual, upright, same size, as far behind as the object is in front
+  Refraction of light | Light bends when it changes speed between materials
+    Refractive index | The ratio sin i / sin r for light entering from air
+    ! Using n = sin i / sin r | Find the refractive index or an angle
+    Critical angle | The angle of incidence beyond which light cannot leave the denser medium
+    Total internal reflection | All the light reflects inside the denser medium
+    Optical fibres | Carry light by repeated total internal reflection
+  Thin lenses | Shaped glass that converges or diverges light
+    Focal length | Distance from the lens to the principal focus
+    Real and virtual images | A real image forms on a screen, a virtual one cannot
+    ! Drawing a ray diagram | Two rays from the top of the object locate the image
+  Dispersion | A prism splits white light into colours
+  Electromagnetic spectrum | Radio, microwave, infrared, visible, ultraviolet, X-ray, gamma
+    Speed of electromagnetic waves | All travel at 3.0 × 10⁸ m/s in a vacuum
+    Uses and dangers of EM waves | From radio links to medical imaging; higher frequencies damage cells
+
+graph: Electricity
+Electricity | Charge and its flow round circuits
+  Electric charge | Positive and negative; like charges repel, unlike attract
+    Charging by friction | Electrons move from one insulator to another
+    Electric field | A region where a charge feels a force
+    Conductors and insulators | Conductors have free electrons, insulators do not
+  Current | Rate of flow of charge
+    ! Using I = Q / t | Current is charge passing per unit time
+    Conventional current | Flows from positive to negative, opposite to the electrons
+  Potential difference | Work done per unit charge between two points
+    Electromotive force | Work done per unit charge by a source driving charge round a circuit
+  Resistance | Potential difference divided by current
+    ! Using V = IR | Relate voltage, current and resistance
+    Resistance of a wire | Grows with length, falls with cross-sectional area
+    Current–voltage graphs | A straight line for a resistor, a curve for a lamp, one-way for a diode
+  Electrical power | Energy transferred per second: P = IV
+    ! Cost of electricity | Energy in kWh times the price per unit
+  Series circuits | One path: the same current everywhere, voltages add
+  Parallel circuits | Several paths: the same voltage across each, currents add
+    ! Combined resistance | Add resistors in series; in parallel the total is less than the smallest
+  Potential divider | Two resistors share a voltage in proportion to their resistance
+    Thermistors and LDRs | Resistance falls with temperature, or with light
+  Electrical safety | Protecting people and wiring from too much current
+    Fuses and circuit breakers | Break the circuit when the current is too large
+    Earthing | A low-resistance path to ground for metal cases
+
+graph: Magnetism and electromagnetism
+Magnetism | Forces between magnets and magnetic materials
+  Magnetic poles | North and south; like poles repel, unlike attract
+    Induced magnetism | A magnetic material becomes a magnet while near one
+    Hard and soft magnetic materials | Steel keeps its magnetism, soft iron loses it quickly
+  Magnetic field lines | Show the direction a north pole would move; closer lines mean a stronger field
+  Field of a current | A current in a wire or solenoid has a magnetic field round it
+    Electromagnets | A coil on a soft iron core, switched on and off with the current
+  Force on a current | A current-carrying wire in a magnetic field feels a force
+    Left-hand rule | Gives the force direction from field and current
+    d.c. motor | A coil turns in a field; a split-ring commutator keeps it turning
+  Electromagnetic induction | A changing magnetic field through a conductor induces an e.m.f.
+    a.c. generator | A coil rotating in a field gives an alternating e.m.f.
+    Direction of induced current | It opposes the change that causes it
+  Transformers | Change an alternating voltage using two coils on an iron core
+    ! Using the turns ratio | Vp / Vs = Np / Ns
+    High-voltage transmission | Less current for the same power, so less energy lost in the cables
+
+graph: Atoms and radioactivity
+Atoms | A tiny positive nucleus with electrons round it
+  Nuclear model | Alpha scattering showed a small, dense, positive nucleus
+    Protons and neutrons | The particles of the nucleus
+    Nuclide notation | Proton number and nucleon number written with the symbol
+    Isotopes | Atoms of one element with different numbers of neutrons
+  Radioactive decay | Unstable nuclei emit radiation at random
+    Alpha particles | Two protons and two neutrons: strongly ionising, stopped by paper
+    Beta particles | Fast electrons from the nucleus: stopped by a few millimetres of aluminium
+    Gamma rays | Electromagnetic waves from the nucleus: weakly ionising, very penetrating
+    ! Balancing a decay equation | Proton and nucleon numbers are the same on both sides
+    Background radiation | The radiation always around us, from rocks, radon, cosmic rays
+  Half-life | Time for half the nuclei in a sample to decay
+    ! Half-life from a decay curve | Read off the time for the count rate to halve
+  Fission and fusion | Splitting a heavy nucleus, or joining light ones, releases energy
+  Radiation safety | Limit time, keep distance, use shielding
+
+graph: Space
+Space | The Earth, the Solar System and beyond
+  Earth and Moon | Rotation gives day and night, the tilt gives seasons, the Moon's orbit its phases
+  Solar System | The Sun, eight planets, dwarf planets, moons, asteroids and comets
+    Orbits | Gravity keeps planets and moons in orbit
+    ! Orbital speed | v = 2πr / T for a circular orbit
+    Formation of the Solar System | Gravity pulled a cloud of gas and dust into a spinning disc
+  The Sun | A medium-sized star powered by fusing hydrogen into helium
+  Life cycle of stars | From nebula and protostar to a stable star, then giant and dense remnant
+    Supernova | The explosion of a massive star, making heavy elements
+    Black hole | A remnant so dense that light cannot escape
+  Galaxies | Collections of billions of stars; ours is the Milky Way
+    Light-year | The distance light travels in a year
+  Expanding Universe | Distant galaxies are moving away from us
+    Redshift | Light from receding galaxies is stretched to longer wavelengths
+    Big Bang | The Universe began hot and dense about 13.8 billion years ago
+    Cosmic microwave background | Leftover radiation from the early Universe
+
+link: Acceleration -> Force and acceleration | caused by a resultant force
+link: Work -> Kinetic energy | work done on an object changes it
+link: Kinetic particle model -> Pressure | gas pressure from particle collisions
+link: Refraction of waves -> Refraction of light | the same effect
+link: Thermal radiation -> Electromagnetic spectrum | infrared
+link: Electric charge -> Atoms | electrons and the nucleus carry it
+link: Force on a current -> Current | needs a current in a field
+link: Gamma rays -> Electromagnetic spectrum | highest frequency
+link: Orbits -> Mass and weight | gravity provides the force
+link: Fission and fusion -> The Sun | fusion powers it
+link: Power -> Electrical power | the same quantity
+link: Moments -> Balanced forces | no resultant moment either

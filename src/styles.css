@@ -55,6 +55,10 @@ body.night-ui #app{background:var(--bg)}
   font-size:12px;font-weight:500;line-height:1.5;padding:0 4px;border-radius:6px;will-change:transform;
   text-shadow:0 0 2px var(--bg),0 0 4px var(--bg),0 0 7px var(--bg),0 0 10px var(--bg)}
 .lbl.trunk,.lbl.tree{font-weight:700;font-size:13px}
+.lbl.node.ghost{color:var(--muted);font-weight:400}
+.examrow{display:flex;align-items:center;gap:8px;font-size:12px}
+.examrow .chip{font-size:12px;font-weight:600;border-color:var(--accent);color:var(--accent);background:transparent}
+.examrow .chip.ghost{border-style:dashed;border-color:var(--muted);color:var(--muted)}
 .lbl.sel{background:var(--ink);color:var(--bg);text-shadow:none;padding:0 7px;z-index:2}
 .lbl.zone{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
 .lbl.isle,.lbl.hub{font-size:13px;font-weight:700;color:var(--ink);max-width:240px}

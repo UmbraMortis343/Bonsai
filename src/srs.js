@@ -3,7 +3,8 @@ const DAY = 86400000;
 export const RATINGS = ["again", "hard", "good", "easy"];
 
 // An idea is worth reviewing if there's something to recall.
-export const reviewable = (node, childCount) => !!((node.note || "").trim() || (node.body || "").trim() || childCount > 0);
+// A greyed idea (one an exam hasn't shown yet) isn't reviewed until it is.
+export const reviewable = (node, childCount) => !node.ghost && !!((node.note || "").trim() || (node.body || "").trim() || childCount > 0);
 export const dueAt = (node) => node.srs?.due || new Date(Date.parse(node.createdAt) + DAY).toISOString();
 export const isDue = (node, now = Date.now()) => Date.parse(dueAt(node)) <= now;
 

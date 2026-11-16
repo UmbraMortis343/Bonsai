@@ -1,0 +1,72 @@
+map: leadership-team
+topic: Leadership
+tier: Leading a team
+order: 2
+source: Competency frameworks, behavioural interview questions and team-effectiveness research
+
+graph: Direction
+Direction | Making sure the team knows where it is going and why
+  Team purpose | A plain statement of what the team exists to do and for whom
+  Setting team goals | A few outcomes the whole team can name
+    Outcomes over outputs | Measure the change you want, not the amount of activity
+  Clarifying roles | Everyone knows what they own and who decides
+    RACI | Who is responsible, accountable, consulted and informed for each piece of work
+    ! Kick off a new project | Purpose, goals, roles, how you'll work, and the first milestone
+  Explaining the why | People commit to reasons, not instructions
+
+graph: Delegation
+Delegation | Handing over work with the authority to do it
+  Levels of delegation | From "do exactly this" to "decide and tell me after"
+  Situational leadership | Match direction and support to the person's skill and confidence on that task
+    Directing to delegating | Four styles: directing, coaching, supporting, delegating
+  Delegating outcomes | Hand over the result wanted and the limits, not the method
+    ! Delegate a task you'd rather keep | Outcome, limits, check-in points, and what support they want
+  Micromanagement | Controlling the how, which removes ownership and learning
+  Accountability | Following up on agreed commitments without taking the work back
+
+graph: Developing people
+Developing people | Helping each person get better at work that matters to them
+  One-to-ones | A regular private meeting that belongs to the team member
+  Coaching | Helping someone find their own answer through questions
+    GROW model | Goal, reality, options, will: a simple order for a coaching conversation
+    ! Coach instead of telling | Ask what they want, what's happening, what they could do, what they will do
+  Motivation | Why people put in effort
+    Intrinsic motivators | Autonomy, mastery and purpose sustain effort better than reward
+    Hygiene factors | Pay and conditions prevent dissatisfaction but don't motivate by themselves
+  Recognition | Noticing good work specifically and soon
+  Underperformance | Name the gap early, find the cause, agree a plan, follow up
+    ! Handle a missed deadline pattern | Facts first, ask for their account, agree what changes and when you'll check
+
+graph: Team dynamics
+Team dynamics | How a team behaves together
+  Building trust | People rely on each other after seeing competence, honesty and care
+    Vulnerability-based trust | Admitting weakness and asking for help without fear
+  Five dysfunctions | Absence of trust, fear of conflict, lack of commitment, avoidance of accountability, inattention to results
+  Productive conflict | Open debate about ideas, kept away from personalities
+    Conflict modes | Competing, collaborating, compromising, avoiding, accommodating
+    ! Mediate between two members | Hear each alone, bring them together on the shared goal, agree specific behaviours
+  Team norms | Agreed ways of working, set together and enforced by everyone
+  Inclusion | Making sure every voice is heard and every person can contribute fully
+  Groupthink | Agreement for the sake of harmony that hides doubts
+
+graph: Running the work
+Running the work | Keeping a team's effort organised and visible
+  Effective meetings | A purpose, the right people, an agenda, and decisions written down
+    Decision rights | Being clear whether you are informing, consulting or deciding together
+  Planning | Break the goal into milestones, owners and dates
+    Risks and contingencies | Name what could go wrong and what you'd do
+    ! Plan an event with volunteers | Work back from the date, assign owners, build in slack, and confirm the week before
+  Tracking progress | A shared view of what is done, doing and blocked
+  Removing blockers | The leader's job is to clear the way
+  Retrospectives | Regular reviews of what went well, what didn't and what to change
+
+link: Situational leadership -> Coaching | one of its four styles
+link: Delegating outcomes -> Outcomes over outputs | the same idea for one person
+link: Building trust -> Psychological safety | trust makes it safe
+link: Productive conflict -> Handling disagreement | the team version
+link: One-to-ones -> SBI model | where most feedback is given
+link: Setting team goals -> SMART goals | the same test applies
+link: Retrospectives -> Learning from failure | done as a team
+link: Tuckman's stages -> Team norms | set during norming
+link: Underperformance -> Accountability | holding the line kindly
+link: Groupthink -> Productive conflict | the cure for it

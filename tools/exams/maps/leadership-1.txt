@@ -1,0 +1,66 @@
+map: leadership-self
+topic: Leadership
+tier: Leading yourself
+order: 1
+source: Competency frameworks, behavioural interview questions and team-effectiveness research
+
+graph: Self-management
+Self-management | Running your own time, energy and commitments
+  Prioritising | Deciding what matters before deciding what's next
+    Eisenhower matrix | Sort tasks by urgent and important; schedule the important, drop the rest
+    ! Triage an overloaded week | Rank the commitments, renegotiate or drop the bottom ones, and tell people early
+  Goal setting | Turning an aim into something you can act on and check
+    SMART goals | Specific, measurable, achievable, relevant, time-bound
+  Reliability | Doing what you said you would, or flagging early when you can't
+  Self-awareness | Knowing your strengths, triggers and effect on others
+    Asking for feedback | Requesting specific observations rather than waiting for them
+    Growth mindset | Treating ability as something built through effort and feedback
+  Managing energy | Protecting focus, rest and recovery so the work is sustainable
+
+graph: Communication
+Communication | Getting meaning across and getting it back
+  Active listening | Attending fully, then showing you understood before replying
+    Paraphrasing | Saying it back in your own words to check
+    Open questions | Questions that can't be answered yes or no
+  Clear messages | Lead with the point, then the reason, then the ask
+    Know your audience | Fit the detail and the words to who is listening
+    ! Brief someone in two minutes | Situation, what you need, by when, and what good looks like
+  Non-verbal signals | Tone, posture and eye contact carry much of the message
+  Written communication | Short, structured and specific about the next action
+  Assertiveness | Stating your view and needs plainly while respecting the other person's
+
+graph: Giving and receiving feedback
+Feedback | Information about the effect of someone's work or behaviour
+  SBI model | Situation, behaviour, impact: describe what happened and what it caused
+    ! Give a piece of hard feedback | Name the situation and behaviour, state the impact, then ask for their view
+  Praise that lands | Specific and timely, about the action rather than the person
+  Receiving feedback | Listen, ask a clarifying question, thank, decide later
+    Defensiveness | The urge to explain or counter before understanding
+  Feedback and trust | People hear hard things from those who clearly care about them
+
+graph: Working in a team
+Teamwork | Getting more done together than apart
+  Tuckman's stages | Teams move through forming, storming, norming and performing
+  Roles and strengths | Teams need different contributions: ideas, drive, detail, care
+  Psychological safety | A shared belief that it is safe to speak up, ask and admit mistakes
+    Admitting mistakes | Saying it early makes it cheaper to fix and safer for others to do the same
+  Following well | Supporting a decision once made, and challenging it through the right channel
+  Handling disagreement | Go after the problem, not the person
+    ! Raise a concern with a peer | Describe what you saw, say why it matters, ask what they see
+
+graph: Problem solving
+Problem solving | Moving from a mess to a decision
+  Defining the problem | State what is wrong, for whom, and how you'd know it was fixed
+    Five whys | Ask why repeatedly to get from the symptom to a cause
+  Generating options | List several ways forward before judging any
+  Deciding | Choose on stated criteria and say what you are giving up
+    ! Talk through a decision you made | Situation, options, how you chose, result, what you'd change
+  STAR answers | Situation, task, action, result: the shape of a behavioural interview answer
+  Learning from failure | Review what happened without blame and change one thing
+
+link: Asking for feedback -> Receiving feedback | you have to be able to hear it
+link: Active listening -> Handling disagreement | understand before you argue
+link: Psychological safety -> Feedback and trust | both rest on trust
+link: Reliability -> Following well | keeping commitments to the team
+link: STAR answers -> Clear messages | structure makes the point land
+link: Self-awareness -> Defensiveness | knowing your triggers

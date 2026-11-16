@@ -2,6 +2,16 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.18.0 — 2026-11-17
+
+Exams fill the garden with what you already know.
+
+- **Import exam** (menu): takes what the Bonsai Exams page exports, pasted or as a file. It goes into the topic of that name, or a new one.
+- Ideas an exam showed arrive as real ideas in their knowledge graphs, each with a short note saying what it is. Their first reviews are spread over the days ahead, later for ideas shown at a deeper level, so a whole paper doesn't need water on the same morning.
+- Ideas not shown yet arrive **greyed**: pale in the knowledge view, a dashed ring in the tech tree, and "Not shown yet" in the idea's panel. They don't count toward a topic's growth and are never due.
+- **A re-sit** imported again wakes the greyed ideas it showed and makes nothing twice. Connections shown at the Connect level come in as links. Undo takes an import back.
+- An idea from an exam shows the level it was shown at (Recall, Explain, Apply) and its tier in its panel.
+
 ## 0.17.0 — 2026-11-17
 
 - **Joined.** The knowledge view has a second way of looking: J (or Joined in the bar) reads everything in view as one structure in 3D, joined the way the tech tree joins it. An island leads to its topics and they to the ideas their graphs start from; an island that grows from another hangs from the idea it grows from, on the next ring out and a step higher, and so on down. Open it on Foundations and you get Foundations with Maths, General science and then Physics growing out of it. Open it on a topic for that topic's graphs as one, with any island that grows from them. With nothing picked it is the whole garden from the start.

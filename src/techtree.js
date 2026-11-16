@@ -328,9 +328,10 @@ export function createTechTree({ host, saved = {}, art = () => null, onSelect = 
       } else if (x.kind === "key") {
         const opened = all || open.has(x.rec.id);
         ctx.fillStyle = opened ? hue : C.card; dot(sx, sy, r); ctx.strokeStyle = org ? armColour(hue) : hue; ctx.lineWidth = 1.4; ring(sx, sy, r);
-        if (x.rec.st !== "ok") { ctx.fillStyle = C.sap; dot(sx + r * 0.75, sy - r * 0.75, 2.4); }   // due for watering
+        if (x.rec.st === "ghost") { ctx.fillStyle = C.card; dot(sx, sy, r); ctx.setLineDash([2.5, 2.5]); ctx.strokeStyle = C.muted; ctx.lineWidth = 1.2; ring(sx, sy, r); ctx.setLineDash([]); }   // not shown in an exam yet
+        else if (x.rec.st !== "ok") { ctx.fillStyle = C.sap; dot(sx + r * 0.75, sy - r * 0.75, 2.4); }   // due for watering
       } else {
-        ctx.fillStyle = x.rec.st === "ok" ? hue : C.card; dot(sx, sy, r); ctx.strokeStyle = hue; ctx.lineWidth = 1.1; ring(sx, sy, r);
+        ctx.fillStyle = x.rec.st === "ok" ? hue : C.card; dot(sx, sy, r); ctx.strokeStyle = x.rec.st === "ghost" ? C.muted : hue; ctx.lineWidth = 1.1; ring(sx, sy, r);
       }
       if (n) {
         ctx.font = FONT.num; ctx.textAlign = "center"; ctx.textBaseline = "middle";
@@ -389,7 +390,7 @@ export function createTechTree({ host, saved = {}, art = () => null, onSelect = 
       ctx.globalAlpha = f0 && !near.has(r) ? (hov ? 0.25 : 0.5) : 1;
       const rad = r.kind === "topic" ? 6 + 2.2 * Math.min(2, r.growth) : r.depth === 0 ? 4 : 2.6;
       if (r.mist) { ctx.setLineDash([2.5, 2.5]); ctx.strokeStyle = C.muted; ctx.lineWidth = 1.2; ring(x, y, rad); ctx.setLineDash([]); }
-      else { ctx.fillStyle = r.kind === "idea" && r.st !== "ok" ? C.card : r.hue; dot(x, y, rad); ctx.strokeStyle = r.hue; ctx.lineWidth = 1; ring(x, y, rad); }
+      else { ctx.fillStyle = r.kind === "idea" && r.st !== "ok" ? C.card : r.hue; dot(x, y, rad); ctx.strokeStyle = r.st === "ghost" ? C.muted : r.hue; ctx.lineWidth = 1; ring(x, y, rad); }
       if (r.id === pick) { ctx.strokeStyle = C.ink; ctx.lineWidth = 1.5; ring(x, y, rad + 4); }
       ctx.globalAlpha = 1;
     }

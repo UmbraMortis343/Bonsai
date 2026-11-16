@@ -1,0 +1,150 @@
+map: physics-as
+topic: Physics
+tier: AS Level
+order: 2
+source: Cambridge International AS & A Level Physics (9702), AS content
+
+graph: Quantities and units
+Physical quantities | A numerical size with a unit
+  SI base units | kg, m, s, A, K and mol, from which other units are built
+    Derived units | Products and quotients of base units, such as N = kg m s⁻²
+    ! Checking homogeneity | Both sides of an equation must have the same base units
+    Prefixes | Powers of ten from pico to tera
+  Uncertainty | The range within which the true value is expected to lie
+    Systematic and random errors | A consistent offset, or scatter about the true value
+    Accuracy and precision | Closeness to the true value, and closeness of repeats to each other
+    ! Combining uncertainties | Add absolute uncertainties for sums, percentage ones for products
+  Resolving vectors | Splitting a vector into two perpendicular components
+    ! Finding components | F cos θ along and F sin θ across
+
+graph: Kinematics
+Kinematics | Describing motion without asking what causes it
+  Displacement | Distance in a stated direction from a starting point
+  Motion graphs | Gradient of displacement–time is velocity; area under velocity–time is displacement
+  Equations of uniform acceleration | The suvat equations for constant acceleration in a straight line
+    ! Solving with suvat | Pick the equation that has the three knowns and the one unknown
+    ! Measuring g by free fall | Time a fall over a known height and use s = ½gt²
+  Projectile motion | Constant horizontal velocity with uniform vertical acceleration
+    Independence of components | Horizontal and vertical motions do not affect each other
+    ! Range of a projectile | Find the time of flight vertically, then the distance horizontally
+
+graph: Dynamics
+Dynamics | Why things move as they do
+  Newton's first law | A body stays at rest or in uniform motion unless a resultant force acts
+    Inertia | Mass resists change in motion
+  Newton's second law | Resultant force equals the rate of change of momentum
+    Linear momentum | The product of mass and velocity, a vector
+    ! Force from a change in momentum | F = Δp / Δt
+  Newton's third law | Forces come in equal and opposite pairs acting on different bodies
+  Motion with resistance | Drag grows with speed until it balances the driving force
+  Elastic and inelastic collisions | Kinetic energy is conserved only in elastic ones
+    Relative speed of approach | Equals the relative speed of separation in an elastic collision
+    ! Two-body collision in one dimension | Conserve momentum, then check kinetic energy
+
+graph: Forces in equilibrium
+Equilibrium | No resultant force and no resultant torque
+  Couple | Two equal, opposite, parallel forces that only turn
+    Torque of a couple | One force times the perpendicular distance between them
+  Triangle of forces | Three forces in equilibrium form a closed triangle
+    ! Resolving for equilibrium | Components in each direction sum to zero
+  Upthrust | The upward force on a body in a fluid, from the pressure difference across it
+    Archimedes' principle | Upthrust equals the weight of fluid displaced
+    Hydrostatic pressure | The derivation of Δp = ρgΔh from the weight of a column
+
+graph: Work and power
+Work and energy transfer | Work done is energy moved by a force
+  Work by a force at an angle | W = Fs cos θ
+  Deriving kinetic energy | ½mv² follows from the equations of motion and W = Fs
+  Deriving potential energy | mgh from the work done against weight in a uniform field
+  Power and velocity | P = Fv for a force moving at speed v
+    ! Power of a moving vehicle | Driving force times velocity at steady speed
+  Efficiency of a system | Useful output over total input, with losses usually as heat
+
+graph: Deformation of solids
+Deformation | Change of shape under tensile or compressive forces
+  Hooke's law | Force is proportional to extension up to the limit of proportionality
+  Stress | Force per unit cross-sectional area
+  Strain | Extension per unit original length
+  Young modulus | Stress over strain: the stiffness of a material
+    ! Measuring the Young modulus | Load a long thin wire, measure extension and diameter
+  Elastic and plastic deformation | Elastic recovers fully, plastic leaves a permanent change
+    Elastic limit | The point beyond which deformation is permanent
+  Elastic potential energy | The area under a force–extension graph
+    ! Using E = ½Fx | Energy stored in a spring that obeys Hooke's law
+
+graph: Progressive waves
+Progressive waves | Waves that carry energy from place to place
+  Phase difference | How far out of step two points or two waves are, as an angle
+  Intensity | Power per unit area, proportional to amplitude squared
+    ! Intensity and amplitude | Doubling the amplitude quadruples the intensity
+  Cathode-ray oscilloscope | Shows a wave as a trace, to read period and amplitude
+  Doppler effect | Observed frequency changes when the source moves relative to the observer
+    ! Doppler shift for sound | f₀ = f v / (v ± vₛ)
+  Polarisation | Vibration confined to one plane; only transverse waves show it
+    Malus's law | Transmitted intensity is I₀ cos²θ
+
+graph: Superposition
+Superposition | Where waves meet, their displacements add
+  Stationary waves | Formed by two identical waves travelling in opposite directions
+    Nodes and antinodes | Points of zero and of maximum amplitude
+    ! Harmonics on a string | A whole number of half-wavelengths fits the length
+  Interference | The pattern made by superposing coherent waves
+    Coherence | A constant phase difference between sources
+    Path difference | Whole wavelengths give maxima, half wavelengths give minima
+  Double-slit experiment | Two slits give evenly spaced bright and dark fringes
+    ! Using λ = ax / D | Wavelength from slit separation, fringe spacing and screen distance
+  Diffraction grating | Many slits give sharp, bright maxima
+    ! Using d sin θ = nλ | Angles of the maxima from a grating
+
+graph: Current electricity
+Charge carriers | The moving charges that make up a current
+  Quantised charge | Charge comes in multiples of e = 1.6 × 10⁻¹⁹ C
+  Drift velocity | The slow average speed of carriers along a conductor
+    ! Using I = Anvq | Current from area, number density, drift speed and charge
+  Volt | One joule per coulomb
+  Ohm's law | Current is proportional to potential difference at constant temperature
+  Resistivity | A material property: R = ρL / A
+    ! Resistance from resistivity | Find the resistance of a wire from its dimensions
+  Filament lamp behaviour | Resistance rises as the filament heats up
+  Power dissipation | P = I²R = V² / R
+
+graph: D.C. circuits
+D.C. circuits | Steady currents round networks of components
+  Internal resistance | Resistance inside a source that lowers its terminal voltage
+    Terminal potential difference | E.m.f. minus the lost volts, V = E − Ir
+    ! Finding internal resistance | Plot V against I: gradient −r, intercept E
+  Kirchhoff's first law | Currents into a junction equal currents out: charge is conserved
+  Kirchhoff's second law | E.m.f.s round a loop equal the potential drops: energy is conserved
+    ! Analysing a two-loop circuit | Write a junction equation and two loop equations
+  Deriving resistor combinations | Series and parallel formulas follow from Kirchhoff's laws
+  Potentiometer | A potential divider used to compare potential differences by a null method
+    Galvanometer null | No current flows when the two potential differences match
+
+graph: Particle physics
+Particle physics | What matter is made of at the smallest scale
+  Alpha-scattering experiment | A few alpha particles bounced back, so the atom has a tiny dense nucleus
+  Nuclear equations | Nucleon number and charge are conserved in every reaction
+  Antiparticles | Same mass, opposite charge; the positron is the electron's
+  Beta decay | A neutron becomes a proton (β⁻) or a proton a neutron (β⁺), with a neutrino
+    Neutrinos | Almost massless neutral particles that explain beta decay's spread of energies
+  Fundamental particles | Quarks and leptons have no known structure
+    Quarks | Six flavours: up, down, strange, charm, top, bottom, with charges of ⅔e or −⅓e
+    Leptons | Electrons, neutrinos and their heavier relatives
+    Hadrons | Particles made of quarks: baryons have three, mesons a quark and antiquark
+    ! Quark make-up of nucleons | Proton uud, neutron udd; check the charges add up
+  Unified atomic mass unit | One twelfth of the mass of a carbon-12 atom
+
+link: Resolving vectors -> Projectile motion | components treated separately
+link: Newton's second law -> Force and acceleration | F = ma is the constant-mass case
+link: Linear momentum -> Momentum | the same quantity, treated as a vector
+link: Hooke's law -> Stretching springs | the same law
+link: Elastic potential energy -> Work and energy transfer | work done in stretching
+link: Stationary waves -> Reflection of waves | made by a wave meeting its reflection
+link: Double-slit experiment -> Diffraction | each slit diffracts the light
+link: Resistivity -> Resistance of a wire | puts numbers on it
+link: Kirchhoff's second law -> Conservation of energy | energy per unit charge round a loop
+link: Internal resistance -> Electromotive force | why terminal voltage is below the e.m.f.
+link: Beta decay -> Beta particles | what happens inside the nucleus
+link: Alpha-scattering experiment -> Nuclear model | the evidence for it
+link: Upthrust -> Pressure in liquids | from the pressure difference with depth
+link: Equations of uniform acceleration -> Speed–time graphs | derived from the graph

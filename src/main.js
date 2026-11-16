@@ -18,6 +18,7 @@ import { createEditor, textToBlocks, blocksToText } from "./blocks.js";
 import { datePicker, longDate } from "./datepick.js";
 import { createMiniWeb } from "./miniweb.js";
 import { MARK_LIST, assignMarks } from "./marks.js";
+import { readExam, planExam, LEVELS } from "./exams.js";
 
 const PALETTE = [["Blue", "#3b82f6"], ["Violet", "#8b5cf6"], ["Pink", "#ec4899"], ["Red", "#ef4444"], ["Orange", "#f97316"], ["Amber", "#f59e0b"], ["Green", "#22c55e"], ["Teal", "#14b8a6"], ["Cyan", "#06b6d4"]];
 const SWATCHES = [["Auto", ""], ...PALETTE];
@@ -122,7 +123,7 @@ function looksFor(tree, nodes, garden) {
   const m = new Map(), now = Date.now(), memo = new Map(), hue = tree.color || S.hues.get(tree.zoneId) || T.root;
   // Watering: the topic's colour while an idea is kept, ochre once it needs water, grey when it has dried out.
   if (garden) {
-    for (const n of nodes) { const t = thirst(n, now); m.set(n.id, { color: t === "dry" ? T.limb : t === "thirsty" ? T.link : hue, status: "ok" }); }
+    for (const n of nodes) { const t = thirst(n, now); m.set(n.id, { color: n.ghost ? T.ring : t === "dry" ? T.limb : t === "thirsty" ? T.link : hue, status: "ok" }); }
     return m;
   }
   // An idea takes its own colour, else the colour of the idea above it. With none set, a graph is its topic's
@@ -137,7 +138,7 @@ function looksFor(tree, nodes, garden) {
     }
     return memo.get(n.id);
   };
-  for (const n of nodes) m.set(n.id, { color: colorOf(n), status: "ok" });
+  for (const n of nodes) m.set(n.id, { color: n.ghost ? T.ring : colorOf(n), status: "ok" });
   return m;
 }
 const passesOf = (treeId) => (S.byTree.get(treeId) || []).reduce((a, n) => a + (n.srs?.passes || 0), 0);
@@ -161,7 +162,7 @@ function buildTree(animate) {
   stage.world.add(flora.group); stage.pickables = [flora.nodeMesh];
   for (const m of ground({ glows: [{ x: 0, z: 0, r: Math.max(7, lay.footprint * 1.8), color: hue, k: 0.11 }], discs: [{ x: 0, z: 0, r: discR(lay), color: hue }] }, T.sky)) addDecor(m);
   const labels = nodes.map((n) => {
-    const e = el("div", { class: "lbl node" + (n.id === tree.rootId ? " trunk" : ""), dataset: { kind: "node", id: n.id, n: S.num.get(n.id) }, text: n.title });
+    const e = el("div", { class: "lbl node" + (n.id === tree.rootId ? " trunk" : "") + (n.ghost ? " ghost" : ""), dataset: { kind: "node", id: n.id, n: S.num.get(n.id) }, text: n.title });
     labelEls.set(n.id, e);
     return { el: e, pos: flora.pos.get(n.id), kind: "node", id: n.id, depth: lay.depth.get(n.id), r: flora.radii.get(n.id), tidy: true };
   });
@@ -695,7 +696,7 @@ function appMenu(anchor) {
     S.view !== "notes" && S.view !== "tree" && { label: "Notes", key: "O", run: openNotes },
     S.view === "forest" && { label: "Timeline", key: "T", run: toggleTimeline },
     archived.length && { label: "Archived", run: () => menu(anchor, archived.map((x) => ({ label: `Restore ${x.name}`, run: async () => { await safely(() => (x.rootId ? store.updateTree : store.updateZone)(x.id, { archived: false })); refresh(); } }))) },
-    "-", S.view === "isles" && { label: "Import map", run: importMap }, { label: "Export backup", run: exportBackup }, { label: "Restore backup", run: () => $("#importFile").click() },
+    "-", S.view === "isles" && { label: "Import map", run: importMap }, { label: "Import exam", run: importExam }, { label: "Export backup", run: exportBackup }, { label: "Restore backup", run: () => $("#importFile").click() },
     CHANNEL && { label: "Reset demo data", run: resetDemo },
     "-", { label: "Shortcuts", key: "?", run: shortcuts },
     { label: "Check for updates", run: async () => { const r = await shell.check(); if (r !== "update") toast(r === "latest" ? "Up to date" : "Offline"); } },
@@ -1045,6 +1046,7 @@ function nodePanel(n) {
   const under = S.view === "tree" ? kidsOf(n.id) : [], go = (id) => { select(id); ensureVisible(id); };
   return [
     S.view === "tree" && trail.length ? el("div", { class: "trail" }, trail.map((q) => el("button", { class: "chip", type: "button", title: q.title, onclick: () => go(q.id) }, numTag(q.id), q.title))) : null,
+    n.ghost || n.exam ? el("div", { class: "examrow" }, el("span", { class: "chip" + (n.ghost ? " ghost" : ""), id: "examTag", text: n.ghost ? "Not shown yet" : LEVELS[(n.exam.level || 1) - 1] }), el("span", { class: "muted", text: n.exam?.tier || "" })) : null,
     el("div", { class: "ph" }, numTag(n.id), el("input", { id: "nodeTitle", class: "title", value: n.title, maxLength: 140, "aria-label": "Title",
       onchange: (e) => (e.target.value.trim() ? save({ title: e.target.value }) : (e.target.value = n.title)) }), panelClose()),
     el("input", { id: "nodeNote", class: "short", value: n.note || "", maxLength: 500, placeholder: "Short note", "aria-label": "Short note", onchange: (e) => save({ note: e.target.value }) }),
@@ -1230,7 +1232,7 @@ function gardenModel() {
   const marks = assignMarks(S.garden.islands.flatMap((isl) => isl.zoneIds).map((id) => zone.get(id)).filter(Boolean).map((z) => ({ id: z.id, name: z.name, picked: S.garden.zone[z.id]?.mark })));   // no two topics share a guessed landmark
   const model = S.garden.islands.map((isl, i) => {
     const topics = isl.zoneIds.map((id) => zone.get(id)).filter(Boolean).map((z, k) => {
-      const trees = S.trees.filter((t) => t.zoneId === z.id), nodes = trees.flatMap((t) => S.byTree.get(t.id) || []), rev = nodes.filter((n) => srs.reviewable(n, kidsOf(n.id).length)), due = rev.filter((n) => srs.isDue(n, now)), o = S.garden.zone[z.id] || {};
+      const trees = S.trees.filter((t) => t.zoneId === z.id), nodes = trees.flatMap((t) => S.byTree.get(t.id) || []).filter((n) => !n.ghost), rev = nodes.filter((n) => srs.reviewable(n, kidsOf(n.id).length)), due = rev.filter((n) => srs.isDue(n, now)), o = S.garden.zone[z.id] || {};
       return { id: z.id, name: z.name, biome: o.biome || BIOMES[k % 6][0], mark: marks.get(z.id), growth: Math.min(2, Math.pow((nodes.length + (CHANNEL ? o.fill || 0 : 0)) / FULL_PLOT, 0.6)), health: rev.length ? 1 - due.length / rev.length : 1, ideas: nodes.length, mist: !nodes.length && charted(), due: due.map((n) => n.id), trees };
     });
     if (!topics.length) topics.push({ id: null, name: "", biome: "bloom", mark: "kit", growth: 0.04, health: 1, ideas: 0, mist: charted(), due: [], trees: [] });
@@ -1430,6 +1432,35 @@ async function applyMap(text) {
   const n = done.islands.length; toast(`${done.hubs.length} hub${done.hubs.length === 1 ? "" : "s"}, ${n} island${n === 1 ? "" : "s"}`);
 }
 
+// ---------- exams ----------
+// The Bonsai Exams page (a page inside Claude) exports what an exam showed. Ideas shown go into the topic's
+// graphs with their drafted notes; the rest go in greyed and don't count until a re-sit shows them.
+function importExam() {
+  const file = el("input", { type: "file", accept: "application/json,.json,text/plain", hidden: true, onchange: async (e) => { const f = e.target.files[0]; if (!f) return; const text = await f.text(); closeTop(); applyExam(text); } });
+  dialog({ title: "Import exam", ok: "Next", fields: [{ name: "text", label: "Exam", type: "textarea", placeholder: "Paste" }], body: el("div", { class: "row" }, file, el("button", { type: "button", class: "btn", id: "examFile", text: "Choose file", onclick: () => file.click() })) })
+    .then((v) => { if (v) applyExam(v.text); });
+}
+async function applyExam(text) {
+  let exam; try { exam = readExam(text); } catch (e) { return toast(e.message); }
+  const NEW = "+", same = S.zones.find((z) => z.name.trim().toLowerCase() === exam.topic.toLowerCase());
+  const ideas = exam.tiers.flatMap((t) => t.graphs.flatMap((g) => g.ideas)), shown = ideas.filter((i) => i.level).length;
+  const v = await dialog({ title: "Import exam", ok: "Import", fields: [{ name: "zone", label: "Topic", type: "select", value: same?.id || NEW, options: [[NEW, `New: ${exam.topic}`], ...S.zones.map((z) => [z.id, z.name])] }],
+    body: el("p", { class: "meta", id: "examSum", text: `${exam.tiers.map((t) => t.tier).join(", ")} · ${shown} shown · ${ideas.length - shown} greyed` }) });
+  if (!v) return;
+  if (S.view === "isles") isles.setActive(false);
+  const made = await safely(async () => {
+    const zoneId = v.zone === NEW ? (await store.createZone({ name: exam.topic })).id : v.zone;
+    const trees = S.trees.filter((t) => t.zoneId === zoneId), inTopic = new Set(trees.map((t) => t.id)), nodes = S.nodes.filter((n) => inTopic.has(n.treeId));
+    return store.importExam(zoneId, planExam(exam, { trees, nodes, links: S.links }));
+  });
+  if (S.view === "isles") isles.setActive(true);
+  if (!made) return;
+  await refresh();
+  const woke = made.woke.filter((w) => w.ghost).length, grey = made.nodeIds.filter((id) => S.byId.get(id)?.ghost).length, n = made.nodeIds.length - grey + woke;
+  toast([`${n} idea${n === 1 ? "" : "s"} shown`, grey ? `${grey} greyed` : "", made.linkIds.length ? `${made.linkIds.length} link${made.linkIds.length === 1 ? "" : "s"}` : ""].filter(Boolean).join(", "),
+    { label: "Undo", run: async () => { await safely(() => store.undoExam(made)); refresh(); } });
+}
+
 // ---------- a topic past 200% moves onto an island of its own ----------
 // Its graphs are read as one graph under the trunk picked, and the biggest main branches of that graph become the topics there.
 const SPLIT_MAX = ISLE_MAX - 1;
@@ -1485,7 +1516,7 @@ function techData() {
   artSig = new Map(model.map((q) => [q.id, JSON.stringify([q.landmark, q.mountain, q.topics.map((t) => [t.biome, t.mark, Math.round(t.health * 10), Math.round(t.growth * 10), !!t.mist])])])); artFresh = false;
   return { islands: model.map((q) => ({ id: q.id, name: q.name, hub: q.hub, after: rec.get(q.id)?.after || null, from: rec.get(q.id)?.from || null })),
     topics: model.flatMap((q, i) => q.topics.filter((t) => t.id).map((t) => ({ id: t.id, name: t.name, isle: i, ideas: t.ideas, growth: t.growth, mist: t.mist }))),
-    trees: S.trees, nodes: S.nodes.map((n) => ({ ...n, st: thirst(n) })), links: S.links };
+    trees: S.trees, nodes: S.nodes.map((n) => ({ ...n, st: n.ghost ? "ghost" : thirst(n) })), links: S.links };
 }
 // Pictures of islands and topics for the tech tree, taken by the garden's renderer one at a time between frames.
 const arts = new Map(), artWant = []; let artSig = new Map(), artFresh = false, artTimer = 0;

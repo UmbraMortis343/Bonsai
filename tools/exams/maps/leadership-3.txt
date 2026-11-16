@@ -1,0 +1,71 @@
+map: leadership-org
+topic: Leadership
+tier: Leading an organisation
+order: 3
+source: Competency frameworks, behavioural interview questions and team-effectiveness research
+
+graph: Strategy
+Strategy | Choosing where to play and how to win, and what not to do
+  Vision and mission | Where you are going, and what you do to get there
+  Diagnosis | An honest account of the situation and the main challenge
+    SWOT analysis | Strengths, weaknesses, opportunities and threats
+  Strategic choices | A few priorities that rule other things out
+    Trade-offs | Saying no to good ideas so the best ones get resourced
+    ! Set priorities with half the budget | Name the goal, rank the bets, cut whole items rather than thinning all of them
+  OKRs | Objectives with measurable key results, set each cycle
+  Cynefin | Match the approach to the problem: clear, complicated, complex or chaotic
+
+graph: Culture
+Culture | What people actually do when nobody is checking
+  Values in practice | Values are shown by what gets rewarded, tolerated and punished
+  Leading by example | People copy what leaders do before what they say
+  Servant leadership | The leader exists to serve the team's growth and success
+  Hiring and onboarding | Who joins and how they start shapes the culture most
+  Rituals and stories | Repeated practices and retold moments carry the culture
+  Ethics | Doing the right thing when it costs something
+    ! Respond to a values breach by a star performer | Act on the behaviour, apply the same standard, explain why to the team
+
+graph: Leading change
+Leading change | Moving a group from one way of working to another
+  Kotter's eight steps | From creating urgency and a guiding coalition to anchoring the change
+    Creating urgency | Making the case that staying the same is the bigger risk
+    Short-term wins | Early visible results that build belief
+  Change curve | People move through shock, resistance and exploration before commitment
+  Resistance | Usually a signal of loss, fear or missing information
+    ! Announce an unpopular change | Say what, why and what stays the same; listen; repeat it often
+  Communicating change | Far more often than feels necessary, through several channels
+
+graph: Stakeholders and influence
+Influence | Getting things done through people you don't manage
+  Stakeholder mapping | Plot people by interest and power to decide how to involve them
+    ! Win over a sceptical sponsor | Find what they care about, show the risk handled, ask for a small first step
+  Negotiation | Reaching an agreement that both sides can keep
+    Interests over positions | Ask why they want it; there is often more than one way to meet it
+    BATNA | Your best alternative if no agreement is reached
+  Managing up | Giving your own leaders what they need to back you
+  Building networks | Relationships made before you need them
+  Persuasion | Credibility, evidence and emotion together
+
+graph: Leading leaders
+Leading leaders | Getting results through other people's teams
+  Organisation design | Structure follows strategy: who reports where and who decides what
+    Span of control | How many people one leader can support well
+  Developing leaders | Growing people who can run teams without you
+    Succession planning | Knowing who could step into each key role
+    ! Pick between two candidates to lead a team | Weigh how they get results through others, not only their own output
+  Decision making at scale | Push decisions to where the information is
+    Reversible and irreversible decisions | Move fast on the first kind, slowly on the second
+  Crisis leadership | Be visible, decide on what you know, communicate often, review after
+  Measuring what matters | A few indicators that show whether the strategy is working
+
+link: OKRs -> Setting team goals | how goals cascade
+link: Strategic choices -> Prioritising | the same discipline at scale
+link: Culture -> Team norms | norms are culture in one team
+link: Servant leadership -> Removing blockers | what it looks like day to day
+link: Kotter's eight steps -> Explaining the why | urgency is the why
+link: Resistance -> Active listening | listen for what's being lost
+link: Developing leaders -> Coaching | the main tool
+link: Decision making at scale -> Levels of delegation | delegation as a system
+link: Interests over positions -> Conflict modes | the collaborating mode
+link: Crisis leadership -> Clear messages | plain words under pressure
+link: Cynefin -> Defining the problem | first decide what kind of problem it is

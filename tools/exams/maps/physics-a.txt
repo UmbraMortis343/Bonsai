@@ -1,0 +1,175 @@
+map: physics-a
+topic: Physics
+tier: A Level
+order: 3
+source: Cambridge International AS & A Level Physics (9702), A Level content
+
+graph: Circular motion
+Circular motion | Moving in a circle at steady speed while always accelerating
+  Radian | The angle whose arc equals the radius
+  Angular speed | Angle turned through per unit time, ω = 2π / T
+    ! Using v = rω | Linear speed from radius and angular speed
+  Centripetal acceleration | Directed to the centre: a = v² / r = rω²
+  Centripetal force | The resultant force towards the centre that keeps a body in a circle
+    ! Finding the centripetal force | F = mv² / r, provided by tension, friction or gravity
+
+graph: Gravitational fields
+Gravitational field | A region where a mass feels a force
+  Newton's law of gravitation | F = GMm / r² between point masses
+  Field strength of a point mass | g = GM / r²
+    ! g at a planet's surface | Use the planet's mass and radius in g = GM / r²
+  Gravitational potential | Work done per unit mass bringing a small mass from infinity: φ = −GM / r
+    Gravitational potential energy of two masses | Eₚ = −GMm / r
+  Circular orbits | Gravity provides the centripetal force
+    ! Deriving T² ∝ r³ | Equate GMm / r² to mrω²
+    Geostationary orbit | A 24-hour equatorial orbit that stays above one point
+
+graph: Thermal physics and gases
+Thermal equilibrium | No net energy flows between bodies at the same temperature
+  Thermodynamic temperature | The kelvin scale, which does not depend on any substance
+  Specific latent heat | Energy to change the state of 1 kg at constant temperature
+    ! Using E = mL | Energy for melting or boiling
+  Ideal gas | A gas that obeys pV ∝ T exactly
+    Mole and Avogadro constant | 6.02 × 10²³ particles in one mole
+    Equation of state | pV = nRT = NkT
+    ! Solving a gas problem | Use pV = nRT with temperature in kelvin
+  Kinetic theory of gases | Pressure explained by molecules colliding elastically with the walls
+    Kinetic theory assumptions | Negligible volume, no forces between molecules, random motion, elastic collisions
+    Root-mean-square speed | The square root of the mean of the squared speeds
+    Mean kinetic energy of a molecule | 3/2 kT, proportional to temperature
+    Boltzmann constant | The gas constant per molecule, k = R / Nₐ
+  Internal energy | The sum of the random kinetic and potential energies of the molecules
+  First law of thermodynamics | ΔU = q + W: energy supplied by heating plus work done on the system
+    Work done by a gas | W = pΔV at constant pressure
+    ! Applying the first law | Track signs of q, W and ΔU through a change
+
+graph: Oscillations
+Oscillations | Repeated motion about an equilibrium position
+  Simple harmonic motion | Acceleration is proportional to displacement and directed to the centre
+    Angular frequency | ω = 2πf
+    Defining equation of SHM | a = −ω²x
+    ! Displacement, velocity, acceleration | x = x₀ sin ωt and v = ±ω√(x₀² − x²)
+  Energy in SHM | Swaps between kinetic and potential; the total is ½mω²x₀²
+  Damping | Resistive forces remove energy, so the amplitude decays
+    Critical damping | Returns to rest in the shortest time without oscillating
+  Forced oscillations | Driven by a periodic force at the driver's frequency
+    Resonance | Amplitude peaks when the driving frequency matches the natural frequency
+
+graph: Electric fields
+Electric fields | Regions where a charge feels a force
+  Electric field strength | Force per unit positive charge
+  Uniform electric field | Between parallel plates: E = ΔV / Δd
+    ! Charged particle between plates | Constant force gives a parabolic path
+  Coulomb's law | F = Qq / (4πε₀r²) between point charges
+  Field of a point charge | E = Q / (4πε₀r²)
+  Electric potential | Work done per unit positive charge bringing a small charge from infinity
+    Potential gradient | Field strength equals minus the potential gradient
+    Electric potential energy of two charges | Eₚ = Qq / (4πε₀r)
+  Fields compared | Gravitational and electric fields share the inverse-square form; only electric can repel
+
+graph: Capacitance
+Capacitance | Charge stored per unit potential difference
+  Capacitors in series and parallel | Parallel capacitances add; in series the reciprocals add
+    ! Combined capacitance | Work out the total for a network
+  Energy stored in a capacitor | ½QV = ½CV², the area under a potential–charge graph
+  Capacitor discharge | Charge, current and voltage all fall exponentially through a resistor
+    Time constant | τ = RC, the time to fall to 1/e of the starting value
+    ! Using x = x₀ e^(−t/RC) | Find the charge or voltage left after a time
+
+graph: Magnetic fields
+Magnetic fields | Regions where moving charges and currents feel a force
+  Magnetic flux density | Force per unit current per unit length on a wire at right angles to the field
+    ! Using F = BIL sin θ | Force on a current-carrying conductor
+  Force on a moving charge | F = BQv sin θ, at right angles to the velocity
+    Circular path in a field | The magnetic force acts as the centripetal force
+    Velocity selector | Crossed electric and magnetic fields pass only one speed
+  Hall effect | A voltage across a conductor carrying current in a magnetic field
+    Hall probe | Uses the Hall voltage to measure flux density
+  Forces between parallel currents | Like currents attract, opposite currents repel
+  Magnetic flux | Flux density times the area it passes through at right angles
+    Flux linkage | Flux times the number of turns
+  Faraday's law | Induced e.m.f. is proportional to the rate of change of flux linkage
+  Lenz's law | The induced e.m.f. opposes the change that produces it
+    ! E.m.f. in a moving conductor | Rate at which the conductor cuts flux
+
+graph: Alternating currents
+Alternating current | A current that varies sinusoidally and reverses direction
+  Peak and r.m.s. values | The r.m.s. value is the peak divided by √2 for a sine wave
+    ! Mean power in a resistor | Half the peak power for a sinusoidal current
+  Rectification | Turning alternating current into direct current
+    Half-wave rectification | One diode passes only one half of each cycle
+    Full-wave rectification | A four-diode bridge passes both halves in the same direction
+  Smoothing | A capacitor across the load fills in the gaps between peaks
+
+graph: Quantum physics
+Quantum physics | Energy and matter in discrete packets
+  Photon | A quantum of electromagnetic energy, E = hf
+    Photon momentum | p = E / c
+    Electronvolt | The energy gained by an electron crossing one volt
+  Photoelectric effect | Light ejects electrons from a metal only above a threshold frequency
+    Work function | The least energy needed to free an electron from the surface
+    ! Using hf = Φ + ½mv²max | Photon energy, work function and maximum kinetic energy
+    Why intensity fails | Brighter light gives more electrons, not more energetic ones
+  Wave–particle duality | Light and matter show both wave and particle behaviour
+    Electron diffraction | Electrons make diffraction rings, so particles behave as waves
+    de Broglie wavelength | λ = h / p
+  Energy levels in atoms | Electrons occupy discrete energy states
+    Line spectra | Each line is a photon emitted or absorbed between two levels
+    ! Using hf = E₁ − E₂ | Wavelength of a spectral line from a level difference
+
+graph: Nuclear physics
+Nuclear energy | Energy bound up in the mass of nuclei
+  Mass–energy equivalence | E = mc²
+  Mass defect | A nucleus has less mass than its separate nucleons
+  Binding energy | The energy needed to separate a nucleus into its nucleons
+    Binding energy per nucleon | Peaks near iron, which is why fission and fusion both release energy
+    ! Energy released in a reaction | Mass difference times c²
+  Random and spontaneous decay | Unpredictable for one nucleus and unaffected by conditions
+  Decay constant | The probability per unit time that a nucleus decays
+    Activity | Decays per second: A = λN
+    Exponential decay law | N = N₀ e^(−λt)
+    ! Using λ = 0.693 / t½ | Link the decay constant and the half-life
+
+graph: Medical physics
+Medical physics | Physics used to look inside the body
+  Ultrasound scanning | Pulses reflect at tissue boundaries and the echoes build an image
+    Piezoelectric transducer | A crystal that turns voltage into vibration and back
+    Acoustic impedance | Density times speed of sound; the mismatch sets how much reflects
+    ! Reflected intensity fraction | (Z₁ − Z₂)² / (Z₁ + Z₂)²
+  X-ray production | Fast electrons stopped by a metal target emit X-rays
+    X-ray attenuation | Intensity falls exponentially with thickness: I = I₀ e^(−μx)
+    CT scanning | Many X-ray views combined by computer into slices
+  PET scanning | A tracer emits positrons; annihilation gamma pairs locate it
+    Annihilation | A particle and its antiparticle convert to two gamma photons
+
+graph: Astronomy and cosmology
+Astronomy | Measuring stars and the Universe from their light
+  Luminosity | Total power radiated by a star
+  Standard candles | Objects of known luminosity used to find distance
+    Inverse square law of flux | F = L / (4πd²)
+    ! Distance from flux | Rearrange F = L / (4πd²) for a standard candle
+  Wien's displacement law | Peak wavelength is inversely proportional to temperature
+  Stefan–Boltzmann law | L = 4πσr²T⁴
+    ! Radius of a star | From its luminosity and surface temperature
+  Hubble's law | Recession speed is proportional to distance, v = H₀d
+    Redshift and recession speed | Δλ / λ ≈ v / c
+    Age of the Universe | Roughly 1 / H₀
+
+link: Centripetal force -> Resultant force | it is the resultant, not an extra force
+link: Circular orbits -> Centripetal force | gravity provides it
+link: Circular orbits -> Orbits | the quantitative treatment
+link: Field strength of a point mass -> Gravitational field strength | g near the surface
+link: Fields compared -> Gravitational potential | the same mathematics
+link: Kinetic theory of gases -> Kinetic particle model | made quantitative
+link: Simple harmonic motion -> Circular motion | SHM is circular motion seen edge-on
+link: Capacitor discharge -> Exponential decay law | the same exponential form
+link: Circular path in a field -> Centripetal force | the magnetic force provides it
+link: Faraday's law -> Electromagnetic induction | the law behind it
+link: Lenz's law -> Conservation of energy | a consequence of it
+link: Peak and r.m.s. values -> Power dissipation | r.m.s. gives the same heating as d.c.
+link: de Broglie wavelength -> Diffraction | particles diffract like waves
+link: Mass defect -> Fission and fusion | the source of their energy
+link: Annihilation -> Antiparticles | what happens when the pair meet
+link: Hubble's law -> Redshift | measured through it
+link: Decay constant -> Half-life | λ = ln 2 / t½
+link: Photon -> Electromagnetic spectrum | energy rises with frequency

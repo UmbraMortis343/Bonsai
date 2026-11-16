@@ -436,6 +436,75 @@ export async function ungrowPage(pageId) {
   });
 }
 
+// ---------- exams ----------
+// An idea an exam showed counts as reviewed once. First reviews are spread over the coming days (later for a
+// deeper level), so a whole paper doesn't dry out on the same morning.
+const DAY = 86400000;
+function passed(level, k) {
+  const interval = 4 + (k % 10) + 4 * Math.max(0, level - 1);
+  return { reviewedAt: now(), srs: { interval, ease: 2.5, reps: 1, lapses: 0, passes: 1, due: new Date(Date.now() + interval * DAY).toISOString() } };
+}
+// Adds what planExam (exams.js) worked out, all in one save. Ideas not shown yet go in greyed (`ghost`): they
+// don't count toward growth and aren't reviewed. Returns what it did, for undoExam.
+export async function importExam(zoneId, plan) {
+  return tx(["zones", "trees", "nodes", "links", "events"], "readwrite", async (s) => {
+    if (!(await reqP(s.zones.get(zoneId)))) throw new Error("That topic no longer exists.");
+    const ids = new Map(), treeOfKey = new Map(), made = { at: now(), zoneId, treeIds: [], nodeIds: [], linkIds: [], woke: [] };
+    let k = 0;
+    const dress = (node, n) => { node.exam = n.exam; if (n.ghost) node.ghost = true; else Object.assign(node, passed(n.exam.level, k++)); return node; };
+    const sibs = await reqP(s.trees.index("zoneId").getAll(zoneId));
+    let order = sibs.length ? Math.max(...sibs.map((x) => x.order)) : 0;
+    for (const t of plan.trees) {
+      const tree = { id: uid(), zoneId, name: clean(t.name, 80) || clean(t.title, 80), color: null, rootId: null, order: ++order, archived: false, exam: { map: t.exam.map, tier: t.tier }, createdAt: now(), updatedAt: now() };
+      const root = dress(newNode(tree.id, null, t, 1), t); tree.rootId = root.id;
+      s.trees.put(tree); s.nodes.put(root); ids.set(t.root, root.id); treeOfKey.set(t.root, tree.id);
+      made.treeIds.push(tree.id); made.nodeIds.push(root.id);
+      logEvent(s, "tree.create", tree.id, { name: tree.name, zoneId }); logEvent(s, "node.create", root.id, { treeId: tree.id, parentId: null });
+    }
+    const nextOrder = new Map();
+    for (const n of plan.nodes) {
+      const parentId = ids.get(n.parent) || n.parent;
+      let treeId = treeOfKey.get(n.parent);
+      if (!treeId) { const parent = await reqP(s.nodes.get(parentId)); if (!parent) continue; treeId = parent.treeId; }
+      if (!nextOrder.has(parentId)) { const kids = await reqP(s.nodes.index("parentId").getAll(parentId)); nextOrder.set(parentId, kids.length ? Math.max(...kids.map((x) => x.order)) : 0); }
+      nextOrder.set(parentId, nextOrder.get(parentId) + 1);
+      const node = dress(newNode(treeId, parentId, n, nextOrder.get(parentId)), n);
+      s.nodes.put(node); ids.set(n.key, node.id); treeOfKey.set(n.key, treeId); made.nodeIds.push(node.id);
+      if (!node.ghost) logEvent(s, "node.create", node.id, { treeId, parentId });
+    }
+    for (const w of [...plan.wake, ...plan.raise]) {
+      const node = await reqP(s.nodes.get(w.id)); if (!node) continue;
+      made.woke.push({ id: node.id, ghost: !!node.ghost, exam: node.exam || null, srs: node.srs || null, reviewedAt: node.reviewedAt || null });
+      const next = { ...node, exam: w.exam, updatedAt: now() };
+      if (node.ghost) { delete next.ghost; Object.assign(next, passed(w.exam.level, k++)); logEvent(s, "node.create", node.id, { treeId: node.treeId, parentId: node.parentId }); }
+      s.nodes.put(next);
+    }
+    for (const l of plan.links) {
+      const fromId = ids.get(l.from) || l.from, toId = ids.get(l.to) || l.to;
+      if (fromId === toId || !(await reqP(s.nodes.get(fromId))) || !(await reqP(s.nodes.get(toId)))) continue;
+      const link = { id: uid(), fromId, toId, label: clean(l.label, 60), note: "", createdAt: now(), updatedAt: now() };
+      s.links.put(link); made.linkIds.push(link.id); logEvent(s, "link.create", link.id, { fromId, toId });
+    }
+    return made;
+  });
+}
+// Takes an exam import back: what it added goes, and what it woke is greyed again.
+export async function undoExam(made) {
+  return tx(["trees", "nodes", "links", "events", "patches"], "readwrite", async (s) => {
+    for (const id of made.linkIds) s.links.delete(id);
+    for (const w of made.woke) {
+      const node = await reqP(s.nodes.get(w.id)); if (!node) continue;
+      const back = { ...node, exam: w.exam, srs: w.srs, reviewedAt: w.reviewedAt, updatedAt: now() };
+      if (w.ghost) back.ghost = true; if (!w.exam) delete back.exam; if (!w.srs) delete back.srs;
+      s.nodes.put(back);
+    }
+    const ids = new Set();
+    for (const id of made.nodeIds) { const n = await reqP(s.nodes.get(id)); if (!n) continue; for (const x of subtreeIds(await reqP(s.nodes.index("treeId").getAll(n.treeId)), id)) ids.add(x); }
+    await removeNodes(s, [...ids]);
+    for (const id of made.treeIds) { for (const p of await reqP(s.patches.index("treeId").getAll(id))) s.patches.delete(p.id); s.trees.delete(id); }
+  });
+}
+
 // ---------- patches and inbox ----------
 export async function addPatch({ treeId, text, nodeIds = [] }) {
   text = String(text || "").trim().slice(0, 4000); if (!text) throw new Error("Write something first.");
