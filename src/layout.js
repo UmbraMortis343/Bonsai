@@ -18,7 +18,7 @@ export function layoutTree(nodes, rootId, links = []) {
   const kids = new Map();
   for (const n of nodes) if (n.parentId != null && byId.has(n.parentId)) { if (!kids.has(n.parentId)) kids.set(n.parentId, []); kids.get(n.parentId).push(n); }
   for (const l of kids.values()) l.sort((a, b) => a.order - b.order || a.createdAt.localeCompare(b.createdAt));
-  const out = { pos: new Map(), depth: new Map(), size: new Map(), kids, rootId: root?.id, center: [0, 1, 0], radius: 2, footprint: 1.5, height: 2, bonds: [], tight: 0 };
+  const out = { pos: new Map(), depth: new Map(), size: new Map(), kids, rootId: root?.id, center: [0, 1, 0], radius: 2, footprint: 1.5, height: 2, bonds: [], tight: 0, pinned: new Set() };
   if (!root) return out;
 
   // How much hangs off each idea, leaves first.
@@ -46,8 +46,11 @@ export function layoutTree(nodes, rootId, links = []) {
       if (dv[1] < -0.3) dv[1] = -0.3;
       dv = norm(dv);
       const len = Math.max(1.05, 1.75 * Math.pow(0.9, d - 1) * (1 + 0.16 * Math.log2(out.size.get(c.id))) * (inner ? 0.72 : 1));
-      dir.set(c.id, dv); out.depth.set(c.id, d); rest.set(c.id, len);
-      out.pos.set(c.id, [p[0] + dv[0] * len, Math.max(FLOOR, p[1] + dv[1] * len), p[2] + dv[2] * len]);
+      // an idea moved by hand sits where it was put, and what hangs from it fans out from there
+      const pin = Array.isArray(c.pin) && c.pin.length === 3 && c.pin.every(Number.isFinite) ? [c.pin[0], Math.max(FLOOR, c.pin[1]), c.pin[2]] : null;
+      if (pin) { const to = [pin[0] - p[0], pin[1] - p[1], pin[2] - p[2]], l = Math.hypot(to[0], to[1], to[2]); if (l > 1e-3) { dv = [to[0] / l, to[1] / l, to[2] / l]; out.pinned.add(c.id); rest.set(c.id, l); } }
+      dir.set(c.id, dv); out.depth.set(c.id, d); if (!out.pinned.has(c.id)) rest.set(c.id, len);
+      out.pos.set(c.id, out.pinned.has(c.id) ? pin : [p[0] + dv[0] * len, Math.max(FLOOR, p[1] + dv[1] * len), p[2] + dv[2] * len]);
     });
   }
   const seen = new Set();
@@ -92,7 +95,8 @@ function settle(L, order, rest, links) {
   const sticks = order.filter((n) => n.id !== L.rootId).map((n) => [ix.get(n.parentId), ix.get(n.id), rest.get(n.id)]);
   const ties = links.map((l) => [ix.get(l.a), ix.get(l.b)]), bonds = [...sticks, ...ties];
   const reach = 2.6 + 0.25 * Math.log2(N);   // a link is happy at this length or shorter
-  const move = (i, dx, dy, dz) => { if (i === root) return; X[i] += dx; Y[i] = Math.max(FLOOR, Y[i] + dy); Z[i] += dz; };
+  const fixed = new Uint8Array(N); fixed[root] = 1; for (const id of L.pinned) fixed[ix.get(id)] = 1;   // the first idea, and any idea placed by hand
+  const move = (i, dx, dy, dz) => { if (fixed[i]) return; X[i] += dx; Y[i] = Math.max(FLOOR, Y[i] + dy); Z[i] += dz; };
   const side = (ab, key) => {   // a steady sideways direction for an idea sitting dead on a bond
     const n = norm(cross(ab, Math.abs(ab[1]) > 0.9 * Math.hypot(ab[0], ab[1], ab[2]) ? [1, 0, 0] : [0, 1, 0])), m = norm(cross(ab, n)), a = hash(key) * Math.PI * 2;
     return [n[0] * Math.cos(a) + m[0] * Math.sin(a), n[1] * Math.cos(a) + m[1] * Math.sin(a), n[2] * Math.cos(a) + m[2] * Math.sin(a)];
@@ -106,7 +110,7 @@ function settle(L, order, rest, links) {
       let d = Math.sqrt(dx * dx + dy * dy + dz * dz); if (d >= want) continue;
       if (!act) return 1;
       if (d < 1e-6) { [dx, dy, dz] = side([0, 1, 0], ids[i] + ids[j]); d = 1; }
-      const k = (0.5 * (want - d)) / d, wi = i === root ? 0 : j === root ? 2 : 1, wj = 2 - wi;
+      const k = (0.5 * (want - d)) / d, wi = fixed[i] ? 0 : fixed[j] ? 2 : 1, wj = 2 - wi;
       move(i, -dx * k * wi, -dy * k * wi, -dz * k * wi); move(j, dx * k * wj, dy * k * wj, dz * k * wj); moved++;
     }
     for (const [a, b] of bonds) {
@@ -120,7 +124,7 @@ function settle(L, order, rest, links) {
         if (d >= want) continue;
         if (!act) return 1;
         const n = d < 1e-5 ? side([bx, by, bz], ids[c] + ids[a] + ids[b]) : [qx / d, qy / d, qz / d];
-        const push = want - d, kc = c === root ? 0 : 0.65, ke = (1 - kc) * push;
+        const push = want - d, kc = fixed[c] ? 0 : fixed[a] && fixed[b] ? 1 : 0.65, ke = (1 - kc) * push;
         move(c, n[0] * push * kc, n[1] * push * kc, n[2] * push * kc);
         move(a, -n[0] * ke * (1 - t), -n[1] * ke * (1 - t), -n[2] * ke * (1 - t)); move(b, -n[0] * ke * t, -n[1] * ke * t, -n[2] * ke * t);
         moved++;
@@ -140,7 +144,7 @@ function settle(L, order, rest, links) {
     }
     for (const [a, b, len] of sticks) {
       const dx = X[b] - X[a], dy = Y[b] - Y[a], dz = Z[b] - Z[a], d = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1e-6;
-      const k = (0.5 * (d - len)) / d, wa = a === root ? 0 : 0.3, wb = a === root ? 1 : 0.7;
+      const k = (0.5 * (d - len)) / d, wa = fixed[a] ? 0 : fixed[b] ? 1 : 0.3, wb = fixed[b] ? 0 : fixed[a] ? 1 : 0.7;
       move(a, dx * k * wa, dy * k * wa, dz * k * wa); move(b, -dx * k * wb, -dy * k * wb, -dz * k * wb);
     }
     if (!clear(true) && (!soft || pull < 0.004)) break;

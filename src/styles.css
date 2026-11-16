@@ -60,6 +60,8 @@ body.night-ui #app{background:var(--bg)}
 .lbl.isle,.lbl.hub{font-size:13px;font-weight:700;color:var(--ink);max-width:240px}
 .lbl.zone .thirst{letter-spacing:0}
 #scopeAll{white-space:nowrap;flex:none}
+body[data-move] .stage canvas{cursor:grab}
+body[data-move] .lbl.node{cursor:grab}
 .lbl.hub{font-size:15px}
 .lbl.zone:hover,.lbl.isle:hover,.lbl.hub:hover,.lbl.tree:hover{text-decoration:underline;text-underline-offset:3px}
 /* an idea's number: on its label in the graph, in the hover card, in the panel and on its cards */

@@ -2,6 +2,10 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.16.0 — 2026-11-16
+
+- **Move ideas.** In a graph, V (or Move in the bar) turns on move mode: drag an idea and it stays where you drop it, bringing along what hangs from it, while the rest settles around it so bonds still keep clear. The arrow keys nudge the picked idea across the screen; turn the view first to move it in depth. U puts the picked idea back where the layout had it, Shift+U puts them all back. Nothing else can be changed while move mode is on; V or Esc leaves it. Places are kept with the graph, in backups too, and show in the rings as well.
+
 ## 0.15.2 — 2026-11-16
 
 - Names no longer run into each other: where two would touch, the lesser one gives way (a graph's name to its topic's, a link's label to an idea's, a far idea to a near one). The picked one always shows.

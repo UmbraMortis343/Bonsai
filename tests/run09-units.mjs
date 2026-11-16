@@ -47,6 +47,23 @@ ok(JSON.stringify([...layoutTree(ns, "r", ls).pos]) === JSON.stringify([...layou
 const chain = [{ id: "r", parentId: null, order: 0, createdAt: at }, { id: "a", parentId: "r", order: 0, createdAt: at }, { id: "b", parentId: "a", order: 0, createdAt: at }];
 ok(layoutTree(chain, "r", [{ a: "r", b: "a" }, { a: "b", b: "b" }]).bonds.length === 0, "a link along a stick, or to itself, became a bond");
 
+// Ideas moved by hand stay exactly where they were put, and the rest still settles clear of every bond around them
+// (bar the odd case where two things were pinned into each other, which is the mover's choice).
+let moved = 0, jammed = 0;
+for (let k = 0; k < 200; k++) {
+  const count = 4 + Math.floor(rnd() * 40), [ps, pl] = random(count, Math.floor(count / 5)), pins = new Map();
+  for (let j = 0; j < 1 + Math.floor(rnd() * 3); j++) { const c = ps[1 + Math.floor(rnd() * (count - 1))]; c.pin = [(rnd() - 0.5) * 10, 0.75 + rnd() * 6, (rnd() - 0.5) * 10]; pins.set(c.id, c.pin); }
+  const G = layoutTree(ps, "r", pl);
+  for (const [id, pin] of pins) { const q = G.pos.get(id); if (Math.hypot(q[0] - pin[0], q[1] - pin[1], q[2] - pin[2]) > 1e-9 || !G.pinned.has(id)) moved++; }
+  if (crowding(G)) jammed++;
+  if ([...G.pos.values()].some((q) => q.some((v) => !isFinite(v)))) ok(false, "an idea is nowhere after pinning");
+}
+ok(moved === 0, `${moved} pinned ideas were moved by the layout`);
+ok(jammed <= 12, `${jammed} of 200 pinned graphs are left with a bond through an idea`);
+{ const [ps] = random(12, 0), kid = ps.find((n) => n.parentId === "n1") || ps[2], par = ps.find((n) => n.id === kid.parentId), free = layoutTree(ps, "r").pos.get(kid.id).slice();
+  par.pin = [6, 3, 6]; const q = layoutTree(ps, "r").pos.get(kid.id);
+  ok(par.id === "r" || Math.hypot(q[0] - free[0], q[2] - free[2]) > 2, "what hangs from a moved idea didn't come along"); }
+
 // Rings: a topic's graphs sit round its name, all the same way out; an island's topics round the island's; nothing overlaps.
 const isle = { id: "isle", kind: "isle", kids: [{ id: "a", kind: "topic", kids: [{ id: "t1", kind: "graph", r: 4 }, { id: "t2", kind: "graph", r: 3 }, { id: "t3", kind: "graph", r: 5 }] }, { id: "b", kind: "topic", kids: [{ id: "t4", kind: "graph", r: 2 }] }, { id: "c", kind: "topic", kids: [] }] };
 const F = layoutRings(isle).at, far = (p, q) => Math.hypot(p.x - q.x, p.z - q.z);

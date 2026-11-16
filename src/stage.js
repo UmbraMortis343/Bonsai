@@ -164,6 +164,13 @@ export class Stage {
     return { x: (v.x * 0.5 + 0.5) * this.w, y: (-v.y * 0.5 + 0.5) * this.h };
   }
 
+  // The line into the scene under a point on the screen.
+  rayAt(clientX, clientY) {
+    const r = this.container.getBoundingClientRect();
+    this._ndc.set(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
+    this.ray.setFromCamera(this._ndc, this.camera);
+    return this.ray.ray;
+  }
   // ---- picking ----
   pick(clientX, clientY) {
     const r = this.container.getBoundingClientRect();
@@ -179,12 +186,17 @@ export class Stage {
 
   bind() {
     const c = this.container, ptr = new Map();
-    let moved = 0, downTarget = null, pinch = 0, mid = null;
+    let moved = 0, downTarget = null, pinch = 0, mid = null, grabbed = null;
     c.addEventListener("contextmenu", (e) => e.preventDefault());
     c.addEventListener("pointerdown", (e) => {
       if (e.target.closest("input,textarea,button,a")) return;
       ptr.set(e.pointerId, { x: e.clientX, y: e.clientY, button: e.button, shift: e.shiftKey });
-      if (ptr.size === 1) { moved = 0; downTarget = e.target; }
+      if (ptr.size === 1) {
+        moved = 0; downTarget = e.target; grabbed = null;
+        // onGrab(hit, e) may hand back { move(e), end(cancelled) } to take this drag instead of turning the view
+        if (this.onGrab && e.button === 0 && !e.shiftKey) { const lbl = e.target.closest?.(".lbl"); grabbed = this.onGrab(lbl ? { kind: lbl.dataset.kind, id: lbl.dataset.id } : this.pick(e.clientX, e.clientY), e) || null; }
+      }
+      if (ptr.size === 2 && grabbed) { grabbed.end(true); grabbed = null; }
       if (ptr.size === 2) { const [a, b] = [...ptr.values()]; pinch = Math.hypot(a.x - b.x, a.y - b.y); mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; moved = 99; }
       try { c.setPointerCapture(e.pointerId); } catch {}
       if (this.anim) { this.anim.done(); this.anim = null; }
@@ -196,6 +208,7 @@ export class Stage {
       if (ptr.size === 1) {
         moved += Math.abs(dx) + Math.abs(dy);
         if (moved < 6) return;
+        if (grabbed) { grabbed.move(e); this.invalidate(); return; }
         this.userMoved = true;
         if (p.button === 2 || p.button === 1 || p.shift) this.pan(dx, dy);
         else { this.theta -= dx * 0.006; this.phi = clamp(this.phi - dy * 0.006, 0.08, 1.56); }
@@ -210,6 +223,7 @@ export class Stage {
     const up = (e) => {
       const p = ptr.get(e.pointerId); if (!p) return;
       ptr.delete(e.pointerId);
+      if (grabbed) { const g = grabbed; grabbed = null; if (moved >= 6) return g.end(e.type !== "pointerup"); g.end(true); }
       if (e.type === "pointerup" && ptr.size === 0 && moved < 6 && p.button === 0) {
         const lbl = downTarget?.closest?.(".lbl");
         const hit = lbl ? { kind: lbl.dataset.kind, id: lbl.dataset.id } : this.pick(e.clientX, e.clientY);

@@ -202,7 +202,7 @@ export async function graftTree(treeId, parentId) {
 export async function splitToTree(nodeId, { name, zoneId } = {}) {
   return tx(["trees", "nodes", "patches", "events"], "readwrite", async (s) => {
     const n = await reqP(s.nodes.get(nodeId)); if (!n) throw new Error("That idea no longer exists.");
-    if (n.parentId === null) throw new Error("This is already a trunk.");
+    if (n.parentId === null) throw new Error("This idea already starts its graph.");
     const from = await reqP(s.trees.get(n.treeId));
     const all = await reqP(s.nodes.index("treeId").getAll(n.treeId));
     const branch = subtreeIds(all, nodeId);
@@ -213,6 +213,7 @@ export async function splitToTree(nodeId, { name, zoneId } = {}) {
     for (const id of branch) {
       const b = all.find((x) => x.id === id);
       const next = { ...b, treeId: t.id, updatedAt: now() };
+      delete next.pin;   // a place given by hand belonged to the graph it has just left
       if (id === nodeId) { next.parentId = null; next.order = 1; delete next.wasTree; }
       s.nodes.put(next);
     }
@@ -250,8 +251,10 @@ export async function addNode(parentId, fields) {
 export async function updateNode(id, patch) {
   return tx(["nodes", "events"], "readwrite", async (s) => {
     const n = await reqP(s.nodes.get(id)); if (!n) throw new Error("That idea no longer exists.");
-    const p = pick(patch, ["title", "note", "body", "color", "order"]);
+    const p = pick(patch, ["title", "note", "body", "color", "order", "pin"]);
     if ("title" in p) { p.title = clean(p.title, 140); if (!p.title) throw new Error("Give the idea a title."); }
+    // pin: where the idea was moved to by hand, [x, y, z] from the middle of its graph's disc; null puts it back
+    if ("pin" in p) p.pin = Array.isArray(p.pin) && p.pin.length === 3 && p.pin.every((v) => Number.isFinite(v)) ? p.pin.map((v) => Math.round(v * 1000) / 1000) : null;
     if ("note" in p) p.note = clean(p.note, 500);
     if ("body" in p) p.body = String(p.body || "").slice(0, 200000);
     const next = { ...n, ...p, updatedAt: now() };
@@ -264,7 +267,7 @@ export async function updateNode(id, patch) {
 export async function deleteNode(id) {
   return tx(["nodes", "links", "events"], "readwrite", async (s) => {
     const n = await reqP(s.nodes.get(id)); if (!n) return { nodes: [], links: [] };
-    if (n.parentId === null) throw new Error("This is the trunk. Delete the whole tree instead.");
+    if (n.parentId === null) throw new Error("This idea starts the graph. Delete the whole graph instead.");
     const all = await reqP(s.nodes.index("treeId").getAll(n.treeId));
     const ids = subtreeIds(all, id);
     const set = new Set(ids);
@@ -294,15 +297,17 @@ export async function moveNode(id, newParentId) {
   return tx(["nodes", "events"], "readwrite", async (s) => {
     const n = await reqP(s.nodes.get(id)); const p = await reqP(s.nodes.get(newParentId));
     if (!n || !p) throw new Error("That idea no longer exists.");
-    if (n.parentId === null) throw new Error("The trunk can't be moved.");
+    if (n.parentId === null) throw new Error("The idea a graph starts from can't be moved.");
     const sameTree = await reqP(s.nodes.index("treeId").getAll(n.treeId));
     const branch = subtreeIds(sameTree, id);
-    if (branch.includes(newParentId)) throw new Error("An idea can't be moved under its own branch.");
+    if (branch.includes(newParentId)) throw new Error("An idea can't be moved under itself.");
     const sibs = await reqP(s.nodes.index("parentId").getAll(newParentId));
     const order = sibs.length ? Math.max(...sibs.map((x) => x.order)) + 1 : 1;
     for (const bid of branch) {
       const b = bid === id ? n : sameTree.find((x) => x.id === bid);
-      s.nodes.put({ ...b, treeId: p.treeId, ...(bid === id ? { parentId: newParentId, order } : {}), updatedAt: now() });
+      const next = { ...b, treeId: p.treeId, ...(bid === id ? { parentId: newParentId, order } : {}), updatedAt: now() };
+      delete next.pin;   // a place given by hand belonged to where it hung before
+      s.nodes.put(next);
     }
     logEvent(s, "node.move", id, { from: n.parentId, to: newParentId, fromTree: n.treeId, toTree: p.treeId, size: branch.length });
     return branch.length;
