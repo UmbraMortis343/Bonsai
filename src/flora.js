@@ -22,7 +22,8 @@ const BOND = 0.019;
 export class Flora {
   // items: [{tree, nodes, layout, offset: [x, z], looks: Map(id -> {color, status})}]
   // links: [{id, a, b}] where both ideas are among the items
-  constructor(items, links, theme) {
+  // joins: [{ from, to, color }] sticks from an idea in one item to an idea in another (the joined view); an item may have lift (its height)
+  constructor(items, links, theme, joins = []) {
     this.group = new THREE.Group(); this.items = items; this.theme = theme;
     this.ids = []; this.index = new Map(); this.home = new Map(); this.radii = new Map();
     const limbs = [], graphOf = new Map(), sky = new THREE.Color(theme.sky);
@@ -31,12 +32,13 @@ export class Flora {
       for (const n of it.nodes) {
         const p = L.pos.get(n.id); if (!p) continue;
         this.index.set(n.id, this.ids.length); this.ids.push(n.id); graphOf.set(n.id, k);
-        this.home.set(n.id, new THREE.Vector3(p[0] + base.x, p[1], p[2] + base.z));
+        this.home.set(n.id, new THREE.Vector3(p[0] + base.x, p[1] + (it.lift || 0), p[2] + base.z));
         this.radii.set(n.id, nodeRadius(L.size.get(n.id), n.id === L.rootId));
         const parentShown = n.parentId != null && L.pos.has(n.parentId) && shown.has(n.parentId), color = it.looks.get(n.id)?.color || theme.limb;
         if (parentShown) limbs.push({ from: n.parentId, to: n.id, r: limbRadius(L.size.get(n.id)), color });
       }
     });
+    for (const j of joins) if (this.index.has(j.from) && this.index.has(j.to)) limbs.push({ from: j.from, to: j.to, r: 0.034, color: j.color || theme.limb });
     this.limbs = limbs;
     const n = this.ids.length;
     this.nodeMesh = new THREE.InstancedMesh(SPHERE, new THREE.MeshPhongMaterial({ shininess: 40, specular: 0x222222 }), Math.max(1, n));

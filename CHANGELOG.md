@@ -2,6 +2,13 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.17.0 — 2026-11-17
+
+- **Joined.** The knowledge view has a second way of looking: J (or Joined in the bar) reads everything in view as one structure in 3D, joined the way the tech tree joins it. An island leads to its topics and they to the ideas their graphs start from; an island that grows from another hangs from the idea it grows from, on the next ring out and a step higher, and so on down. Open it on Foundations and you get Foundations with Maths, General science and then Physics growing out of it. Open it on a topic for that topic's graphs as one, with any island that grows from them. With nothing picked it is the whole garden from the start.
+- It is only a view: your graphs stay separate and nothing is saved. Click an idea to open it in its own graph; click a topic's or island's name to see just that, still joined. J again goes back to the rings; the choice is remembered.
+- Links inside an island are straight bonds as in a graph; links between islands are faint arcs.
+- The knowledge view now has a bar: Separate / Joined (J), Fit (0) and, when narrowed, Show all (A).
+
 ## 0.16.0 — 2026-11-16
 
 - **Move ideas.** In a graph, V (or Move in the bar) turns on move mode: drag an idea and it stays where you drop it, bringing along what hangs from it, while the rest settles around it so bonds still keep clear. The arrow keys nudge the picked idea across the screen; turn the view first to move it in depth. U puts the picked idea back where the layout had it, Shift+U puts them all back. Nothing else can be changed while move mode is on; V or Esc leaves it. Places are kept with the graph, in backups too, and show in the rings as well.

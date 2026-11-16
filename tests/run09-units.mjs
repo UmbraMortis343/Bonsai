@@ -1,6 +1,6 @@
 // Pure logic: the 3D layout keeps ideas apart and above ground, review
 // scheduling, and the Markdown renderer's safety.
-import { layoutTree, layoutRings, crowding, nodeRadius } from "../src/layout.js";
+import { layoutTree, layoutRings, layoutTiers, crowding, nodeRadius } from "../src/layout.js";
 import * as srs from "../src/srs.js";
 import { md } from "../src/md.js";
 
@@ -77,6 +77,26 @@ ok(far(F.get("t4"), zb) > 2, "a topic's only graph sits on its name");
 const all = layoutRings({ id: "all", kind: "all", kids: [1, 2, 3].map((h) => ({ id: "h" + h, kind: "hub", kids: [{ id: "i" + h, kind: "isle", kids: [{ id: "z" + h, kind: "topic", kids: Array.from({ length: h * 2 }, (_, k) => ({ id: `g${h}${k}`, kind: "graph", r: 3 })) }] }] })) });
 ok(far(all.at.get("z1"), all.at.get("z2")) > all.at.get("z1").r + all.at.get("z2").r && far(all.at.get("z3"), all.at.get("z2")) > all.at.get("z3").r + all.at.get("z2").r, "hubs overlap");
 ok([...all.at.values()].every((p) => p.kind !== "graph" || Math.hypot(p.x - all.center.x, p.z - all.center.z) <= all.radius), "the frame doesn't hold every graph");
+
+// Tiers, for the joined view: what grows from a part stands on the next ring out and a step higher, out past the
+// idea it grows from, and seen from above no two parts overlap, however many there are.
+{
+  const parts = [{ id: "a", parent: null, r: 6, fromAt: null }, { id: "b", parent: "a", r: 5, fromAt: [3, 0] }, { id: "c", parent: "a", r: 4, fromAt: [0, 3] }, { id: "d", parent: "b", r: 7, fromAt: [2, 2] }, { id: "e", parent: "a", r: 3, fromAt: [2.9, 0.4] }];
+  const Tr = layoutTiers(parts), g = (id) => Tr.get(id), apart = (p, q) => Math.hypot(g(p).x - g(q).x, g(p).z - g(q).z);
+  ok(g("a").tier === 0 && g("b").tier === 1 && g("c").tier === 1 && g("d").tier === 2, "tiers don't follow what grows from what");
+  ok(g("a").lift < g("b").lift && g("b").lift < g("d").lift && g("b").lift === g("c").lift, "tiers don't step up");
+  ok(Math.abs(Math.atan2(g("c").z, g("c").x) - Math.PI / 2) < 0.6 && Math.abs(Math.atan2(g("b").z, g("b").x)) < 0.9, "a part doesn't stand out past the idea it grows from");
+  let over = 0; for (const p of parts) for (const q of parts) if (p.id < q.id && apart(p.id, q.id) < p.r + q.r) over++;
+  ok(over === 0, `${over} parts overlap seen from above`);
+  let bad = 0;
+  for (let k = 0; k < 60; k++) {
+    const many = [{ id: "p0", parent: null, r: 2 + rnd() * 8, fromAt: null }];
+    for (let i = 1; i < 3 + Math.floor(rnd() * 25); i++) many.push({ id: "p" + i, parent: many[Math.floor(rnd() * many.length)].id, r: 1.5 + rnd() * 9, fromAt: rnd() < 0.7 ? [(rnd() - 0.5) * 8, (rnd() - 0.5) * 8] : null });
+    const M = layoutTiers(many);
+    for (let i = 0; i < many.length; i++) for (let j = i + 1; j < many.length; j++) { const a = M.get(many[i].id), b = M.get(many[j].id); if (Math.hypot(a.x - b.x, a.z - b.z) < many[i].r + many[j].r || !isFinite(a.x + b.x)) bad++; }
+  }
+  ok(bad === 0, `${bad} overlaps over 60 random sets of parts`);
+}
 
 const day = 86400000, now = Date.parse("2026-06-01T00:00:00Z"), node = { createdAt: new Date(now - 5 * day).toISOString(), note: "x" };
 ok(srs.isDue(node, now) && srs.status(node, 0, now) === "overdue", "old unreviewed idea isn't overdue");

@@ -3,7 +3,7 @@ import * as store from "./store.js";
 import * as srs from "./srs.js";
 import { Stage, THREE } from "./stage.js";
 import { Flora, grid, ground } from "./flora.js";
-import { layoutTree, layoutRings } from "./layout.js";
+import { layoutTree, layoutRings, layoutTiers } from "./layout.js";
 import { md } from "./md.js";
 import * as ai from "./ai.js";
 import { textFor, hashText } from "./semantic.js";
@@ -34,7 +34,7 @@ const S = {
   view: "", zones: [], trees: [], nodes: [], links: [], inbox: [], patches: [], pages: [], allZones: [], allTrees: [], nzone: null, npage: null, nside: false,
   byId: new Map(), kids: new Map(), byTree: new Map(), near: new Set(), lastChild: new Map(),
   tree: null, sel: null, panel: null, pick: null, quick: null, review: null, cutoff: null, stitch: false, editBody: false,
-  flora: null, lay: null, forest: null, fsel: null, pendingSel: null, hues: new Map(), isleHues: new Map(), linksIn: new Map(), num: new Map(), byNum: [], jump: "", move: false,
+  flora: null, lay: null, forest: null, fsel: null, pendingSel: null, hues: new Map(), isleHues: new Map(), linksIn: new Map(), num: new Map(), byNum: [], jump: "", move: false, joined: false,
   scope: null, mean: null, suggest: null, aiOn: false,
   garden: null, model: [], hubs: [], hub: -1, isle: -1, topic: -1, treeBack: "#/", meanBack: "#/", techBack: "#/", hashNow: null, water: undefined,
 };
@@ -209,6 +209,7 @@ const openScope = (id) => { location.hash = "#/forest" + (id ? "/" + encodeURICo
 // Every graph in view stands on its disc, set out in rings: a topic's graphs round its name, an island's topics
 // round its name, a hub's islands round its name. Watering is the same picture, coloured by what needs water.
 function buildForest(garden = S.view === "garden") {
+  if (!garden && S.joined) return buildJoined();
   clearScene();
   const cut = garden ? null : S.cutoff, born = (x) => cut == null || Date.parse(x.createdAt) <= cut;
   const sc = garden ? null : S.fscope, g = S.garden, zoneBy = new Map(S.zones.map((z) => [z.id, z])), lays = new Map();
@@ -264,6 +265,96 @@ function buildForest(garden = S.view === "garden") {
   stage.world.add(flora.group); stage.pickables = [flora.nodeMesh];
   stage.setLabels(labels); markSel();
 }
+// ---------- joined: everything in view read as one structure ----------
+// A view only: nothing is saved and the graphs stay as they are. What's in scope is strung together the way the
+// tech tree joins it. An island leads to its topics, a topic to the ideas its graphs start from, and an island
+// that grows from another (`after`) hangs from the idea it grows from (`from`), or from that island itself when
+// no idea was named, and so on down. Made-up ideas stand in for the start, hubs, islands and topics: their ids
+// are "s:", "h:<hub>", "i:<island>", "t:<topic>". Each island with all that is on it is one part; parts are set
+// out in tiers (layoutTiers), each laid out in itself like any graph, so its inner links are straight bonds.
+function joinedParts(sc) {
+  const g = S.garden, zoneBy = new Map(S.zones.map((z) => [z.id, z])), parts = [], have = new Map(), hue = new Map(), kind = new Map(), done = new Set();
+  let order = 0;
+  const part = (id, parent, hang, colour) => { const p = { id, parent, hang, hue: colour, ideas: [], root: null }; parts.push(p); return p; };
+  const made = (p, id, parentId, title, k, colour) => { p.ideas.push({ id, parentId, title, order: order++, createdAt: "", made: k }); if (parentId == null) p.root = id; have.set(id, p.id); kind.set(id, k); hue.set(id, colour); };
+  const grown = new Map(); for (const q of g.islands) if (q.after) { if (!grown.has(q.after)) grown.set(q.after, []); grown.get(q.after).push(q); }
+  const topic = (p, z, parentId) => {
+    if (done.has(z.id)) return; done.add(z.id);
+    const tid = "t:" + z.id; made(p, tid, parentId, z.name, "topic", S.hues.get(z.id) || T.limb);
+    for (const tr of S.trees.filter((t) => t.zoneId === z.id)) {
+      const nodes = shownNodes(tr), looks = looksFor(tr, nodes);
+      for (const n of nodes) { p.ideas.push(n.parentId == null ? { ...n, parentId: tid, order: order++, pin: null } : { ...n, pin: null }); have.set(n.id, p.id); kind.set(n.id, n.parentId == null ? "start" : "idea"); hue.set(n.id, looks.get(n.id).color); }
+    }
+  };
+  const isle = (q, parent, hang) => {
+    if (done.has(q.id)) return; done.add(q.id);
+    const p = part("i:" + q.id, parent, hang, S.isleHues.get(q.id) || T.limb);
+    made(p, "i:" + q.id, null, q.name, "isle", p.hue);
+    for (const z of q.zoneIds.map((id) => zoneBy.get(id))) if (z && (!charted() || S.trees.some((t) => t.zoneId === z.id))) topic(p, z, "i:" + q.id);
+    grow(q.id, p.id);
+  };
+  // an island that grows from this one hangs from the idea named for it, if that idea is in view
+  const grow = (id, pid, strict) => { for (const c of grown.get(id) || []) { if (c.from && have.has(c.from)) isle(c, have.get(c.from), c.from); else if (!strict) isle(c, pid, pid); } };
+  if (sc?.kind === "topic") {
+    const z = zoneBy.get(sc.id), home = g.islands.find((q) => q.zoneIds.includes(sc.id)), p = part("t:" + z.id, null, null, S.hues.get(z.id) || T.limb);
+    topic(p, z, null); if (home) { done.add(home.id); grow(home.id, p.id, true); }
+  } else if (sc?.kind === "isle") isle(g.islands.find((q) => q.id === sc.id), null, null);
+  else {
+    // a hub, or everything: what grows from nothing in view hangs from the top
+    const hub = sc?.kind === "hub" ? hubsOf(g).find((h) => h.id === sc.id) : null, mine = hub ? g.islands.filter((q) => hubKey(q) === hub.id) : g.islands, ids = new Set(mine.map((q) => q.id));
+    const first = mine.filter((q) => !q.after || !ids.has(q.after));
+    if (first.length === 1 && !hub) isle(first[0], null, null);   // one start: it is the top itself
+    else {
+      const top = hub ? "h:" + hub.id : "s:", p = part(top, null, null, T.root); made(p, top, null, hub ? hub.name || "Garden" : "Start", hub ? "hub" : "start0", T.root);
+      for (const q of first) isle(q, top, top);
+      for (const q of mine) isle(q, top, top);   // any left over by a loop in what grows from what
+    }
+  }
+  return { parts: parts.filter((p) => p.root), hue, kind, have };
+}
+function buildJoined() {
+  clearScene();
+  const J = joinedParts(S.fscope), where = J.have;
+  const links = S.links.filter((l) => where.has(l.fromId) && where.has(l.toId)).map((l) => ({ id: l.id, a: l.fromId, b: l.toId, label: l.label }));
+  // worked out again only when what's joined changes
+  const sig = J.parts.map((p) => p.id + "<" + p.hang + ":" + p.ideas.map((n) => n.id + ">" + n.parentId).join()).join("|") + "|" + links.map((l) => l.a + ">" + l.b).join();
+  if (joinedLay?.sig !== sig) {
+    const lays = new Map(J.parts.map((p) => [p.id, layoutTree(p.ideas, p.root, links.filter((l) => where.get(l.a) === p.id && where.get(l.b) === p.id))]));
+    const tiers = layoutTiers(J.parts.map((p) => { const at = p.parent && lays.get(p.parent).pos.get(p.hang); return { id: p.id, parent: p.parent, r: lays.get(p.id).footprint, fromAt: at ? [at[0], at[2]] : null }; }));
+    // each part turned to face the way its offshoots grow
+    for (const p of J.parts) { const t = tiers.get(p.id), L = lays.get(p.id), c = Math.cos(t.rot), sn = Math.sin(t.rot); lays.set(p.id, { ...L, pos: new Map([...L.pos].map(([id, q]) => [id, [q[0] * c - q[2] * sn, q[1], q[0] * sn + q[2] * c]])) }); }
+    joinedLay = { sig, lays, tiers, tight: [...lays.values()].reduce((a, L) => a + L.tight, 0) };
+  }
+  const { lays, tiers } = joinedLay;
+  const items = J.parts.map((p) => { const t = tiers.get(p.id); return { tree: { id: p.id, rootId: p.root }, nodes: p.ideas, layout: lays.get(p.id), offset: [t.x, t.z], lift: t.lift, looks: new Map(p.ideas.map((n) => [n.id, { color: J.hue.get(n.id), status: "ok" }])) }; });
+  const flora = (S.flora = new Flora(items, links, T, J.parts.filter((p) => p.hang).map((p) => ({ from: p.hang, to: p.root, color: p.hue }))));
+  stage.world.add(flora.group); stage.pickables = [flora.nodeMesh];
+  // on the ground, a glow under each part and a disc under the first
+  const glows = J.parts.map((p) => { const t = tiers.get(p.id); return { x: t.x, z: t.z, r: lays.get(p.id).footprint * 1.15, color: p.hue, k: 0.12 }; }), t0 = tiers.get(J.parts[0].id);
+  for (const m of ground({ glows, discs: [{ x: t0.x, z: t0.z, r: discR(lays.get(J.parts[0].id)), color: J.parts[0].hue }] }, T.sky)) addDecor(m);
+  // names: islands and hubs always, topics from further off than the ideas graphs start from, the rest from close in
+  const CLS = { start0: "hub", hub: "hub", isle: "isle", topic: "zone", start: "tree", idea: "node" }, DEPTH = { start0: -2, hub: -2, isle: -0.95, topic: -0.5, start: 1, idea: 3 };   // an island's name gives way only to the top's; a topic's to an island's; and so on down
+  const labels = J.parts.flatMap((p) => p.ideas.map((n) => { const k = J.kind.get(n.id); return { el: el("div", { class: "lbl " + CLS[k], dataset: { kind: "node", id: n.id }, text: n.title, style: k === "topic" ? `color:${J.hue.get(n.id)}` : "" }), pos: flora.pos.get(n.id), kind: "node", as: CLS[k], id: n.id, depth: DEPTH[k] + (k === "idea" ? lays.get(p.id).depth.get(n.id) * 0.01 : 0), r: flora.radii.get(n.id), tidy: true }; }));
+  // the frame: the ball round everything
+  const box = new THREE.Box3(); for (const v of flora.home.values()) box.expandByPoint(v); box.expandByPoint(new THREE.Vector3(t0.x, 0, t0.z));
+  const mid = box.getCenter(new THREE.Vector3()), far = Math.max(4, ...[...flora.home.values()].map((v) => v.distanceTo(mid))) + 1;
+  S.forest = { fl: { zones: new Map(), trees: new Map(), isles: new Map(), radius: far, center: { x: mid.x, z: mid.z } }, lays: new Map(), rings: new Map(), joined: { ...J, tiers, tight: joinedLay.tight },
+    view: { target: mid, radius: Math.min(590, stage.fitDistance(far) * 0.84), phi: 0.95 } };
+  stage.setLabels(labels); markSel();
+}
+let joinedLay = null;
+// A tap in the joined view: an idea opens in its own graph; a topic's, island's or hub's stand-in narrows the view to it.
+function joinedTap(id) {
+  const n = S.byId.get(id);
+  if (n) { S.pendingSel = id; return openTree(n.treeId); }
+  const m = /^([hit]):(.*)$/.exec(id); if (m && m[2] !== S.fscope?.id) openScope(m[2]);
+}
+function toggleJoined(on = !S.joined) {
+  if (S.view !== "forest" || on === S.joined) return;
+  S.joined = on; setPref("joined", on ? "1" : "0"); S.fsel = null;
+  buildForest(); stage.flyTo(forestView(), 500); renderChrome();
+}
+
 const rebuild = () => (S.view === "tree" ? buildTree(false) : S.view === "meaning" ? S.mean && buildMeaning() : buildForest());
 
 // ---------- meaning view ----------
@@ -386,6 +477,7 @@ function placeSel() {
 function labelOpacity(L, dist) {
   if (S.view === "meaning") return L.kind === "group" || L.id === S.sel ? 1 : THREE.MathUtils.clamp(2.3 - dist / (stage.radius * 0.85), 0, 1);
   // rings read like a map: islands and hubs always named, topics from closer in, graphs from closer still
+  if (L.as) return L.as === "hub" || L.as === "isle" ? 1 : L.as === "zone" ? THREE.MathUtils.clamp((330 - dist) / 60, 0, 1) : L.as === "tree" ? THREE.MathUtils.clamp((130 - dist) / 20, 0, 1) : THREE.MathUtils.clamp((48 - dist) / 10, 0, 1);
   if (S.view !== "tree") return L.kind === "hub" || L.kind === "isle" ? 1 : L.kind === "zone" ? THREE.MathUtils.clamp((330 - dist) / 60, 0, 1) : L.id === S.fsel ? 1 : THREE.MathUtils.clamp((112 - dist) / 14, 0, 1);
   if (S.review) return L.id === S.sel ? 1 : 0;
   if (L.kind === "link") return THREE.MathUtils.clamp(2 - dist / (stage.radius * 1.1), 0, 1);
@@ -496,6 +588,7 @@ function fitView() {
   else if (S.forest) stage.flyTo(forestView());
 }
 function forestView() {
+  if (S.forest.view) return { ...S.forest.view, target: S.forest.view.target.clone() };
   const f = S.forest.fl;
   return { target: new THREE.Vector3(f.center.x, 1.2, f.center.z), radius: Math.min(580, stage.fitDistance(f.radius * 0.76 + 2)), phi: 0.9 };
 }
@@ -667,7 +760,7 @@ async function capture() {
 function shortcuts() {
   const rows = [["↑ ↓ ← →", "The idea under, the idea above, the ideas beside"], ["1–9", "Go to an idea by its number"], ["Tab", "Add an idea under"], ["Enter", "Add an idea beside"], ["R", "Rename"], ["Del", "Delete"], ["Space", "The idea's panel"], ["N", "Write the idea's notes"], ["X", "Make the idea its own graph"], ["V", "Move ideas: drag one, or nudge the picked one with the arrows; U puts it back"],
     ["L", "Link"], ["G", "Graft"], ["C", "Colour"], ["F", "Fly to idea"], ["0", "Fit view"], ["W A S D  Q E", "Fly"], ["/", "Search"], ["I", "Capture"],
-    ["1–9", "Garden: go to a hub, an island, then a topic"], ["0  Esc", "Garden: step back out"], ["W", "Garden: water"], ["D", "Garden: day or night"], ["S", "Garden: split a topic past 200%"], ["P", "Patches"], ["T", "Timeline"], ["M", "Meaning view"], ["K", "Tech tree"], ["1–9  Enter", "Tech tree: pick, then go in or open"], ["Space", "Tech tree: open or close an idea"], ["Esc", "Tech tree: let go, then step back a tier"], ["T  A  H", "Tech tree: this tier only, show all, back to the start"], ["B", "Tech tree: what an island grows from"], ["L", "Tech tree: tree or web"], ["Y", "Tech tree: simple or organic look"], ["J", "Tech tree web: jiggle while dragging, or hold still"], ["N  Z", "New knowledge graph, new topic"], ["G", "Garden: the knowledge graphs of what's picked"], ["O", "Notes; in a graph, notes beside it"], ["N  G", "Notes: new page, grow with Claude"], ["1–9  ↑ ↓", "Notes: pick a page"], ["← →", "Notes: topics"], ["A", "Notes: attach the page to a graph"], ["/", "Notes, while writing: blocks"], ["Tab  Shift+Tab", "Notes, while writing: indent a block"], ["Ctrl+B I U E K", "Notes, while writing: bold, italic, underline, code, link"], ["Ctrl+Shift+↑ ↓", "Notes, while writing: move a block"], ["Shift+Tab", "Garden, knowledge, notes"], ["[  ]", "Close or open the menu on the left, on the right"], ["Enter  V", "Watering: water the graph picked, water everything"], ["Esc", "Back"]];
+    ["1–9", "Garden: go to a hub, an island, then a topic"], ["0  Esc", "Garden: step back out"], ["W", "Garden: water"], ["D", "Garden: day or night"], ["S", "Garden: split a topic past 200%"], ["P", "Patches"], ["T", "Timeline"], ["M", "Meaning view"], ["K", "Tech tree"], ["1–9  Enter", "Tech tree: pick, then go in or open"], ["Space", "Tech tree: open or close an idea"], ["Esc", "Tech tree: let go, then step back a tier"], ["T  A  H", "Tech tree: this tier only, show all, back to the start"], ["B", "Tech tree: what an island grows from"], ["L", "Tech tree: tree or web"], ["Y", "Tech tree: simple or organic look"], ["J", "Tech tree web: jiggle while dragging, or hold still"], ["N  Z", "New knowledge graph, new topic"], ["J", "Knowledge: graphs separate in their rings, or joined into one structure"], ["G", "Garden: the knowledge graphs of what's picked"], ["O", "Notes; in a graph, notes beside it"], ["N  G", "Notes: new page, grow with Claude"], ["1–9  ↑ ↓", "Notes: pick a page"], ["← →", "Notes: topics"], ["A", "Notes: attach the page to a graph"], ["/", "Notes, while writing: blocks"], ["Tab  Shift+Tab", "Notes, while writing: indent a block"], ["Ctrl+B I U E K", "Notes, while writing: bold, italic, underline, code, link"], ["Ctrl+Shift+↑ ↓", "Notes, while writing: move a block"], ["Shift+Tab", "Garden, knowledge, notes"], ["[  ]", "Close or open the menu on the left, on the right"], ["Enter  V", "Watering: water the graph picked, water everything"], ["Esc", "Back"]];
   dialog({ title: "Shortcuts", ok: null, cancel: "Close", body: el("table", { class: "keys" }, rows.map(([k, d]) => el("tr", {}, el("td", {}, el("kbd", { text: k })), el("td", { text: d })))) });
 }
 async function exportBackup() {
@@ -711,6 +804,12 @@ function renderActions() {
       el("button", { class: "btn", id: "openTree", onclick: () => goTree(plant.id) }, "Open", el("kbd", { text: "G" })));
     a.hidden = false;
     return;
+  }
+  if (S.view === "forest" && S.cutoff == null && !S.pick && S.trees.length) {
+    const b = (id, text, k, run, on) => el("button", { class: "btn" + (on ? " on" : ""), id, "aria-pressed": on == null ? null : String(on), onclick: run }, text, el("kbd", { text: k }));
+    put(a, el("div", { class: "seg keys", role: "group", "aria-label": "View" }, b("viewApart", "Separate", "J", () => toggleJoined(false), !S.joined), b("viewJoined", "Joined", "J", () => toggleJoined(true), S.joined)),
+      el("span", { class: "sep" }), b("viewFit", "Fit", "0", fitView), S.fscope ? b("viewAll", "Show all", "A", () => openScope()) : null);
+    a.hidden = false; return;
   }
   const idea = S.view === "meaning" && !S.pick ? S.byId.get(S.sel) : null;
   if (idea) {
@@ -1511,6 +1610,7 @@ function onTap(hit, e) {
   }
   if (S.view === "forest") {
     if (!hit) return;
+    if (S.forest?.joined) return hit.kind === "node" ? joinedTap(hit.id) : undefined;
     if (hit.kind === "zone") return zoneMenu(hit.id, { left: e.clientX, right: e.clientX, top: e.clientY, bottom: e.clientY });
     if (hit.kind === "isle" || hit.kind === "hub") return openScope(hit.id);   // an island's or hub's name narrows the view to it
     const treeId = hit.kind === "tree" ? hit.id : hit.kind === "node" ? S.byId.get(hit.id)?.treeId : S.byId.get(S.links.find((l) => l.id === hit.id)?.fromId)?.treeId;
@@ -1581,6 +1681,8 @@ function onKey(e) {
   if (S.view === "forest") {
     if (k === "m") { stop(); return goMeaning(); }
     if (k === "n") { stop(); return newGraph(); }
+    if (k === "j") { stop(); return toggleJoined(); }
+    if (k === "a" && S.fscope) { stop(); return openScope(); }
     if (k === "z") { stop(); return newZone(); }
     if (k.startsWith("Arrow")) { stop(); return stepForest(k === "ArrowRight" || k === "ArrowUp" ? 1 : -1); }
     if (k === "Enter" && treeOf(S.fsel)) { stop(); return openTree(S.fsel); }
@@ -2045,10 +2147,11 @@ async function init() {
   stage.setTheme(T);
   stage.isPaused = () => overlayOpen() || !!S.review || S.view === "tech";
   stage.onTap = onTap; stage.labelOpacity = labelOpacity; stage.onGrab = grabIdea;
+  S.joined = pref("joined", "0") === "1";
   stage.labelRank = (L) => (L.id === S.sel || (!ideaView() && L.id === S.fsel) ? 0 : S.near.has(L.id) ? 1 + L.depth * 0.01 : 2 + L.depth);
   stage.onHover = (hit, e) => {
     stage.container.style.cursor = hit && !(S.view === "forest" && hit.kind === "link") ? "pointer" : "";
-    if (hit?.kind === "node" && ideaView()) showHover(hit.id, e.clientX, e.clientY); else hideHover();
+    if (hit?.kind === "node" && (ideaView() || (S.view === "forest" && S.forest?.joined && S.byId.has(hit.id)))) showHover(hit.id, e.clientX, e.clientY); else hideHover();
   };
   stage.container.addEventListener("pointerdown", hideHover);
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { retheme(); rebuild(); });

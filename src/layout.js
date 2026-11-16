@@ -45,7 +45,8 @@ export function layoutTree(nodes, rootId, links = []) {
       let dv = [pd[0] * ct + (u[0] * cp + v[0] * sp) * st, pd[1] * ct + (u[1] * cp + v[1] * sp) * st + 0.1, pd[2] * ct + (u[2] * cp + v[2] * sp) * st];
       if (dv[1] < -0.3) dv[1] = -0.3;
       dv = norm(dv);
-      const len = Math.max(1.05, 1.75 * Math.pow(0.9, d - 1) * (1 + 0.16 * Math.log2(out.size.get(c.id))) * (inner ? 0.72 : 1));
+      const big = Math.log2(out.size.get(c.id));
+      const len = Math.max(1.05, 1.75 * Math.pow(0.9, d - 1) * (1 + 0.16 * big) * (inner ? 0.72 : 1));
       // an idea moved by hand sits where it was put, and what hangs from it fans out from there
       const pin = Array.isArray(c.pin) && c.pin.length === 3 && c.pin.every(Number.isFinite) ? [c.pin[0], Math.max(FLOOR, c.pin[1]), c.pin[2]] : null;
       if (pin) { const to = [pin[0] - p[0], pin[1] - p[1], pin[2] - p[2]], l = Math.hypot(to[0], to[1], to[2]); if (l > 1e-3) { dv = [to[0] / l, to[1] / l, to[2] / l]; out.pinned.add(c.id); rest.set(c.id, l); } }
@@ -201,4 +202,49 @@ export function layoutRings(top) {
   const center = { x: (x0 + x1) / 2, z: (z0 + z1) / 2 }; let radius = 6;
   for (const p of at.values()) if (p.kind === "graph" || p.kind === "topic") radius = Math.max(radius, Math.hypot(p.x - center.x, p.z - center.z) + p.r);
   return { at, radius, center };
+}
+
+// Tiers, for the joined view: parts (an island's whole structure each) that grow one from another, set out as a
+// tech tree in 3D. The first part sits in the middle; what grows from it stands on a ring round it, a step higher;
+// what grows from those on the next ring, higher again. A part stands out beyond the idea it grows from, and is
+// turned so that the ideas its own offshoots grow from face outward. Nothing overlaps seen from above.
+// parts: [{ id, parent (a part's id, null for the first), r (how far it reaches sideways), fromAt: [x, z] | null
+// (where, in the parent's own frame, the idea it grows from sits) }], the first one first, parents before children.
+// → Map(id → { x, z, lift, rot, tier, angle })
+export function layoutTiers(parts, gap = 2.5) {
+  const out = new Map(), kids = new Map(), turn = (v, a) => [v[0] * Math.cos(a) - v[1] * Math.sin(a), v[0] * Math.sin(a) + v[1] * Math.cos(a)];
+  if (!parts.length) return out;
+  for (const p of parts) if (p.parent != null) { if (!kids.has(p.parent)) kids.set(p.parent, []); kids.get(p.parent).push(p); }
+  // a part is turned so the ideas its offshoots grow from point the way it faces
+  const rotFor = (p, angle) => { let sx = 0, sz = 0; for (const c of kids.get(p.id) || []) if (c.fromAt && Math.hypot(c.fromAt[0], c.fromAt[1]) > 0.3) { const l = Math.hypot(c.fromAt[0], c.fromAt[1]); sx += c.fromAt[0] / l; sz += c.fromAt[1] / l; } return Math.hypot(sx, sz) > 0.2 ? angle - Math.atan2(sz, sx) : 0; };
+  out.set(parts[0].id, { x: 0, z: 0, lift: 0, rot: 0, tier: 0, angle: 0 });
+  let tier = [parts[0]], ring = 0, reach = parts[0].r, lift = 0;
+  for (let k = 1; tier.length; k++) {
+    const next = tier.flatMap((p) => kids.get(p.id) || []); if (!next.length) break;
+    const big = Math.max(...next.map((p) => p.r));
+    ring = Math.max(ring + reach + big + gap, next.reduce((a, p) => a + 2 * p.r + gap, 0) / (Math.PI * 2 * 0.72));
+    lift += 0.3 * (reach + big); reach = big;
+    // where each would like to stand: straight out past the idea it grows from
+    const want = next.map((p, i) => {
+      const P = out.get(p.parent), at = p.fromAt ? turn(p.fromAt, P.rot) : [0, 0], w = [P.x + at[0], P.z + at[1]];
+      return Math.hypot(w[0], w[1]) > 0.5 ? Math.atan2(w[1], w[0]) : P.tier ? P.angle : (i / next.length) * Math.PI * 2 - Math.PI / 2;
+    });
+    const half = next.map((p) => Math.asin(Math.min(1, (p.r + gap / 2) / ring)));
+    const idx = next.map((_, i) => i).sort((a, b) => want[a] - want[b]), ang = idx.map((i) => want[i]);
+    // then moved apart round the ring until none overlap
+    for (let it = 0; it < 200 && idx.length > 1; it++) {
+      let moved = false;
+      for (let a = 0; a < idx.length; a++) {
+        const b = (a + 1) % idx.length, need = half[idx[a]] + half[idx[b]]; let d = ang[b] - ang[a] + (b === 0 ? Math.PI * 2 : 0);
+        if (idx.length === 2 && b === 0) d = Math.PI * 2 - (ang[1] - ang[0]);
+        if (d < need - 1e-4) { const push = (need - d) / 2; ang[a] -= push; ang[b] += push; moved = true; }
+      }
+      if (!moved) break;
+    }
+    idx.forEach((i, a) => { const p = next[i], angle = ang[a]; out.set(p.id, { x: Math.cos(angle) * ring, z: Math.sin(angle) * ring, lift, rot: 0, tier: k, angle }); });
+    for (const p of next) out.get(p.id).rot = rotFor(p, out.get(p.id).angle);
+    tier = next;
+  }
+  for (const p of parts) if (!out.has(p.id)) out.set(p.id, { x: 0, z: 0, lift: 0, rot: 0, tier: 0, angle: 0 });   // cut off from the first by a missing parent
+  return out;
 }
