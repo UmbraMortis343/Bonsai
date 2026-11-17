@@ -525,6 +525,8 @@ body[data-window="garden"][data-gfold="1"] #gpanel{display:none}
 /* close buttons show their key */
 .ib.keyed{width:auto;padding:0 6px;gap:4px;display:inline-flex;align-items:center}
 .ib.keyed kbd{font-size:10px;padding:1px 4px}
+#backBtn.keyed,#gBack.keyed{flex:none}
+@media (max-width:700px){ #backBtn.keyed kbd,#gBack.keyed kbd{display:none} }
 /* the idea panel, wide: covers the graph when a notes page is open on the left; a web of the graph beside the idea */
 body[data-wide="1"][data-panel]{--dr:0px}
 body[data-wide="1"] #stage{visibility:hidden}

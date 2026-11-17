@@ -2,6 +2,10 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.18.2 — 2026-11-17
+
+- Every back arrow shows its key: Esc. Esc still closes what's open first (a panel, a pick, a menu) and then goes back; **Shift+Esc** goes straight back from wherever you are. On a phone the key is hidden.
+
 ## 0.18.1 — 2026-11-17
 
 - Graph names in the knowledge view's rings show at any distance; they only give way where they would touch another name. Topic names win over graph names.

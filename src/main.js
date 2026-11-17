@@ -642,6 +642,7 @@ function showHover(id, x, y) {
 
 // ---------- top bar and menus ----------
 function renderTop() {
+  S.backTo = null;   // set by back() when this screen has a back arrow
   const due = dueList(null).length;
   const search = ib("searchBtn", "Search", ICON.search, () => (S.view === "notes" ? $("#notesSearch")?.focus() : find()));
   const swap = winSwitch(), beta = CHANNEL ? el("span", { class: "channel", text: CHANNEL }) : null;
@@ -649,7 +650,7 @@ function renderTop() {
   const more = (run = appMenu) => ib("moreBtn", "Menu", ICON.more, (e) => run(e.currentTarget));
   const waterBtn = (run) => (due ? el("button", { class: "btn water", id: "waterAll", title: "Water", onclick: run }, icon(ICON.drop), el("span", { class: "wl", text: "Water" }), el("span", { class: "thirst", text: String(due) })) : null);
   const add = (items) => ib("addBtn", "Add", ICON.plus, (e) => menu(e.currentTarget, items));
-  const back = (to, label = "Back") => ib("backBtn", label, ICON.back, () => { location.hash = to; });
+  const back = (to, label = "Back") => { S.backTo = to; return el("button", { class: "ib keyed", id: "backBtn", type: "button", title: `${label} (Esc; Shift+Esc goes straight back)`, "aria-label": label, onclick: () => { location.hash = to; } }, icon(ICON.back), el("kbd", { text: "Esc" })); };
   if (S.view === "notes") {
     put($("#top"), brand, beta, el("div", { class: "crumb sub" }, el("h1", { text: "Notes" })), el("span", { class: "grow" }), swap, search,
       add([{ label: "New page", key: "N", run: () => newPage() }, { label: "New folder", key: "F", run: () => newPage(null, "folder") }]), more());
@@ -761,7 +762,7 @@ async function capture() {
 function shortcuts() {
   const rows = [["↑ ↓ ← →", "The idea under, the idea above, the ideas beside"], ["1–9", "Go to an idea by its number"], ["Tab", "Add an idea under"], ["Enter", "Add an idea beside"], ["R", "Rename"], ["Del", "Delete"], ["Space", "The idea's panel"], ["N", "Write the idea's notes"], ["X", "Make the idea its own graph"], ["V", "Move ideas: drag one, or nudge the picked one with the arrows; U puts it back"],
     ["L", "Link"], ["G", "Graft"], ["C", "Colour"], ["F", "Fly to idea"], ["0", "Fit view"], ["W A S D  Q E", "Fly"], ["/", "Search"], ["I", "Capture"],
-    ["1–9", "Garden: go to a hub, an island, then a topic"], ["0  Esc", "Garden: step back out"], ["W", "Garden: water"], ["D", "Garden: day or night"], ["S", "Garden: split a topic past 200%"], ["P", "Patches"], ["T", "Timeline"], ["M", "Meaning view"], ["K", "Tech tree"], ["1–9  Enter", "Tech tree: pick, then go in or open"], ["Space", "Tech tree: open or close an idea"], ["Esc", "Tech tree: let go, then step back a tier"], ["T  A  H", "Tech tree: this tier only, show all, back to the start"], ["B", "Tech tree: what an island grows from"], ["L", "Tech tree: tree or web"], ["Y", "Tech tree: simple or organic look"], ["J", "Tech tree web: jiggle while dragging, or hold still"], ["N  Z", "New knowledge graph, new topic"], ["J", "Knowledge: graphs separate in their rings, or joined into one structure"], ["G", "Garden: the knowledge graphs of what's picked"], ["O", "Notes; in a graph, notes beside it"], ["N  G", "Notes: new page, grow with Claude"], ["1–9  ↑ ↓", "Notes: pick a page"], ["← →", "Notes: topics"], ["A", "Notes: attach the page to a graph"], ["/", "Notes, while writing: blocks"], ["Tab  Shift+Tab", "Notes, while writing: indent a block"], ["Ctrl+B I U E K", "Notes, while writing: bold, italic, underline, code, link"], ["Ctrl+Shift+↑ ↓", "Notes, while writing: move a block"], ["Shift+Tab", "Garden, knowledge, notes"], ["[  ]", "Close or open the menu on the left, on the right"], ["Enter  V", "Watering: water the graph picked, water everything"], ["Esc", "Back"]];
+    ["1–9", "Garden: go to a hub, an island, then a topic"], ["0  Esc", "Garden: step back out"], ["Esc", "Back: closes what is open first, then goes back"], ["Shift+Esc", "Back to the screen before, straight away"], ["W", "Garden: water"], ["D", "Garden: day or night"], ["S", "Garden: split a topic past 200%"], ["P", "Patches"], ["T", "Timeline"], ["M", "Meaning view"], ["K", "Tech tree"], ["1–9  Enter", "Tech tree: pick, then go in or open"], ["Space", "Tech tree: open or close an idea"], ["Esc", "Tech tree: let go, then step back a tier"], ["T  A  H", "Tech tree: this tier only, show all, back to the start"], ["B", "Tech tree: what an island grows from"], ["L", "Tech tree: tree or web"], ["Y", "Tech tree: simple or organic look"], ["J", "Tech tree web: jiggle while dragging, or hold still"], ["N  Z", "New knowledge graph, new topic"], ["J", "Knowledge: graphs separate in their rings, or joined into one structure"], ["G", "Garden: the knowledge graphs of what's picked"], ["O", "Notes; in a graph, notes beside it"], ["N  G", "Notes: new page, grow with Claude"], ["1–9  ↑ ↓", "Notes: pick a page"], ["← →", "Notes: topics"], ["A", "Notes: attach the page to a graph"], ["/", "Notes, while writing: blocks"], ["Tab  Shift+Tab", "Notes, while writing: indent a block"], ["Ctrl+B I U E K", "Notes, while writing: bold, italic, underline, code, link"], ["Ctrl+Shift+↑ ↓", "Notes, while writing: move a block"], ["Shift+Tab", "Garden, knowledge, notes"], ["[  ]", "Close or open the menu on the left, on the right"], ["Enter  V", "Watering: water the graph picked, water everything"], ["Esc", "Back"]];
   dialog({ title: "Shortcuts", ok: null, cancel: "Close", body: el("table", { class: "keys" }, rows.map(([k, d]) => el("tr", {}, el("td", {}, el("kbd", { text: k })), el("td", { text: d })))) });
 }
 async function exportBackup() {
@@ -1316,7 +1317,7 @@ function renderGarden() {
     }
     return h;
   };
-  const head = (back, h, more) => el("div", { class: "ph gph" }, back ? ib("gBack", "Back", ICON.back, back) : null, h, more);
+  const head = (back, h, more) => el("div", { class: "ph gph" }, back ? el("button", { class: "ib keyed", id: "gBack", type: "button", title: "Back (Esc)", "aria-label": "Back", onclick: back }, icon(ICON.back), el("kbd", { text: "Esc" })) : null, h, more);
   const pickRow = (id, label, opts, now, set) => el("label", { class: "gsrow" }, el("span", { text: label }), el("select", { id, onchange: (e) => set(e.target.value) }, opts.map(([v, text]) => el("option", { value: v, text, selected: v === now }))));
   if (t) {
     const due = t.due.length, o = (S.garden.zone[t.id] ||= {});
@@ -1681,7 +1682,7 @@ function back() {
   location.hash = S.view === "tree" ? S.treeBack : S.view === "meaning" ? S.meanBack : "#/";
 }
 function onKey(e) {
-  if (e.key === "Escape") { e.preventDefault(); return back(); }
+  if (e.key === "Escape") { e.preventDefault(); if (e.shiftKey && S.backTo && $("#backBtn") && !overlayOpen()) { location.hash = S.backTo; return; } return back(); }
   if (e.ctrlKey || e.metaKey || e.altKey || overlayOpen() || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName) || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || e.target?.isContentEditable || document.activeElement?.isContentEditable) return;
   const k = e.key.length === 1 ? e.key.toLowerCase() : e.key, stop = () => e.preventDefault();
   if (S.review) {

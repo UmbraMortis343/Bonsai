@@ -14,7 +14,7 @@ Hub → island → topic → knowledge graph → idea. He sees a graph as ideas 
 
 ## How he wants it
 - Very little text in the app. No explanatory copy, labels only where needed.
-- Every action reachable by keyboard, with its key shown on screen. Phone gets a touch compromise.
+- Every action reachable by keyboard, with its key shown on screen (back arrows show Esc; Shift+Esc goes straight back, `S.backTo`, 0.18.2). Phone gets a touch compromise.
 - Replies short and plain. Show pictures of visual work; he judges looks himself.
 - He decides direction. Ask before changing something he designed; just fix bugs.
 - Look (from 2026-11-15): one palette of white, black and an earth green, with warm greys and an earth ochre for "needs water"; no slate or navy blues. Rectangles with slightly rounded corners (3–6px), never pills or circles. Bars are docked, not floating: a full-width top bar (`--top`), side panels full height against an edge, a full-width bottom bar; the canvases shrink to the space left (`--dl`/`--dr` on `body`). The islands, tech tree, knowledge map and meaning view keep their own colours.

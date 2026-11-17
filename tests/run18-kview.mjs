@@ -111,6 +111,10 @@ await key("3"); await page.waitForTimeout(950); const before = await state(page,
 await key("x"); await page.waitForFunction((n) => bonsai.S.trees.length === n + 1, before);
 t.eq(await state(page, () => bonsai.S.trees.some((x) => x.name === "Capacitors")), true, "X makes the idea its own graph");
 
+// every back arrow shows its key, and Shift+Esc goes straight back with things still open
+t.eq(await page.textContent("#backBtn kbd"), "Esc", "the back arrow shows its key");
+await key(" "); await page.waitForSelector("#nodeTitle"); await key("Shift+Escape"); await page.waitForFunction(() => bonsai.S.view === "forest");
+await page.evaluate(() => history.back()); await page.waitForSelector(".lbl.trunk");
 const ztech = await state(page, () => bonsai.S.tree.zoneId);
 await key("k"); await page.waitForFunction(() => bonsai.S.view === "tech");
 t.eq(await page.evaluate(() => location.hash), "#/techtree/" + encodeURIComponent(ztech), "K in a graph opens the tech tree on its topic");
