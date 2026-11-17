@@ -479,7 +479,7 @@ function labelOpacity(L, dist) {
   if (S.view === "meaning") return L.kind === "group" || L.id === S.sel ? 1 : THREE.MathUtils.clamp(2.3 - dist / (stage.radius * 0.85), 0, 1);
   // rings read like a map: islands and hubs always named, topics from closer in, graphs from closer still
   if (L.as) return L.as === "hub" || L.as === "isle" ? 1 : L.as === "zone" ? THREE.MathUtils.clamp((330 - dist) / 60, 0, 1) : L.as === "tree" ? THREE.MathUtils.clamp((130 - dist) / 20, 0, 1) : THREE.MathUtils.clamp((48 - dist) / 10, 0, 1);
-  if (S.view !== "tree") return L.kind === "hub" || L.kind === "isle" ? 1 : L.kind === "zone" ? THREE.MathUtils.clamp((330 - dist) / 60, 0, 1) : L.id === S.fsel ? 1 : THREE.MathUtils.clamp((112 - dist) / 14, 0, 1);
+  if (S.view !== "tree") return L.kind === "hub" || L.kind === "isle" ? 1 : L.kind === "zone" ? THREE.MathUtils.clamp((520 - dist) / 60, 0, 1) : 1;   // graph names stay at any distance (his call, 0.18.1); they only give way where they'd touch
   if (S.review) return L.id === S.sel ? 1 : 0;
   if (L.kind === "link") return THREE.MathUtils.clamp(2 - dist / (stage.radius * 1.1), 0, 1);
   if (L.id === S.sel || S.near.has(L.id)) return 1;
@@ -809,7 +809,7 @@ function renderActions() {
   if (S.view === "forest" && S.cutoff == null && !S.pick && S.trees.length) {
     const b = (id, text, k, run, on) => el("button", { class: "btn" + (on ? " on" : ""), id, "aria-pressed": on == null ? null : String(on), onclick: run }, text, el("kbd", { text: k }));
     put(a, el("div", { class: "seg keys", role: "group", "aria-label": "View" }, b("viewApart", "Separate", "J", () => toggleJoined(false), !S.joined), b("viewJoined", "Joined", "J", () => toggleJoined(true), S.joined)),
-      el("span", { class: "sep" }), b("viewFit", "Fit", "0", fitView), S.fscope ? b("viewAll", "Show all", "A", () => openScope()) : null);
+      el("span", { class: "sep" }), b("viewFit", "Fit", "0", fitView), S.fscope ? b("viewAll", "Show all", "A", () => openScope()) : null, el("span", { class: "sep" }), b("viewTech", "Tech tree", "K", openTech));
     a.hidden = false; return;
   }
   const idea = S.view === "meaning" && !S.pick ? S.byId.get(S.sel) : null;
@@ -836,7 +836,7 @@ function renderActions() {
     key("note", "Notes", "Space", togglePanel), key("link", "Link", "L", linkFrom), key("graft", "Graft", "G", graft),
     el("span", { class: "sep lap" }), key("goto", "Go to", S.jump ? S.jump + "…" : "1–9", () => quick("goto"), true), key("fit", "Fit", "0", fitView, true), key("move", "Move", "V", () => toggleMove(), true),
     ib("nodeMore", "More", ICON.more, (e) => menu(e.currentTarget, [
-      { label: "Move ideas", key: "V", run: () => toggleMove() },
+      { label: "Move ideas", key: "V", run: () => toggleMove() }, { label: "Tech tree", key: "K", run: openTech },
       { label: "Rename", key: "R", run: () => quick("rename") }, { label: "Add beside", key: "Enter", run: () => quick("sibling") },
       { label: "Write notes", key: "N", run: editNotes }, { label: "Colour", key: "C", run: () => cycleColour(n) }, { label: "Fly to", key: "F", run: flyToSel },
       !top && { label: n.wasTree ? `Split ${n.wasTree.name} back out` : "Make its own graph", key: "X", run: () => splitOut(n) },
@@ -1540,7 +1540,11 @@ function takeArt() {
   if (artWant.length) artTimer = setTimeout(takeArt, 30);
 }
 function openTech() {
-  if (S.view === "tree" || S.view === "meaning") { S.pendingSel = S.sel; location.hash = "#/techtree"; return; }
+  if (S.view === "tree" || S.view === "meaning") { S.pendingSel = S.sel; location.hash = "#/techtree" + (S.tree ? "/" + encodeURIComponent(S.tree.zoneId) : ""); return; }
+  if (S.view === "forest" || S.view === "garden") {   // the knowledge view opens it on what's in view: a topic, an island, or a picked graph's topic
+    const at = S.fscope && S.fscope.kind !== "hub" ? S.fscope.id : treeOf(S.fsel)?.zoneId;
+    location.hash = "#/techtree" + (at ? "/" + encodeURIComponent(at) : ""); return;
+  }
   const t = S.view === "isles" ? S.model[S.isle]?.topics[S.topic] : null, isl = S.view === "isles" ? S.model[S.isle] : null;
   const at = t?.id || isl?.id;   // a topic opens on its island's tier with it picked; an island opens on its own tier
   location.hash = "#/techtree" + (at ? "/" + encodeURIComponent(at) : "");

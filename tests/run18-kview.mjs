@@ -34,6 +34,9 @@ await page.waitForTimeout(700); await page.screenshot({ path: "tests/shots/kview
 await page.click("#addBtn"); await words(".menu", "the add menu"); await key("Escape");
 
 // an island's name narrows to it; a topic's menu offers only that topic
+// graph names show however far out the view is; the bar opens the tech tree on what's in view
+t.eq(await state(page, () => [...document.querySelectorAll(".lbl.tree")].every((e) => e.style.opacity !== "0" && +getComputedStyle(e).opacity > 0.5)), true, "every graph is named");
+await page.click("#viewTech"); await page.waitForFunction(() => bonsai.S.view === "tech"); await page.evaluate(() => history.back()); await page.waitForFunction(() => bonsai.S.view === "forest");
 await page.click(".lbl.isle"); await page.waitForFunction(() => bonsai.S.fscope?.kind === "isle");
 t.eq(await page.textContent("#top h1"), "Home", "clicking an island's name shows only that island");
 await page.click('.lbl.zone:text-is("Electronics")'); await page.waitForSelector(".menu"); await words(".menu", "the topic menu");
@@ -83,8 +86,8 @@ await key("Escape"); await key("n"); await page.waitForFunction(() => document.a
 await page.click("#nodeMore"); await page.waitForSelector(".menu"); await words(".menu", "the idea's menu");
 t.eq(await page.locator(".menu .mi kbd").count(), await page.locator(".menu .mi").count(), "every line of the idea's menu shows its key"); await key("Escape");
 await page.click("#moreBtn"); await page.waitForSelector(".menu"); await words(".menu", "the graph's menu"); await key("Escape");
-await key("?"); await page.waitForSelector(".keys");   // (the tech tree's own Tree mode keeps its name)
-if (/\b(zone|trunk|branch|sibling|plant)\b|new tree/i.test(await page.textContent(".keys"))) t.fail("the shortcuts list still uses the old words"); await key("Escape");
+await key("?"); await page.waitForSelector(".dialog .keys");   // (the tech tree's own Tree mode keeps its name)
+if (/\b(zone|trunk|branch|sibling|plant)\b|new tree/i.test(await page.textContent(".dialog .keys"))) t.fail("the shortcuts list still uses the old words"); await key("Escape");
 // ---- move mode: drag an idea where you want it; it stays there, what hangs from it comes along, the view doesn't turn
 await key("Escape"); await key("v"); await page.waitForSelector('[data-act="moveDone"]');
 const where = (title) => page.evaluate((x) => { const S = bonsai.S, n = S.nodes.find((q) => q.title === x && q.treeId === S.tree.id), p = S.flora.pos.get(n.id), q = bonsai.stage.screenOf(p), r = bonsai.stage.container.getBoundingClientRect(); return { x: r.left + q.x, y: r.top + q.y, p: [p.x, p.y, p.z], id: n.id, pin: n.pin || null, theta: bonsai.stage.theta }; }, title);
@@ -107,6 +110,11 @@ await key("v"); await page.waitForSelector('[data-act="add"]');
 await key("3"); await page.waitForTimeout(950); const before = await state(page, () => bonsai.S.trees.length);
 await key("x"); await page.waitForFunction((n) => bonsai.S.trees.length === n + 1, before);
 t.eq(await state(page, () => bonsai.S.trees.some((x) => x.name === "Capacitors")), true, "X makes the idea its own graph");
+
+const ztech = await state(page, () => bonsai.S.tree.zoneId);
+await key("k"); await page.waitForFunction(() => bonsai.S.view === "tech");
+t.eq(await page.evaluate(() => location.hash), "#/techtree/" + encodeURIComponent(ztech), "K in a graph opens the tech tree on its topic");
+await page.evaluate(() => history.back()); await page.waitForSelector(".lbl.trunk");
 
 // ---- watering: the same rings, discs for pots, a ring on the disc for reviews passed
 await page.evaluate(() => { location.hash = "#/garden"; }); await page.waitForFunction(() => bonsai.S.view === "garden" && bonsai.S.forest);

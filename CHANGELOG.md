@@ -2,6 +2,11 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.18.1 — 2026-11-17
+
+- Graph names in the knowledge view's rings show at any distance; they only give way where they would touch another name. Topic names win over graph names.
+- Tech tree (K) is in the knowledge view's bar, and in a graph's ⋯ menu. It opens on what's in view: the topic or island shown, or the topic of the graph picked or open.
+
 ## 0.18.0 — 2026-11-17
 
 Exams fill the garden with what you already know.
