@@ -296,6 +296,16 @@ GROW = a structure for a coaching conversation
 - [ ] Make It Stick`, [tag("Tags", ["reading"])]],
 ];
 
+// vocab: [term, also called, meaning, where from]. Terms named inside a meaning link on to their own panels.
+const VOCAB = [
+  ["Momentum", ["p"], "Mass times velocity, p = mv. A vector, so direction matters. Newton's 2nd law is really about the rate of change of momentum.", "Lecture 6"],
+  ["Impulse", [], "Force times the time it acts, F × Δt. It equals the change in momentum, which is why a longer stop means a smaller force.", "Lecture 6"],
+  ["Newton's 2nd law", ["F = ma"], "Force is the rate of change of momentum, F = dp/dt. When mass stays the same this becomes F = ma.", "Lecture 6"],
+  ["Inelastic", ["inelastic collision"], "A collision where kinetic energy is lost to heat, sound or bending; momentum is still conserved. Perfectly inelastic: the objects stick together.", "Lecture 6"],
+  ["Kinetic energy", ["KE"], "Energy of motion, ½mv². Conserved in an elastic collision, lost in an inelastic one.", ""],
+  ["GROW", ["GROW model"], "A structure for a coaching conversation: Goal, Reality, Options, Way forward.\n\nAsk, don't tell: open questions, and let them do the thinking.", "Workshop with Sam"],
+];
+
 export function demoBackup(now = Date.now()) {
   const DAY = 86400000, iso = (t) => new Date(t).toISOString();
   let seed = 7; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
@@ -333,5 +343,5 @@ export function demoBackup(now = Date.now()) {
     if (inside.length) { addPages(inside, p.id); for (const c of pages.filter((x) => x.parentId === p.id)) p.blocks.push({ id: id("b"), type: "page", pageId: c.id, html: "", indent: 0 }); }
   });
   addPages(PAGES, null);
-  return { app: "bonsai", schema: 4, exportedAt: iso(now), zones, trees, nodes, links, events: [], patches: [], inbox: [], pages, meta: [{ key: "garden", value: garden }, { key: "demo", value: iso(now) }] };
+  return { app: "bonsai", schema: 4, exportedAt: iso(now), zones, trees, nodes, links, events: [], patches: [], inbox: [], pages, meta: [{ key: "vocab", value: VOCAB.map(([term, aliases, def, source], k) => ({ id: "v" + k, term, aliases, def, source, at: iso(now - (VOCAB.length - k) * 3600000), editedAt: iso(now) })) }, { key: "garden", value: garden }, { key: "demo", value: iso(now) }] };
 }

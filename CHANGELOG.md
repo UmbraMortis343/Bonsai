@@ -2,6 +2,12 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.19.0 — 2026-11-17
+
+- **Vocab.** A Vocab row sits at the foot of the notes sidebar, above + Page and + Folder (V). It opens the vocab page: every term with its meaning and the pages it appears in, searchable (F), sorted A–Z, newest, or by the page you first met it in. + Term (N) adds one; click a term's name to edit it (meaning, other names, where from); × removes it, with undo.
+- Terms are underlined wherever they appear in your notes, as you type. Hover one and its panel opens; hover a term inside that panel and the next one opens beside it, showing where you came from. Pin a panel to keep it (dragging pins it too), Esc or right-click closes one, Shift+right-click closes them all. Your notes' text isn't changed by any of this.
+- Beta: the demo has six terms from the momentum lecture and the GROW workshop.
+
 ## 0.18.2 — 2026-11-17
 
 - Every back arrow shows its key: Esc. Esc still closes what's open first (a panel, a pick, a menu) and then goes back; **Shift+Esc** goes straight back from wherever you are. On a phone the key is hidden.

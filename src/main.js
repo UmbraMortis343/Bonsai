@@ -19,11 +19,14 @@ import { datePicker, longDate } from "./datepick.js";
 import { createMiniWeb } from "./miniweb.js";
 import { MARK_LIST, assignMarks } from "./marks.js";
 import { readExam, planExam, LEVELS } from "./exams.js";
+import { createVocab } from "./vocab.js";
 
 const PALETTE = [["Blue", "#3b82f6"], ["Violet", "#8b5cf6"], ["Pink", "#ec4899"], ["Red", "#ef4444"], ["Orange", "#f97316"], ["Amber", "#f59e0b"], ["Green", "#22c55e"], ["Teal", "#14b8a6"], ["Cyan", "#06b6d4"]];
 const SWATCHES = [["Auto", ""], ...PALETTE];
 const DAY = 86400000;
 const ICON = {
+  pin: "M9 3h6l-1 7 3 3H7l3-3zM12 13v8",
+  book: "M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3zM5 17a3 3 0 0 1 3-3h11",
   back: "M15 5l-7 7 7 7", fold: "M6 9l6 6 6-6", unfold: "M6 15l6-6 6 6", close: "M6 6l12 12M18 6L6 18", plus: "M12 5v14M5 12h14", more: "M5 12h.01M12 12h.01M19 12h.01",
   search: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4", panel: "M4 5h16v14H4zM15 5v14", side: "M4 5h16v14H4zM9 5v14", drop: "M12 3c3 4.5 6 7.6 6 11a6 6 0 0 1-12 0c0-3.4 3-6.5 6-11z", page: "M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h5", folder: "M3 6h6l2 2h10v11H3z", graph: "M7 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM21 8a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM6.3 7.6l4.7 8.6M17.6 9.6l-4.6 6.8M7 6.2l10 1.6", sprout: "M12 21v-8M12 13c0-4 3-6 7-6 0 4-3 6-7 6zM12 15c0-3-2-5-6-5 0 3 2 5 6 5z", inbox: "M4 13l3-8h10l3 8v6H4zM4 13h5a3 3 0 0 0 6 0h5", play: "M8 5l11 7-11 7z", pause: "M8 5v14M16 5v14",
 };
@@ -64,6 +67,7 @@ async function load() {
   const [zones, trees, nodes, links, inbox, patches, pages] = await Promise.all([store.allZones(), store.allTrees(), store.allNodes(), store.allLinks(), store.listInbox(), store.listPatches(), store.listPages()]);
   S.allZones = zones; S.allTrees = trees; S.nodes = nodes; S.links = links; S.inbox = inbox; S.patches = patches;
   S.pages = pages.map((p) => { const kind = p.kind || "page"; return { ...p, kind, parentId: p.parentId || null, props: kind === "page" ? withStd(p.props) : p.props || [], blocks: p.blocks || textToBlocks(p.text || "") }; });   // early beta pages were plain text in a topic
+  S.vocab = (await store.getMeta("vocab").catch(() => null)) || []; vocab?.reindex();
   S.zones = zones.filter((z) => !z.archived).sort(byOrder);
   const ok = new Set(S.zones.map((z) => z.id));
   S.trees = trees.filter((t) => !t.archived && ok.has(t.zoneId)).sort(byOrder);
@@ -1667,6 +1671,7 @@ function onTap(hit, e) {
 }
 function back() {
   if (closeTop()) return;
+  if (vocab?.closeTop()) return;
   if (S.pick) return S.pick.finish(null);
   if (S.quick) { S.quick = null; return renderActions(); }
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || document.activeElement?.isContentEditable) return document.activeElement.blur();
@@ -1814,7 +1819,7 @@ function openNotes() {
 }
 function showNotes(id) {
   S.view = "notes"; S.tree = null; S.sel = null; S.lay = null; S.panel = null; clearScene(); hideHover();
-  S.npage = pageOf(id) ? id : pageOf(S.npage) ? S.npage : noteRows()[0]?.p.id || null;
+  S.npage = id === VOCAB || pageOf(id) ? id : S.npage === VOCAB || pageOf(S.npage) ? S.npage : noteRows()[0]?.p.id || null;
   for (const q of pagePath(pageOf(S.npage))) setOpen(q.id, true);   // show the way down to it
   put($("#notes"), notesSidebar(), el("section", { class: "nmain" }, el("div", { class: "pbar", id: "pbar" }), el("div", { class: "nedit", id: "nedit" })));
   setNotesHash(); drawPageList(); drawEditor(); renderChrome();
@@ -1832,13 +1837,15 @@ function notesSidebar(close) {
   const tree = el("div", { class: "ntree", id: "nlist", role: "tree", "aria-label": "Pages",
     ondragover: (e) => { if (S.ndrag && e.target === tree) { e.preventDefault(); tree.classList.add("drop"); } }, ondragleave: () => tree.classList.remove("drop"),
     ondrop: (e) => { if (e.target !== tree) return; e.preventDefault(); tree.classList.remove("drop"); movePage(S.ndrag, null); } });
+  const vrow = el("button", { class: "nvocab" + (S.view === "notes" && S.npage === VOCAB ? " on" : ""), id: "vocabBtn", type: "button", onclick: openVocab }, icon(ICON.book), el("span", { class: "nt", text: "Vocab" }),
+    el("span", { class: "muted", text: String((S.vocab || []).length || "") }), el("kbd", { text: "V" }));
   const foot = el("div", { class: "nfoot" },
     el("button", { class: "btn", id: "newPageBtn", onclick: () => newPage() }, "+ Page", el("kbd", { text: "N" })),
     el("button", { class: "btn", id: "newFolderBtn", onclick: () => newPage(null, "folder") }, "+ Folder", el("kbd", { text: "F" })));
   const filter = el("div", { class: "nfilter", role: "group", "aria-label": "Status" }, [["", "All"], ...STATUSES.map(([v]) => [v, v])].map(([v, text]) =>
     el("button", { type: "button", class: "nf" + ((S.nf || "") === v ? " on" : ""), "aria-pressed": String((S.nf || "") === v), dataset: { status: v }, text,
       onclick: (e) => { S.nf = v; for (const b of e.currentTarget.parentElement.children) { const on = b.dataset.status === v; b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); } drawPageList(); } })));
-  return el("nav", { class: "nside-bar", "aria-label": "Notes" }, el("div", { class: "nsearch" }, search, close ? null : el("kbd", { text: "/" }), close), filter, tree, foot);
+  return el("nav", { class: "nside-bar", "aria-label": "Notes" }, el("div", { class: "nsearch" }, search, close ? null : el("kbd", { text: "/" }), close), filter, tree, vrow, foot);
 }
 function setNotesHash() { const h = notesHash(); history.replaceState(null, "", h); S.hashNow = h; S.lastNotes = h; }
 function drawPageList() {
@@ -1875,6 +1882,7 @@ function drawEditor() {
   const host = $("#nedit"); if (!host) return;
   S.ed?.destroy(); S.ed = null;
   drawPageBar();
+  if (S.npage === VOCAB) return put(host, vocabView());
   const p = pageOf(S.npage);
   if (!p) { put(host, el("div", { class: "page none" }, el("button", { class: "btn", id: "firstPage", onclick: () => newPage() }, "New page", el("kbd", { text: "N" })))); return; }
   put(host, isFolder(p) ? folderView(p) : pageView(p, false));
@@ -1897,6 +1905,7 @@ function pageView(p, side) {
   S.ed = createEditor({ host: body, blocks, onChange: (bl) => queuePage(p.id, { blocks: bl }), pageTitle,
     openPage: (id) => (S.view === "notes" ? pickPage(id) : (location.hash = notesHash(id))),
     newSubpage: async () => { const c = await safely(() => store.addPage({ parentId: p.id })); if (!c) return null; S.pages.push(c); setOpen(p.id, true); return c.id; } });
+  vocab?.watch(body);
   return el("article", { class: "page" + (side ? " side" : "") }, titleInput(p, side), propsView(p), body);
 }
 // ---- properties at the top of a page, as in Notion ----
@@ -2117,6 +2126,11 @@ function notesTopics() {
 }
 function notesKey(k, stop) {
   const rows = noteRows().map((r) => r.p), i = rows.findIndex((p) => p.id === S.npage), p = pageOf(S.npage);
+  if (k === "v") { stop(); return openVocab(); }
+  if (S.npage === VOCAB) {
+    if (k === "n") { stop(); return editTerm({}); }
+    if (k === "f") { stop(); return $("#vocabSearch")?.focus(); }
+  }
   if (k === "n") { stop(); return newPage(); }
   if (k === "f") { stop(); return newPage(null, "folder"); }
   if (k === "g" && p && !isFolder(p)) { stop(); return growDialog(p.id); }
@@ -2130,6 +2144,69 @@ function notesKey(k, stop) {
     else if (k === "ArrowLeft") { if (has && notesOpen().has(p.id)) { setOpen(p.id, false); drawPageList(); } else if (p.parentId && pageOf(p.parentId)) pickPage(p.parentId); }
   }
 }
+// ---------- vocab: terms underlined across your notes, with nested panels (vocab.js) ----------
+const VOCAB = "vocab";
+let vocab = null;
+async function openVocab() {
+  if (S.view !== "notes") { location.hash = notesHash(VOCAB); return; }
+  await flushPage(); S.npage = VOCAB; setNotesHash(); drawPageList(); drawEditor(); renderActions();
+  for (const b of document.querySelectorAll(".nvocab")) b.classList.add("on");
+}
+const pageText = (p) => { const d = document.createElement("div"); d.innerHTML = (p.blocks || []).filter((b) => b.type !== "code").map((b) => b.html || "").join("\n"); return (p.title || "") + "\n" + d.textContent; };
+// the pages a term appears in, in sidebar order
+function seenIn(id) { return S.pages.filter((p) => !isFolder(p) && vocab.findIn(pageText(p)).some((h) => h.id === id)); }
+async function saveVocab(list, note) {
+  S.vocab = list; await safely(() => store.setMeta("vocab", list)); vocab.reindex();
+  if (S.view === "notes") { drawPageList(); if (S.npage === VOCAB) drawVocabList(); }
+  if (note) toast(note.text, note.undo ? { label: "Undo", run: note.undo } : undefined);
+}
+async function editTerm({ id, term = "", def = "", source = "" }) {
+  const was = (S.vocab || []).find((t) => t.id === id) || (term && (S.vocab || []).find((t) => t.term.toLowerCase() === term.trim().toLowerCase()));
+  const v = await dialog({ title: was ? was.term : "New term", ok: was ? "Save" : "Add", fields: [
+    { name: "term", label: "Term", value: was?.term || term, max: 120 },
+    { name: "aka", label: "Also called", value: (was?.aliases || []).join(", "), required: false, placeholder: "Other names, abbreviations, comma between", max: 300 },
+    { name: "def", label: "Meaning", type: "textarea", value: was?.def || def, placeholder: "In your own words. Other terms you name here link to their own panels." },
+    { name: "source", label: "Where from", value: was?.source || source, required: false, max: 300 }] });
+  if (!v || !v.term.trim()) return;
+  const t = v.term.trim(), dupe = !was && (S.vocab || []).find((x) => x.term.toLowerCase() === t.toLowerCase()), base = was || dupe;
+  const doc = { id: base?.id || store.uid(), term: t, aliases: v.aka.split(",").map((x) => x.trim()).filter(Boolean).slice(0, 12), def: (v.def || "").trim(), source: (v.source || "").trim(), at: base?.at || new Date().toISOString(), editedAt: new Date().toISOString() };
+  await saveVocab([...(S.vocab || []).filter((x) => x.id !== doc.id), doc]);
+  return doc;
+}
+async function removeTerm(id) {
+  const before = S.vocab, g = before.find((t) => t.id === id); if (!g) return;
+  await saveVocab(before.filter((t) => t.id !== id), { text: `Removed ${g.term}`, undo: () => saveVocab(before) });
+}
+// The vocab page: search, sort, and a card per term
+function vocabView() {
+  const search = el("input", { id: "vocabSearch", type: "text", placeholder: "Search vocab", "aria-label": "Search vocab", autocomplete: "off", value: S.vq || "",
+    oninput: (e) => { S.vq = e.target.value; drawVocabList(); }, onkeydown: (e) => { if (e.key === "Escape" && e.target.value) { e.preventDefault(); e.stopPropagation(); S.vq = ""; e.target.value = ""; drawVocabList(); } } });
+  const sorts = [["az", "A–Z"], ["new", "Newest"], ["page", "By page"]], now = S.vsort || "az";
+  const seg = el("div", { class: "nfilter vsort", role: "group", "aria-label": "Sort" }, sorts.map(([v, text]) => el("button", { class: "nf" + (v === now ? " on" : ""), type: "button", dataset: { sort: v }, "aria-pressed": String(v === now), text,
+    onclick: (e) => { S.vsort = v; for (const b of e.currentTarget.parentElement.children) { b.classList.toggle("on", b.dataset.sort === v); b.setAttribute("aria-pressed", String(b.dataset.sort === v)); } drawVocabList(); } })));
+  return el("article", { class: "page vocab" }, el("h1", { class: "ptitle", text: "Vocab" }),
+    el("div", { class: "vtools" }, search, el("kbd", { text: "F" }), seg, el("span", { class: "grow" }), el("button", { class: "btn primary", id: "newTerm", type: "button", onclick: () => editTerm({}) }, "+ Term", el("kbd", { text: "N" }))),
+    el("div", { class: "vlist", id: "vlist" }, vocabCards()));
+}
+function drawVocabList() { const host = $("#vlist"); if (host) put(host, vocabCards()); }
+function vocabCards() {
+  const q = (S.vq || "").trim().toLowerCase(), all = (S.vocab || []).filter((t) => !q || [t.term, ...(t.aliases || []), t.def || ""].some((x) => x.toLowerCase().includes(q)));
+  if (!all.length) return [el("p", { class: "muted", text: q ? "No matches" : "No terms yet" })];
+  const card = (t, seen) => el("div", { class: "vcard", dataset: { id: t.id } },
+    el("div", { class: "row" }, el("button", { class: "vterm", type: "button", onclick: () => editTerm({ id: t.id }) }, el("b", { text: t.term }), t.aliases?.length ? el("span", { class: "muted", text: " · " + t.aliases.join(", ") }) : null),
+      el("span", { class: "grow" }), ib(null, "Remove " + t.term, ICON.close, () => removeTerm(t.id))),
+    t.def ? el("div", { class: "vdef" }, t.def.split(/\n{2,}/).filter((x) => x.trim()).map((x) => vocab.marked(x.trim(), t.id))) : el("p", { class: "muted", text: "No meaning yet" }),
+    seen.length ? el("div", { class: "vseen" }, seen.map((p) => el("button", { class: "chip", type: "button", text: p.title || "Untitled", onclick: () => pickPage(p.id) }))) : null);
+  const seen = new Map(all.map((t) => [t.id, seenIn(t.id)])), sort = S.vsort || "az";
+  if (sort === "page") {
+    const groups = new Map(); for (const t of all) { const p = seen.get(t.id)[0]; const k = p ? p.id : ""; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(t); }
+    const order = [...S.pages.filter((p) => groups.has(p.id)).map((p) => p.id), ...(groups.has("") ? [""] : [])];
+    return order.map((k) => el("section", { class: "vgroup" }, el("h3", { text: k ? pageOf(k)?.title || "Untitled" : "Not in a page yet" }), groups.get(k).sort((a, b) => a.term.localeCompare(b.term)).map((t) => card(t, seen.get(t.id)))));
+  }
+  const list = [...all].sort(sort === "new" ? (a, b) => (b.at || "").localeCompare(a.at || "") : (a, b) => a.term.localeCompare(b.term, undefined, { sensitivity: "base" }));
+  return list.map((t) => card(t, seen.get(t.id)));
+}
+
 // In a knowledge graph, O pulls notes up beside it: the same sidebar as the notes window, and a page beside it once one is picked.
 function toggleSide() { S.nside = !S.nside; S.sp = null; S.sideFor = null; if (!S.nside) flushPage(); renderSide(); renderTop(); }
 function renderSide() {
@@ -2183,6 +2260,7 @@ async function init() {
   stage.setTheme(T);
   stage.isPaused = () => overlayOpen() || !!S.review || S.view === "tech";
   stage.onTap = onTap; stage.labelOpacity = labelOpacity; stage.onGrab = grabIdea;
+  vocab = createVocab({ el, pinIcon: () => icon(ICON.pin), terms: () => S.vocab || [], onEdit: (id) => editTerm({ id }), seenIn, openPage: (id) => { if (S.view === "notes") pickPage(id); else location.hash = notesHash(id); } }); vocab.reindex();
   S.joined = pref("joined", "0") === "1";
   stage.labelRank = (L) => (L.id === S.sel || (!ideaView() && L.id === S.fsel) ? 0 : S.near.has(L.id) ? 1 + L.depth * 0.01 : 2 + L.depth);
   stage.onHover = (hit, e) => {
@@ -2202,7 +2280,7 @@ async function init() {
     const c = await store.counts().catch(() => null);
     if (c && !c.zones && !(await store.getMeta("demo").catch(() => null))) await store.importAll(demoBackup());
   }
-  window.bonsai = { S, store, refresh, get stage() { return stage; }, get isles() { return isles; }, get tech() { return tech; } };
+  window.bonsai = { S, store, refresh, get stage() { return stage; }, get isles() { return isles; }, get tech() { return tech; }, get vocab() { return vocab; } };
   await go();
   document.body.dataset.ready = "1";
 }
