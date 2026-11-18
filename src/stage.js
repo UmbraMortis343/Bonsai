@@ -127,18 +127,21 @@ export class Stage {
       const on = v.z < 1 && v.z > -1 && Math.abs(v.x) < 1.2 && Math.abs(v.y) < 1.2;
       L.op = on ? this.labelOpacity(L, dist) : 0;
       if (L.op < 0.03) continue;
-      L.sx = (v.x * 0.5 + 0.5) * this.w; L.sy = (-v.y * 0.5 + 0.5) * this.h - (L.r ? (L.r / dist) * this.focal + 4 : 0);
+      L.sx = (v.x * 0.5 + 0.5) * this.w; L.cy = (-v.y * 0.5 + 0.5) * this.h; L.rr = L.r ? (L.r / dist) * this.focal : 0;
+      L.sy = L.cy - (L.r ? L.rr + 4 : 0);
       L.rank = L.tidy ? this.labelRank(L) + dist * 1e-4 : -1;
       live.push(L);
     }
     live.sort((a, b) => a.rank - b.rank);
-    const kept = [];
+    const kept = [], balls = live.filter((L) => L.rr > 3);
+    // a name may not sit on another idea's ball either
+    const onBall = (self, x0, x1, y0, y1) => balls.some((B) => B !== self && (Math.max(x0, Math.min(B.sx, x1)) - B.sx) ** 2 + (Math.max(y0, Math.min(B.cy, y1)) - B.cy) ** 2 < (B.rr + 1) ** 2);
     for (const L of live) {
       if (L.tidy) {
         let x0 = L.sx - L.w / 2, x1 = L.sx + L.w / 2, y1 = L.sy + (L.dy || 0), y0 = y1 - 20;   // dy: where the label's foot sits when it isn't right over its point
         // no two names may touch: the lesser one moves to its second place if it has one (alt), else goes,
         // when their boxes come within a few pixels of each other
-        const hits = () => kept.some((k) => x0 < k[1] + 6 && x1 > k[0] - 6 && y0 < k[3] + 2 && y1 > k[2] - 2);
+        const hits = () => kept.some((k) => x0 < k[1] + 6 && x1 > k[0] - 6 && y0 < k[3] + 2 && y1 > k[2] - 2) || onBall(L, x0, x1, y0, y1);
         L.at = null;
         if (L.rank >= 1 && hits()) {
           let ok = false;
@@ -146,6 +149,16 @@ export class Stage {
             v.copy(L.alt.pos).project(cam); const sx = (v.x * 0.5 + 0.5) * this.w, sy = (-v.y * 0.5 + 0.5) * this.h;
             x0 = sx - L.w / 2; x1 = sx + L.w / 2; y1 = sy + (L.alt.dy || 0); y0 = y1 - 20;
             if (!hits()) { ok = true; L.sx = sx; L.sy = sy; L.at = L.alt.anchor; }
+          } else if (L.rr) {   // an idea's name can go under its own ball, or to either side of it
+            const tries = [
+              [L.sx - L.w / 2, L.cy + L.rr + 3, L.sx, L.cy + L.rr + 3, "translate(-50%,0)"],
+              [L.sx + L.rr + 4, L.cy - 10, L.sx + L.rr + 4, L.cy, "translate(0,-50%)"],
+              [L.sx - L.rr - 4 - L.w, L.cy - 10, L.sx - L.rr - 4, L.cy, "translate(-100%,-50%)"],
+            ];
+            for (const [bx, by, px, py, at] of tries) {
+              x0 = bx; x1 = bx + L.w; y0 = by; y1 = by + 20;
+              if (!hits()) { ok = true; L.sx = px; L.sy = py; L.at = at; break; }
+            }
           }
           if (!ok) { L.op = 0; continue; }
         }

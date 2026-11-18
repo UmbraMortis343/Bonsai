@@ -2,6 +2,13 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.22.0 — 2026-11-19
+
+- **Tech tree: the whole tree at once.** It opens on everything, in rings round the start: islands that grow from nothing on the first ring, each with its key ideas fanned out past it, and the islands that grow from it further out, next to the idea they grow from.
+- Click picks. Right-click (Space) opens or closes what's straight under a thing, staying on the whole tree. Double-click (Enter) puts a thing in the middle with what's under it round it; Esc steps back out, H goes straight to the whole tree. G opens an idea in its graph, or an island or topic in the garden.
+- Circles throughout: no hexagon, no island pictures. The organic look (tapered arms) is the only look; Simple, Tier and Start are gone.
+- Knowledge view names: one look for all of them, in the page's ink, with weight and size saying what they are; no coloured or capitalised topic names, no boxes round numbers. The picked one is underlined. A name no longer sits on another idea's ball: it moves under its own ball or to either side, and only gives way if there's no room anywhere.
+
 ## 0.21.0 — 2026-11-18
 
 - **Pen pages.** + Pen (W) at the foot of the notes sidebar makes a page you write on, with the tools on a rail docked right: pen (P), highlighter (H), eraser (E), lasso (L), four colours (C), three sizes (S), undo and redo (Ctrl+Z, Ctrl+Y), zoom (+, −, 0 fits the width), paper (B: lined, grid, dots, blank).

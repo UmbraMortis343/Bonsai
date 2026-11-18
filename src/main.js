@@ -240,7 +240,7 @@ function buildForest(garden = S.view === "garden") {
       const hue = S.hues.get(t.id) || T.limb; fl.zones.set(t.id, p);
       glows.push({ x: p.x, z: p.z, r: p.r * 1.05, color: hue, k: 0.13 });
       const waiting = garden ? t.trees.reduce((a, tr) => a + shownNodes(tr).filter((n) => thirst(n) !== "ok").length, 0) : 0;   // seen from far off, where the graphs' own names have faded
-      name("zone", t.id, t.z.name, p, -0.5, `color:${hue}`, 0, waiting ? el("span", { class: "thirst", text: String(waiting) }) : null);
+      name("zone", t.id, t.z.name, p, -0.5, "", 0, waiting ? el("span", { class: "thirst", text: String(waiting) }) : null);
       for (const tr of t.trees) {
         const q = at.get(tr.id), lay = lays.get(tr.id), nodes = shownNodes(tr), r = discR(lay); fl.trees.set(tr.id, q);
         for (const n of nodes) shown.add(n.id);
@@ -340,7 +340,7 @@ function buildJoined() {
   for (const m of ground({ glows, discs: [{ x: t0.x, z: t0.z, r: discR(lays.get(J.parts[0].id)), color: J.parts[0].hue }] }, T.sky)) addDecor(m);
   // names: islands and hubs always, topics from further off than the ideas graphs start from, the rest from close in
   const CLS = { start0: "hub", hub: "hub", isle: "isle", topic: "zone", start: "tree", idea: "node" }, DEPTH = { start0: -2, hub: -2, isle: -0.95, topic: -0.5, start: 1, idea: 3 };   // an island's name gives way only to the top's; a topic's to an island's; and so on down
-  const labels = J.parts.flatMap((p) => p.ideas.map((n) => { const k = J.kind.get(n.id); return { el: el("div", { class: "lbl " + CLS[k], dataset: { kind: "node", id: n.id }, text: n.title, style: k === "topic" ? `color:${J.hue.get(n.id)}` : "" }), pos: flora.pos.get(n.id), kind: "node", as: CLS[k], id: n.id, depth: DEPTH[k] + (k === "idea" ? lays.get(p.id).depth.get(n.id) * 0.01 : 0), r: flora.radii.get(n.id), tidy: true }; }));
+  const labels = J.parts.flatMap((p) => p.ideas.map((n) => { const k = J.kind.get(n.id); return { el: el("div", { class: "lbl " + CLS[k], dataset: { kind: "node", id: n.id }, text: n.title }), pos: flora.pos.get(n.id), kind: "node", as: CLS[k], id: n.id, depth: DEPTH[k] + (k === "idea" ? lays.get(p.id).depth.get(n.id) * 0.01 : 0), r: flora.radii.get(n.id), tidy: true }; }));
   // the frame: the ball round everything
   const box = new THREE.Box3(); for (const v of flora.home.values()) box.expandByPoint(v); box.expandByPoint(new THREE.Vector3(t0.x, 0, t0.z));
   const mid = box.getCenter(new THREE.Vector3()), far = Math.max(4, ...[...flora.home.values()].map((v) => v.distanceTo(mid))) + 1;
@@ -416,7 +416,7 @@ function buildMeaning() {
       items.push({ tree: t, nodes, layout: { pos: M.pos, size: real.size, rootId: null }, offset: [0, 0], looks: new Map(nodes.map((n) => [n.id, { color, status: "ok" }])), passes: 0 });
       for (const n of nodes) { const p = M.pos.get(n.id); shown.add(n.id); depth.set(n.id, real.depth.get(n.id) || 0); all.push(p); sum[0] += p[0]; sum[1] += p[1]; sum[2] += p[2]; k++; top = Math.max(top, p[1]); }
     }
-    if (k) heads.push({ el: el("div", { class: "lbl tree group", dataset: { kind: "group", id: g.id }, text: g.name, style: `color:${color}` }), pos: new THREE.Vector3(sum[0] / k, top + 0.9, sum[2] / k), kind: "group", id: g.id });
+    if (k) heads.push({ el: el("div", { class: "lbl tree group", dataset: { kind: "group", id: g.id }, text: g.name }), pos: new THREE.Vector3(sum[0] / k, top + 0.9, sum[2] / k), kind: "group", id: g.id });
   });
   const c = [0, 0, 0]; for (const p of all) for (let i = 0; i < 3; i++) c[i] += p[i] / (all.length || 1);
   S.lay = { center: all.length ? c : [0, 3, 0], radius: Math.max(3, ...all.map((p) => Math.hypot(p[0] - c[0], p[1] - c[1], p[2] - c[2]))) + 1 };
@@ -767,7 +767,7 @@ async function capture() {
 function shortcuts() {
   const rows = [["↑ ↓ ← →", "The idea under, the idea above, the ideas beside"], ["1–9", "Go to an idea by its number"], ["Tab", "Add an idea under"], ["Enter", "Add an idea beside"], ["R", "Rename"], ["Del", "Delete"], ["Space", "The idea's panel"], ["N", "Write the idea's notes"], ["X", "Make the idea its own graph"], ["V", "Move ideas: drag one, or nudge the picked one with the arrows; U puts it back"],
     ["L", "Link"], ["G", "Graft"], ["C", "Colour"], ["F", "Fly to idea"], ["0", "Fit view"], ["W A S D  Q E", "Fly"], ["/", "Search"], ["I", "Capture"],
-    ["1–9", "Garden: go to a hub, an island, then a topic"], ["0  Esc", "Garden: step back out"], ["Esc", "Back: closes what is open first, then goes back"], ["Shift+Esc", "Back to the screen before, straight away"], ["W", "Notes: new pen page"], ["P H E L", "Pen page: pen, highlighter, eraser, lasso"], ["C  S  B", "Pen page: colour, size, paper"], ["T", "Pen page: touch draws or pans"], ["+ − 0", "Pen page: zoom, fit width"], ["D", "Pen page: properties"], ["W", "Garden: water"], ["D", "Garden: day or night"], ["S", "Garden: split a topic past 200%"], ["P", "Patches"], ["T", "Timeline"], ["M", "Meaning view"], ["K", "Tech tree"], ["1–9  Enter", "Tech tree: pick, then go in or open"], ["Space", "Tech tree: open or close an idea"], ["Esc", "Tech tree: let go, then step back a tier"], ["T  A  H", "Tech tree: this tier only, show all, back to the start"], ["B", "Tech tree: what an island grows from"], ["L", "Tech tree: tree or web"], ["Y", "Tech tree: simple or organic look"], ["J", "Tech tree web: jiggle while dragging, or hold still"], ["N  Z", "New knowledge graph, new topic"], ["J", "Knowledge: graphs separate in their rings, or joined into one structure"], ["G", "Garden: the knowledge graphs of what's picked"], ["O", "Notes; in a graph, notes beside it"], ["N  G", "Notes: new page, grow with Claude"], ["1–9  ↑ ↓", "Notes: pick a page"], ["← →", "Notes: topics"], ["A", "Notes: attach the page to a graph"], ["/", "Notes, while writing: blocks"], ["Tab  Shift+Tab", "Notes, while writing: indent a block"], ["Ctrl+B I U E K", "Notes, while writing: bold, italic, underline, code, link"], ["Ctrl+Shift+↑ ↓", "Notes, while writing: move a block"], ["Shift+Tab", "Garden, knowledge, notes"], ["[  ]", "Close or open the menu on the left, on the right"], ["Enter  V", "Watering: water the graph picked, water everything"], ["Esc", "Back"]];
+    ["1–9", "Garden: go to a hub, an island, then a topic"], ["0  Esc", "Garden: step back out"], ["Esc", "Back: closes what is open first, then goes back"], ["Shift+Esc", "Back to the screen before, straight away"], ["W", "Notes: new pen page"], ["P H E L", "Pen page: pen, highlighter, eraser, lasso"], ["C  S  B", "Pen page: colour, size, paper"], ["T", "Pen page: touch draws or pans"], ["+ − 0", "Pen page: zoom, fit width"], ["D", "Pen page: properties"], ["W", "Garden: water"], ["D", "Garden: day or night"], ["S", "Garden: split a topic past 200%"], ["P", "Patches"], ["T", "Timeline"], ["M", "Meaning view"], ["K", "Tech tree"], ["Click  1–9", "Tech tree: pick"], ["Right-click  Space", "Tech tree: open or close what's under it"], ["Double-click  Enter", "Tech tree: put it in the middle"], ["Esc  H", "Tech tree: let go, step back out, the whole tree"], ["A", "Tech tree: everything open"], ["G", "Tech tree: open in its graph or the garden"], ["B", "Tech tree: what an island grows from"], ["L", "Tech tree: tree or web"], ["J", "Tech tree web: jiggle while dragging, or hold still"], ["N  Z", "New knowledge graph, new topic"], ["J", "Knowledge: graphs separate in their rings, or joined into one structure"], ["G", "Garden: the knowledge graphs of what's picked"], ["O", "Notes; in a graph, notes beside it"], ["N  G", "Notes: new page, grow with Claude"], ["1–9  ↑ ↓", "Notes: pick a page"], ["← →", "Notes: topics"], ["A", "Notes: attach the page to a graph"], ["/", "Notes, while writing: blocks"], ["Tab  Shift+Tab", "Notes, while writing: indent a block"], ["Ctrl+B I U E K", "Notes, while writing: bold, italic, underline, code, link"], ["Ctrl+Shift+↑ ↓", "Notes, while writing: move a block"], ["Shift+Tab", "Garden, knowledge, notes"], ["[  ]", "Close or open the menu on the left, on the right"], ["Enter  V", "Watering: water the graph picked, water everything"], ["Esc", "Back"]];
   dialog({ title: "Shortcuts", ok: null, cancel: "Close", body: el("table", { class: "keys" }, rows.map(([k, d]) => el("tr", {}, el("td", {}, el("kbd", { text: k })), el("td", { text: d })))) });
 }
 async function exportBackup() {
@@ -1519,31 +1519,9 @@ function renderEmpty() {
 // ---------- the tech tree: a flat map of every topic and idea ----------
 function techData() {
   const model = gardenModel(), rec = new Map(S.garden.islands.map((q) => [q.id, q]));
-  artSig = new Map(model.map((q) => [q.id, JSON.stringify([q.landmark, q.mountain, q.topics.map((t) => [t.biome, t.mark, Math.round(t.health * 10), Math.round(t.growth * 10), !!t.mist])])])); artFresh = false;
   return { islands: model.map((q) => ({ id: q.id, name: q.name, hub: q.hub, after: rec.get(q.id)?.after || null, from: rec.get(q.id)?.from || null })),
     topics: model.flatMap((q, i) => q.topics.filter((t) => t.id).map((t) => ({ id: t.id, name: t.name, isle: i, ideas: t.ideas, growth: t.growth, mist: t.mist }))),
     trees: S.trees, nodes: S.nodes.map((n) => ({ ...n, st: n.ghost ? "ghost" : thirst(n) })), links: S.links };
-}
-// Pictures of islands and topics for the tech tree, taken by the garden's renderer one at a time between frames.
-const arts = new Map(), artWant = []; let artSig = new Map(), artFresh = false, artTimer = 0;
-function techArt(id, slot, night) {
-  const key = `${id}|${slot}|${night ? 1 : 0}|${artSig.get(id) || ""}`;
-  if (arts.has(key)) return arts.get(key);
-  if (!artWant.some((w) => w.key === key)) artWant.push({ key, id, slot, night });
-  if (!artTimer) artTimer = setTimeout(takeArt, 30);
-  return null;
-}
-function takeArt() {
-  artTimer = 0; if (S.view !== "tech") { artWant.length = 0; return; }
-  const w = artWant.shift(); if (!w) return;
-  let img = null;
-  if (ensureIsles()) {
-    if (!artFresh) { S.model = gardenModel(); isles.setData(S.model, crossLinks(), S.hubs); artFresh = true; }
-    try { img = isles.snap(w.id, { topic: w.slot, size: w.slot >= 0 ? 112 : 176, night: w.night }); } catch { img = null; }
-  }
-  if (arts.size > 300) arts.clear();
-  arts.set(w.key, img); tech?.redraw();
-  if (artWant.length) artTimer = setTimeout(takeArt, 30);
 }
 function openTech() {
   if (S.view === "tree" || S.view === "meaning") { S.pendingSel = S.sel; location.hash = "#/techtree" + (S.tree ? "/" + encodeURIComponent(S.tree.zoneId) : ""); return; }
@@ -1563,7 +1541,7 @@ async function showTech(focus) {
   if (!tech) {
     let saved = {}; try { saved = JSON.parse(pref("tech", "{}")); } catch {}
     Object.assign(saved, (await store.getMeta("techtree").catch(() => null)) || {});
-    tech = createTechTree({ host: $("#tech"), saved, art: techArt,
+    tech = createTechTree({ host: $("#tech"), saved,
       onSelect: () => renderActions(),
       onOpen: (x) => openFromTech(x),
       onHover: (x, cx, cy) => (x ? techHover(x, cx, cy) : hideHover()),
@@ -1593,20 +1571,17 @@ function techBar(a) {
   const sub = x ? (x.kind === "island" ? (x.start ? "" : x.afterName ? `from ${x.fromTitle || x.afterName}` : "") : x.kind === "topic" ? x.island : x.topic) : "";
   put(a,
     x ? el("div", { class: "plant" }, el("b", { text: x.title }), sub ? el("span", { class: "muted", text: sub }) : null) : null,
-    x && x.kind === "island" && !x.centre ? key("techIn", "Go in", "↵", () => tech.goTo(x.id)) : null,
-    x && x.kind === "idea" ? key("techOpen", "Open", "↵", () => openFromTech(x)) : null,
-    x && x.kind === "idea" && x.kids && !web ? key("techInside", x.open ? "Close" : "Inside", "Space", () => tech.key(" ")) : null,
-    x && x.kind === "island" && !x.start && !web ? key("techFrom", "Grows from", "B", () => growsFrom(x)) : null,
+    x && !web && x.kids && !x.centre ? key("techFold", x.open ? "Close" : "Open", "Space", () => tech.key(" ")) : null,
+    x && !web && !x.centre ? key("techCentre", "Centre", "↵", () => tech.key("Enter")) : null,
+    x && x.kind === "idea" ? key("techOpen", "Graph", "G", () => openFromTech(x)) : null,
     x && (x.kind === "island" && !x.start || x.kind === "topic") ? key("techGarden", "Garden", "G", () => openFromTech(x)) : null,
+    x && x.kind === "island" && !x.start && !web ? key("techFrom", "Grows from", "B", () => growsFrom(x)) : null,
     x ? el("span", { class: "sep" }) : null,
-    web ? null : key("techBack", "Back", "Esc", () => techEsc()),
-    web ? null : key("techTier", "Tier", "T", () => tech.key("t"), f.tier),
-    web ? null : key("techAll", "All", "A", () => tech.key("a"), f.all),
-    web ? null : key("techStart", "Start", "H", () => tech.key("h")),
+    web || f.full ? null : key("techFull", "Whole tree", "H", () => tech.key("h")),
+    web ? null : key("techAll", "All open", "A", () => tech.key("a"), f.all),
     el("div", { class: "seg keys", role: "group", "aria-label": "Mode" }, key("modeTree", "Tree", "L", () => techMode("tree"), !web), key("modeWeb", "Web", "L", () => techMode("web"), web)),
     web ? key("techReset", "Tidy", "R", () => tech.key("r")) : null,
     web ? key("techLoose", "Jiggle", "J", () => tech.key("j"), f.loose) : null,
-    el("div", { class: "seg keys", role: "group", "aria-label": "Look" }, key("lookSimple", "Simple", "Y", () => techLook("simple"), f.look !== "organic"), key("lookOrganic", "Organic", "Y", () => techLook("organic"), f.look === "organic")),
     key("techFit", "Fit", "0", () => tech.fit()));
   a.hidden = false;
 }
@@ -1628,14 +1603,13 @@ async function growsFrom(x) {
   rec.after = v.after || null; rec.from = from || null;
   await saveGarden();
 }
-function techLook(m) { if (tech.flags.look !== m) tech.key("y"); }
 function techMode(m) { tech.setMode(m); renderActions(); }
 function techEsc() { if (!tech.key("Escape")) location.hash = S.techBack; }
 function techKey(k, stop) {
   const x = tech.selected;
   if (k === "l") { stop(); return techMode(tech.mode === "web" ? "tree" : "web"); }
   if (k === "b" && x?.kind === "island" && !x.start && tech.mode === "tree") { stop(); return growsFrom(x); }
-  if (k === "g" && x && (x.kind === "topic" || (x.kind === "island" && !x.start))) { stop(); return openFromTech(x); }
+  if (k === "g" && x && (x.kind === "idea" || x.kind === "topic" || (x.kind === "island" && !x.start))) { stop(); return openFromTech(x); }
   if (tech.key(k === " " ? " " : k)) stop();
 }
 

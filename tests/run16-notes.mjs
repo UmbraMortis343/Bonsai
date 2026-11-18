@@ -227,12 +227,12 @@ await page.selectOption("#topicBiome", "glowcap");
 await page.waitForFunction(() => Object.values(bonsai.S.garden.zone).some((o) => o.biome === "glowcap"));
 await page.screenshot({ path: "tests/shots/garden-topic-panel.png" });
 await page.click("#techBtn"); await page.waitForFunction(() => bonsai.S.view === "tech" && bonsai.tech); await page.waitForTimeout(300);
-t.eq(await state(page, () => { const s = bonsai.tech.snapshot(); return [s.centre, !!s.pick]; }), ["gensci", true], "a topic's Tech tree opens on its island's tier, the topic picked");
+t.eq(await state(page, () => { const s = bonsai.tech.snapshot(); return [s.root, !!s.pick]; }), ["i:start", true], "a topic's Tech tree opens on the whole tree, the topic picked");
 await k("Escape"); await k("Escape"); await k("Escape"); await page.evaluate(() => { location.hash = "#/"; }); await page.waitForSelector("#gpanel h2");
 await k("0"); await page.waitForFunction(() => document.querySelector("#gpanel h2")?.textContent === "Garden");
 await k("1"); await k("4"); await page.waitForFunction(() => document.querySelector("#gpanel h2")?.textContent === "Physics");
 await page.click("#isleTech"); await page.waitForFunction(() => bonsai.S.view === "tech" && bonsai.tech); await page.waitForTimeout(300);
-t.eq(await state(page, () => bonsai.tech.snapshot().centre), "phys", "an island's Tech tree opens on that island's tier");
+t.eq(await state(page, () => bonsai.tech.snapshot().pick), "i:phys", "an island's Tech tree opens with that island picked");
 // G in the garden: the knowledge graphs of the island (or topic, or hub) picked, and only those.
 await page.evaluate(() => { location.hash = "#/"; }); await page.waitForSelector("#gpanel h2");
 await k("0"); await page.waitForFunction(() => document.querySelector("#gpanel h2")?.textContent === "Garden");

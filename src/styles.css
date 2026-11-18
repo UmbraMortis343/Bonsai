@@ -609,3 +609,14 @@ body[data-nbar="off"] .notes .nside-bar{display:none}
 .ibtn.on{background:var(--accent)}
 .iswatch.on{box-shadow:inset 0 0 0 1.5px var(--ink)}
 .nfoot{gap:4px}.nfoot .btn{padding:6px 4px;gap:4px;font-size:12.5px;min-width:0}
+/* names in the knowledge view: one look for all of them, in the page's ink; weight and size say what they are */
+.lbl,.lbl.zone,.lbl.isle,.lbl.hub,.lbl.tree,.lbl.group{color:var(--ink);letter-spacing:0;text-transform:none}
+.lbl.zone{font-size:13.5px;font-weight:700}
+.lbl.isle{font-size:15px;font-weight:700}
+.lbl.hub{font-size:17px;font-weight:700}
+.lbl.tree,.lbl.trunk,.lbl.group{font-size:13px;font-weight:600}
+.lbl.node{font-size:12px;font-weight:500}
+.lbl.sel{background:none;color:var(--ink);font-weight:700;padding:0 4px;text-shadow:0 0 2px var(--bg),0 0 4px var(--bg),0 0 7px var(--bg),0 0 10px var(--bg);
+  text-decoration:underline;text-decoration-color:var(--accent);text-decoration-thickness:2px;text-underline-offset:4px}
+.lbl.node[data-n]::before{border:0;background:none;padding:0;min-width:0;margin-right:5px;color:var(--muted);font:600 11px/1 var(--font);vertical-align:0}
+.lbl.sel[data-n]::before{color:var(--accent);opacity:1}
