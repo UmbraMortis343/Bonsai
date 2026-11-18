@@ -141,7 +141,8 @@ export class Stage {
         let x0 = L.sx - L.w / 2, x1 = L.sx + L.w / 2, y1 = L.sy + (L.dy || 0), y0 = y1 - 20;   // dy: where the label's foot sits when it isn't right over its point
         // no two names may touch: the lesser one moves to its second place if it has one (alt), else goes,
         // when their boxes come within a few pixels of each other
-        const hits = () => kept.some((k) => x0 < k[1] + 6 && x1 > k[0] - 6 && y0 < k[3] + 2 && y1 > k[2] - 2) || onBall(L, x0, x1, y0, y1);
+        const onName = () => kept.some((k) => x0 < k[1] + 6 && x1 > k[0] - 6 && y0 < k[3] + 2 && y1 > k[2] - 2), hits = () => onName() || onBall(L, x0, x1, y0, y1);
+        const home = [x0, x1, y0, y1, onName(), L.sx, L.sy];   // over its own ball; if only balls are in the way everywhere, it stays here
         L.at = null;
         if (L.rank >= 1 && hits()) {
           let ok = false;
@@ -160,6 +161,7 @@ export class Stage {
               if (!hits()) { ok = true; L.sx = px; L.sy = py; L.at = at; break; }
             }
           }
+          if (!ok && !home[4]) { [x0, x1, y0, y1] = home; L.sx = home[5]; L.sy = home[6]; L.at = null; ok = true; }
           if (!ok) { L.op = 0; continue; }
         }
         kept.push([x0, x1, y0, y1]);

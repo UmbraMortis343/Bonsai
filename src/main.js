@@ -143,7 +143,9 @@ function looksFor(tree, nodes, garden) {
     }
     return memo.get(n.id);
   };
-  for (const n of nodes) m.set(n.id, { color: n.ghost ? T.ring : colorOf(n), status: "ok" });
+  // beta: H marks what needs water in ochre in the knowledge views, so we can judge it against the watering screen
+  const dryOn = S.thirsty && CHANNEL === "beta";
+  for (const n of nodes) m.set(n.id, { color: n.ghost ? T.ring : dryOn && thirst(n, now) !== "ok" ? T.link : colorOf(n), status: "ok" });
   return m;
 }
 const passesOf = (treeId) => (S.byTree.get(treeId) || []).reduce((a, n) => a + (n.srs?.passes || 0), 0);
@@ -815,7 +817,7 @@ function renderActions() {
   if (S.view === "forest" && S.cutoff == null && !S.pick && S.trees.length) {
     const b = (id, text, k, run, on) => el("button", { class: "btn" + (on ? " on" : ""), id, "aria-pressed": on == null ? null : String(on), onclick: run }, text, el("kbd", { text: k }));
     put(a, el("div", { class: "seg keys", role: "group", "aria-label": "View" }, b("viewApart", "Separate", "J", () => toggleJoined(false), !S.joined), b("viewJoined", "Joined", "J", () => toggleJoined(true), S.joined)),
-      el("span", { class: "sep" }), b("viewFit", "Fit", "0", fitView), S.fscope ? b("viewAll", "Show all", "A", () => openScope()) : null, el("span", { class: "sep" }), b("viewTech", "Tech tree", "K", openTech));
+      el("span", { class: "sep" }), b("viewFit", "Fit", "0", fitView), S.fscope ? b("viewAll", "Show all", "A", () => openScope()) : null, CHANNEL === "beta" ? b("viewThirsty", "Thirsty", "H", toggleThirsty, !!S.thirsty) : null, el("span", { class: "sep" }), b("viewTech", "Tech tree", "K", openTech));
     a.hidden = false; return;
   }
   const idea = S.view === "meaning" && !S.pick ? S.byId.get(S.sel) : null;
@@ -1603,6 +1605,7 @@ async function growsFrom(x) {
   rec.after = v.after || null; rec.from = from || null;
   await saveGarden();
 }
+function toggleThirsty() { S.thirsty = !S.thirsty; setPref("thirsty", S.thirsty ? "1" : ""); if (S.view === "forest") buildForest(); renderActions(); }
 function techMode(m) { tech.setMode(m); renderActions(); }
 function techEsc() { if (!tech.key("Escape")) location.hash = S.techBack; }
 function techKey(k, stop) {
@@ -1651,6 +1654,7 @@ function back() {
   if (S.quick) { S.quick = null; return renderActions(); }
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || document.activeElement?.isContentEditable) return document.activeElement.blur();
   if (S.move) return toggleMove(false);
+  if (S.view === "notes" && S.gsel && graphPage(S.npage)) { S.gsel = null; S.board?.select(null); return drawGraphFoot($("#gfoot"), graphPage(S.npage)); }
   if (S.review) return endReview();
   if (S.cutoff != null) return toggleTimeline();
   if (S.panel) { S.panel = null; return renderPanel(); }
@@ -1698,6 +1702,7 @@ function onKey(e) {
     if (k === "m") { stop(); return goMeaning(); }
     if (k === "n") { stop(); return newGraph(); }
     if (k === "j") { stop(); return toggleJoined(); }
+    if (k === "h" && CHANNEL === "beta") { stop(); return toggleThirsty(); }
     if (k === "a" && S.fscope) { stop(); return openScope(); }
     if (k === "z") { stop(); return newZone(); }
     if (k.startsWith("Arrow")) { stop(); return stepForest(k === "ArrowRight" || k === "ArrowUp" ? 1 : -1); }
@@ -1794,14 +1799,14 @@ function openNotes() {
 }
 function showNotes(id) {
   S.view = "notes"; S.tree = null; S.sel = null; S.lay = null; S.panel = null; clearScene(); hideHover();
-  S.npage = id === VOCAB || pageOf(id) ? id : S.npage === VOCAB || pageOf(S.npage) ? S.npage : noteRows()[0]?.p.id || null;
+  S.npage = id === VOCAB || pageOf(id) || graphPage(id) ? id : S.npage === VOCAB || pageOf(S.npage) || graphPage(S.npage) ? S.npage : noteRows()[0]?.p.id || null;
   for (const q of pagePath(pageOf(S.npage))) setOpen(q.id, true);   // show the way down to it
   put($("#notes"), notesSidebar(), el("section", { class: "nmain" }, el("div", { class: "pbar", id: "pbar" }), el("div", { class: "nedit", id: "nedit" })));
   setNotesHash(); drawPageList(); drawEditor(); renderChrome();
 }
 // the notes sidebar: search, status filter, the tree, new page and folder. The notes window and the drawer beside a graph share it.
 function notesSidebar(close) {
-  const search = el("input", { id: "notesSearch", type: "text", placeholder: "Search pages or #tags", "aria-label": "Search notes", autocomplete: "off", value: S.nq || "",
+  const search = el("input", { id: "notesSearch", type: "text", placeholder: "Search notes, graphs or #tags", "aria-label": "Search the library", autocomplete: "off", value: S.nq || "",
     oninput: (e) => { S.nq = e.target.value; drawPageList(); },
     onkeydown: (e) => {
       const rows = noteRows();
@@ -1821,10 +1826,93 @@ function notesSidebar(close) {
   const filter = el("div", { class: "nfilter", role: "group", "aria-label": "Status" }, [["", "All"], ...STATUSES.map(([v]) => [v, v])].map(([v, text]) =>
     el("button", { type: "button", class: "nf" + ((S.nf || "") === v ? " on" : ""), "aria-pressed": String((S.nf || "") === v), dataset: { status: v }, text,
       onclick: (e) => { S.nf = v; for (const b of e.currentTarget.parentElement.children) { const on = b.dataset.status === v; b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); } drawPageList(); } })));
-  return el("nav", { class: "nside-bar", "aria-label": "Notes" }, el("div", { class: "nsearch" }, search, close ? null : el("kbd", { text: "/" }), close), filter, tree, vrow, foot);
+  // the Library: notes, graphs (island › topic › graph) and what needs watering, each folding away
+  const sect = (id, label, body, count) => { const on = libOpen(id);
+    return el("section", { class: "lsect" + (on ? " open" : ""), dataset: { sect: id } },
+      el("button", { class: "lhead", type: "button", id: "lib-" + id, "aria-expanded": String(on), onclick: () => { libFold(id); } }, el("span", { class: "chev" }), el("span", { text: label }), el("span", { class: "muted lcount", id: "lcount-" + id, text: count || "" })),
+      on ? body : null); };
+  const glist = el("div", { class: "ntree glist", id: "glist", role: "tree", "aria-label": "Graphs" }), wlist = el("div", { class: "ntree wlist", id: "wlist", role: "list", "aria-label": "Needs water" });
+  const lib = el("div", { class: "nlib" }, sect("notes", "Notes", el("div", {}, filter, tree)), sect("graphs", "Graphs", glist, String(S.trees.length || "")), sect("water", "Watering", wlist, String(thirstyGraphs().length || "")));
+  return el("nav", { class: "nside-bar", "aria-label": "Library" }, el("div", { class: "nsearch" }, search, close ? null : el("kbd", { text: "/" }), close), lib, vrow, foot);
 }
 function setNotesHash() { const h = notesHash(); history.replaceState(null, "", h); S.hashNow = h; S.lastNotes = h; }
+// ---------- the Library's graphs and watering ----------
+const GP = "g:";   // a graph opened in the Library: S.npage is "g:<treeId>"
+const graphPage = (id) => (typeof id === "string" && id.startsWith(GP) ? treeOf(id.slice(GP.length)) || null : null);
+const libOpen = (id) => { const o = JSON.parse(pref("lib", "{}") || "{}"); return o[id] !== false; };
+function libFold(id) {
+  const o = JSON.parse(pref("lib", "{}") || "{}"); o[id] = !libOpen(id); setPref("lib", JSON.stringify(o));
+  const nav = document.querySelector(".nside-bar"); if (!nav) return;
+  const close = nav.querySelector(".nsearch .keyed"); nav.replaceWith(notesSidebar(close || undefined)); drawPageList();
+}
+const thirstyOf = (tr) => (S.byTree.get(tr.id) || []).filter((n) => !n.ghost && thirst(n) !== "ok").length;
+const thirstyGraphs = () => S.trees.map((tr) => [tr, thirstyOf(tr)]).filter(([, n]) => n).sort((a, b) => b[1] - a[1]);
+// islands, then their topics, then the graphs on each; topics on no island come last
+function graphShelves() {
+  const isl = (S.garden?.islands || []).map((q) => ({ id: q.id, name: q.name, zones: q.zoneIds.map((z) => S.zones.find((x) => x.id === z)).filter(Boolean) }));
+  const seen = new Set(isl.flatMap((q) => q.zones.map((z) => z.id))), loose = S.zones.filter((z) => !seen.has(z.id));
+  if (loose.length) isl.push({ id: "_loose", name: "Elsewhere", zones: loose });
+  return isl.map((q) => ({ ...q, zones: q.zones.map((z) => ({ z, trees: S.trees.filter((t) => t.zoneId === z.id) })).filter((x) => x.trees.length) })).filter((q) => q.zones.length);
+}
+function openGraphPage(treeId) {
+  if (S.view !== "notes") { if (S.view === "tree" && S.nside) return goTree(treeId); location.hash = notesHash(GP + treeId); return; }
+  flushPage().then(() => { S.npage = GP + treeId; S.gsel = null; setNotesHash(); drawPageList(); drawEditor(); renderActions(); });
+}
+function graphRow(tr, depth, extra) {
+  const on = S.view === "notes" && S.npage === GP + tr.id, dry = thirstyOf(tr);
+  return el("div", { class: "nrow graph" + (on ? " on" : ""), dataset: { tree: tr.id }, style: `--d:${depth}`, role: "treeitem" },
+    el("span", { class: "chev none" }),
+    el("button", { class: "nname", type: "button", onclick: () => openGraphPage(tr.id) }, icon(ICON.graph), el("span", { class: "nt", text: tr.name || "Untitled" }), extra ? el("span", { class: "npath", text: extra }) : null),
+    dry ? el("span", { class: "thirst", text: String(dry) }) : null);
+}
+function drawGraphList() {
+  const host = $("#glist"); if (!host) return;
+  const q = (S.nq || "").trim().toLowerCase();
+  if (q) {   // searching: every graph whose name matches, with where it sits
+    const hits = S.trees.filter((t) => (t.name || "").toLowerCase().includes(q));
+    return put(host, hits.map((t) => graphRow(t, 0, S.zones.find((z) => z.id === t.zoneId)?.name)), hits.length ? null : el("p", { class: "muted nnone", text: "No matches" }));
+  }
+  const open = notesOpen(), rows = [];
+  const fold = (key, depth, label, n) => { const isOpen = open.has(key);
+    rows.push(el("div", { class: "nrow shelf", dataset: { shelf: key }, style: `--d:${depth}`, role: "treeitem", "aria-expanded": String(isOpen) },
+      el("button", { class: "chev", type: "button", tabIndex: -1, "aria-label": isOpen ? "Close" : "Open", "aria-expanded": String(isOpen), onclick: () => { setOpen(key, !isOpen); drawGraphList(); } }),
+      el("button", { class: "nname", type: "button", onclick: () => { setOpen(key, !isOpen); drawGraphList(); } }, el("span", { class: "nt", text: label })),
+      el("span", { class: "muted lcount", text: String(n) })));
+    return isOpen; };
+  for (const isl of graphShelves()) {
+    if (!fold("i:" + isl.id, 0, isl.name, isl.zones.reduce((a, z) => a + z.trees.length, 0))) continue;
+    for (const { z, trees } of isl.zones) { if (fold("t:" + z.id, 1, z.name, trees.length)) for (const t of trees) rows.push(graphRow(t, 2)); }
+  }
+  put(host, rows, rows.length ? null : el("p", { class: "muted nnone", text: "No graphs yet" }));
+}
+function drawWaterList() {
+  const host = $("#wlist"); if (!host) return;
+  const list = thirstyGraphs();
+  put(host, list.map(([t]) => graphRow(t, 0, S.zones.find((z) => z.id === t.zoneId)?.name)), list.length ? null : el("p", { class: "muted nnone", text: "Nothing waiting" }));
+  const c = $("#lcount-water"); if (c) c.textContent = String(list.length || "");
+}
+// A graph on a 2D board in the Library: pick an idea, double-click (or Enter) to open it in the graph.
+function graphBoard(tr) {
+  const host = el("div", { class: "gboard-c" }), nodes = shownNodes(tr), looks = looksFor(tr, nodes), ids = new Set(nodes.map((n) => n.id));
+  numberGraph(tr);
+  const info = el("div", { class: "gfoot", id: "gfoot" });
+  const pick = (id) => { S.gsel = id || null; board.select(S.gsel); drawGraphFoot(info, tr); };
+  const board = createMiniWeb({ host, onPick: pick, onOpen: (id) => openIdea(tr, id), num: (id) => S.num.get(id), ring: (id) => { const n = S.byId.get(id); return n && !n.ghost && thirst(n) !== "ok" ? T.link : null; } });
+  board.setData({ nodes, rootId: tr.rootId, links: S.links.filter((l) => ids.has(l.fromId) && ids.has(l.toId)).map((l) => ({ a: l.fromId, b: l.toId })), colour: (id) => looks.get(id)?.color || T.root });
+  S.board = board; S.ed = { destroy: () => { board.destroy(); if (S.board === board) S.board = null; }, flush: () => {}, focus: () => {} };
+  if (S.gsel && ids.has(S.gsel)) board.select(S.gsel);
+  drawGraphFoot(info, tr);
+  return el("div", { class: "gboard" }, host, info);
+}
+function drawGraphFoot(info, tr) {
+  const n = S.gsel && S.byId.get(S.gsel);
+  put(info, n ? [el("b", { text: n.title }), n.note ? el("span", { class: "muted", text: n.note.split("\n")[0].slice(0, 140) }) : null, el("span", { class: "grow" }),
+      el("button", { class: "btn", id: "gOpen", onclick: () => openIdea(tr, n.id) }, "Open", el("kbd", { text: "↵" }))]
+    : [el("span", { class: "muted", text: `${(S.byTree.get(tr.id) || []).length} ideas` }), el("span", { class: "grow" }), el("button", { class: "btn", id: "gOpen", onclick: () => openIdea(tr, tr.rootId) }, "Open", el("kbd", { text: "↵" }))]);
+}
+function openIdea(tr, id) { S.pendingSel = id; goTree(tr.id); }
 function drawPageList() {
+  drawGraphList(); drawWaterList();
   const host = $("#nlist"); if (!host) return;
   const rows = noteRows(), open = notesOpen();
   put(host, rows.map(({ p, depth, hit }, i) => {
@@ -1846,9 +1934,14 @@ function drawPageList() {
 // the bar over the page: where it sits, and its menu
 function drawPageBar() {
   const bar = $("#pbar"); if (!bar) return;
+  const off = document.body.dataset.nbar === "off", g = graphPage(S.npage);
+  const hide = () => el("button", { class: "ib sidehide", id: "sideHide", type: "button", title: (off ? "Show" : "Hide") + " the sidebar ([)", "aria-label": (off ? "Show" : "Hide") + " the sidebar", onclick: () => sideKey(true) }, icon(off ? ICON.sideOn : ICON.sideOff), el("kbd", { text: "[" }));
+  if (g) {
+    const z = S.zones.find((x) => x.id === g.zoneId), isl = S.garden?.islands.find((q) => q.zoneIds.includes(g.zoneId));
+    return put(bar, hide(), el("div", { class: "pcrumb" }, isl ? [el("span", { class: "sl0", text: isl.name }), el("span", { class: "sl", text: "/" })] : null, z ? [el("span", { class: "sl0", text: z.name }), el("span", { class: "sl", text: "/" })] : null, el("span", { class: "here", text: g.name || "Untitled" })), el("span", { class: "grow" }));
+  }
   const p = pageOf(S.npage);
   if (!p) { bar.replaceChildren(); return; }
-  const off = document.body.dataset.nbar === "off";
   put(bar, el("button", { class: "ib sidehide", id: "sideHide", type: "button", title: (off ? "Show" : "Hide") + " the sidebar ([)", "aria-label": (off ? "Show" : "Hide") + " the sidebar", onclick: () => sideKey(true) }, icon(off ? ICON.sideOn : ICON.sideOff), el("kbd", { text: "[" })),
     el("div", { class: "pcrumb" }, pagePath(p).map((q) => [el("button", { class: "link", type: "button", text: q.title || "Untitled", onclick: () => pickPage(q.id) }), el("span", { class: "sl", text: "/" })]),
       el("span", { class: "here", text: p.title || (isFolder(p) ? "New folder" : "Untitled") })),
@@ -1861,6 +1954,7 @@ function drawEditor() {
   S.ed?.destroy(); S.ed = null;
   drawPageBar();
   if (S.npage === VOCAB) return put(host, vocabView());
+  const g = graphPage(S.npage); if (g) return put(host, graphBoard(g));
   const p = pageOf(S.npage);
   if (!p) { put(host, el("div", { class: "page none" }, el("button", { class: "btn", id: "firstPage", onclick: () => newPage() }, "New page", el("kbd", { text: "N" })))); return; }
   put(host, isFolder(p) ? folderView(p) : pageView(p, false));
@@ -2125,6 +2219,11 @@ function notesKey(k, stop) {
     if (k === "n") { stop(); return editTerm({}); }
     if (k === "f") { stop(); return $("#vocabSearch")?.focus(); }
   }
+  const g = graphPage(S.npage);
+  if (g) {
+    if (/^[1-9]$/.test(k)) { const id = [...S.num.entries()].find(([, n]) => n === +k)?.[0]; if (id) { stop(); S.gsel = id; S.board?.select(id); return drawGraphFoot($("#gfoot"), g); } }
+    if (k === "Enter") { stop(); return openIdea(g, S.gsel || g.rootId); }
+  }
   if (k === "n") { stop(); return newPage(); }
   if (k === "f") { stop(); return newPage(null, "folder"); }
   if (k === "w") { stop(); return newPage(null, "ink"); }
@@ -2299,7 +2398,7 @@ async function init() {
   stage.onTap = onTap; stage.labelOpacity = labelOpacity; stage.onGrab = grabIdea;
   vocab = createVocab({ el, pinIcon: () => icon(ICON.pin), panelActions: (g, done) => [el("button", { class: "btn", type: "button", dataset: { act: "claude" }, onclick: () => { done(); fleshOut({ termId: g.id }); } }, "Claude"), el("button", { class: "btn", type: "button", dataset: { act: "google" }, onclick: () => google(g.term) }, "Google")], terms: () => S.vocab || [], onEdit: (id) => editTerm({ id }), seenIn, openPage: (id) => { if (S.view === "notes") pickPage(id); else location.hash = notesHash(id); } }); vocab.reindex();
   selPanel = createQuick({ el, roots: () => [...document.querySelectorAll(".page .blocks")], actions: selActions });
-  S.joined = pref("joined", "0") === "1";
+  S.joined = pref("joined", "0") === "1"; S.thirsty = pref("thirsty", "") === "1";
   stage.labelRank = (L) => (L.id === S.sel || (!ideaView() && L.id === S.fsel) ? 0 : S.near.has(L.id) ? 1 + L.depth * 0.01 : 2 + L.depth);
   stage.onHover = (hit, e) => {
     stage.container.style.cursor = hit && !(S.view === "forest" && hit.kind === "link") ? "pointer" : "";
@@ -2318,7 +2417,7 @@ async function init() {
     const c = await store.counts().catch(() => null);
     if (c && !c.zones && !(await store.getMeta("demo").catch(() => null))) await store.importAll(demoBackup());
   }
-  window.bonsai = { S, store, refresh, get stage() { return stage; }, get isles() { return isles; }, get tech() { return tech; }, get vocab() { return vocab; } };
+  window.bonsai = { S, store, refresh, get stage() { return stage; }, get isles() { return isles; }, get tech() { return tech; }, get vocab() { return vocab; }, thirst };
   await go();
   document.body.dataset.ready = "1";
 }

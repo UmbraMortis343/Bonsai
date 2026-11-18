@@ -2,6 +2,14 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.23.0 — 2026-11-19
+
+- **The Library.** The notes sidebar now has three sections that fold away: Notes, Graphs and Watering. Graphs are listed island › topic › graph; Watering lists the graphs with ideas waiting, most first. Search finds graphs by name as well as notes.
+- A graph opens in the main area as a flat board: numbers pick an idea, Enter or a double-click opens it in its graph, and what needs water is ringed in ochre. Building and stitching on the board comes next.
+- Every idea is the same size; the first one is no longer bigger.
+- Beta: Thirsty (H) in the knowledge view marks what needs water in ochre, to judge against the watering screen.
+- A name in the knowledge view no longer disappears when other balls crowd it: it stays over its own ball.
+
 ## 0.22.0 — 2026-11-19
 
 - **Tech tree: the whole tree at once.** It opens on everything, in rings round the start: islands that grow from nothing on the first ring, each with its key ideas fanned out past it, and the islands that grow from it further out, next to the idea they grow from.

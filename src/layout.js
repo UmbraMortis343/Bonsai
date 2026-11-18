@@ -7,7 +7,7 @@ const norm = (v) => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] 
 const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 const hash = (s) => { let h = 2166136261; for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619); return (h >>> 0) / 4294967296; };
 
-export const nodeRadius = (size, isRoot) => (isRoot ? 0.34 : 0.2) + 0.034 * Math.log2(size);
+export const nodeRadius = () => 0.26;   // every idea the same size (his call, 2026-11-19: the first one isn't bigger)
 export const GAP = 0.2;      // clear space kept between a bond and any idea it doesn't join
 const APART = 0.34;          // and between two ideas
 

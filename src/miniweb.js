@@ -1,13 +1,14 @@
 // A flat web of one knowledge graph, drawn like the tech tree's web view: dots in each idea's colour,
 // strings to the idea it hangs off, dashed links, the picked idea ringed and labelled.
-// createMiniWeb({ host, onPick(id) }) → { setData({ nodes, links, rootId, colour(id) }), select(id), resize(), destroy() }
-// Drag to pan, wheel to zoom, click an idea to pick it.
-export function createMiniWeb({ host, onPick }) {
+// createMiniWeb({ host, onPick(id), onOpen(id), num(id), ring(id) }) → { setData({ nodes, links, rootId, colour(id) }), select(id), resize(), destroy() }
+// Drag to pan, wheel to zoom, click an idea to pick it, double-click to open it. num gives an idea its number, ring an
+// extra ring's colour (the Library marks what needs water in ochre). Every idea is the same size.
+export function createMiniWeb({ host, onPick, onOpen, num = () => null, ring = () => null }) {
   const canvas = document.createElement("canvas"), ctx = canvas.getContext("2d");
   canvas.className = "miniweb"; canvas.setAttribute("aria-label", "Graph"); host.append(canvas);
   let W = 1, H = 1, dpr = 1, P = new Map(), kids = new Map(), links = [], sel = null, hov = null, colour = () => "#888", sig = "";
   let view = { x: 0, y: 0, k: 1 }, drag = null;
-  const css = () => { const s = getComputedStyle(document.body), v = (k, d) => s.getPropertyValue(k).trim() || d; return { bg: v("--bg", "#fff"), ink: v("--ink", "#111"), muted: v("--muted", "#777") }; };
+  const css = () => { const s = getComputedStyle(document.body), v = (k, d) => s.getPropertyValue(k).trim() || d; return { bg: v("--bg", "#fff"), ink: v("--ink", "#111"), muted: v("--muted", "#777"), accent: v("--accent", "#3d6a37") }; };
   let C = css();
   const SX = (x) => W / 2 + (x - view.x) * view.k, SY = (y) => H / 2 + (y - view.y) * view.k;
 
@@ -64,8 +65,9 @@ export function createMiniWeb({ host, onPick }) {
     }
     ctx.setLineDash([]);
     for (const p of P.values()) {
-      const x = SX(p.x), y = SY(p.y), r = (p.depth === 0 ? 7 : p.depth === 1 ? 5 : 3.6) * z;
+      const x = SX(p.x), y = SY(p.y), r = 5 * z, rc = ring(p.n.id);
       ctx.globalAlpha = f0 && !near.has(p.n.id) && p.depth > 0 ? 0.55 : 1; ctx.fillStyle = colour(p.n.id); ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+      if (rc) { ctx.strokeStyle = rc; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, y, r + 2.5, 0, Math.PI * 2); ctx.stroke(); }
       if (p.n.id === sel) { ctx.globalAlpha = 1; ctx.strokeStyle = C.ink; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.arc(x, y, r + 4, 0, Math.PI * 2); ctx.stroke(); }
     }
     // labels: the picked idea, what's near it, then the rest where they don't collide
@@ -74,14 +76,14 @@ export function createMiniWeb({ host, onPick }) {
     ctx.textBaseline = "middle";
     for (const p of [...P.values()].sort((a, b) => rank(a) - rank(b))) {
       const rk = rank(p), font = rk <= 1 || p.depth === 0 ? "600 12px system-ui,sans-serif" : "500 11px system-ui,sans-serif"; ctx.font = font;
-      let s = p.n.title; while (s.length > 4 && ctx.measureText(s).width > 150) s = s.slice(0, -2); if (s !== p.n.title) s = s.trimEnd() + "…";
+      const nb = num(p.n.id); let s = (nb ? nb + "  " : "") + p.n.title; const full = s; while (s.length > 4 && ctx.measureText(s).width > 150) s = s.slice(0, -2); if (s !== full) s = s.trimEnd() + "…";
       // right of the dot, else left, else below, else above; the picked idea and the graph's start always get one
       const w = ctx.measureText(s).width, cx = SX(p.x), cy = SY(p.y);
       const spots = [[cx + 9, cy], [cx - 9 - w, cy], [cx - w / 2, cy + 16], [cx - w / 2, cy - 16]].map(([x, y]) => ({ x, y, b: { x0: x - 5, y0: y - 10, x1: x + w + 5, y1: y + 10 } }));
       const spot = spots.find((o) => free(o.b)) || (rk <= 1 ? spots[0] : null);
       if (!spot) continue; boxes.push(spot.b); const { x, y } = spot;
       ctx.globalAlpha = f0 && !near.has(p.n.id) && rk > 1 ? 0.6 : 1;
-      if (p.n.id === sel) { ctx.fillStyle = C.ink; ctx.fillRect(x - 5, y - 10, w + 10, 20); ctx.fillStyle = C.bg; ctx.fillText(s, x, y + 0.5); }
+      if (p.n.id === sel) { ctx.lineWidth = 3; ctx.strokeStyle = C.bg; ctx.strokeText(s, x, y + 0.5); ctx.fillStyle = C.ink; ctx.fillText(s, x, y + 0.5); ctx.fillStyle = C.accent; ctx.fillRect(x, y + 8, w, 2); }   // the pick: underlined
       else { ctx.lineWidth = 3; ctx.strokeStyle = C.bg; ctx.strokeText(s, x, y + 0.5); ctx.fillStyle = p.depth > 1 ? C.muted : C.ink; ctx.fillText(s, x, y + 0.5); }
     }
     ctx.globalAlpha = 1;
@@ -95,6 +97,7 @@ export function createMiniWeb({ host, onPick }) {
     const h = hit(x, y); if (h !== hov) { hov = h; canvas.style.cursor = h ? "pointer" : "grab"; draw(); }
   });
   canvas.addEventListener("pointerup", (e) => { const d = drag; drag = null; if (d && !d.moved) { const [x, y] = at(e), h = hit(x, y); if (h) onPick?.(h); } });
+  canvas.addEventListener("dblclick", (e) => { const [x, y] = at(e), h = hit(x, y); if (h) onOpen?.(h); });
   canvas.addEventListener("pointerleave", () => { if (hov) { hov = null; draw(); } });
   canvas.addEventListener("wheel", (e) => { e.preventDefault(); const [x, y] = at(e), k0 = view.k, k = Math.max(0.25, Math.min(3, k0 * Math.exp(-e.deltaY * 0.0015)));
     view.x += (x - W / 2) / k0 - (x - W / 2) / k; view.y += (y - H / 2) / k0 - (y - H / 2) / k; view.k = k; draw(); }, { passive: false });
