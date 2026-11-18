@@ -116,9 +116,9 @@ export function createVocab(opts) {
     const head = el("div", { class: "vhead" }, el("span", { class: "vcrumb", text: crumbs.length ? crumbs.join(" › ") + " ›" : "Vocab" }), el("span", { class: "grow" }), pinBtn,
       el("button", { class: "ib", type: "button", title: "Close (Esc)", "aria-label": "Close", onclick: () => close(panel) }, "×"));
     head.addEventListener("pointerdown", (e) => drag(e, panel));
-    panel.el.replaceChildren(head, el("div", { class: "vbody" }, el("h3", { text: g.term }), g.aliases?.length ? el("div", { class: "muted vaka", text: "Also " + g.aliases.join(", ") }) : null, def),
+    panel.el.replaceChildren(head, el("div", { class: "vbody" }, el("h3", { text: g.term }), g.aliases?.length ? el("div", { class: "muted vaka", text: "Also " + g.aliases.join(", ") }) : null, def, g.quote ? el("blockquote", { class: "vquote", text: g.quote }) : null),
       el("div", { class: "vfoot" }, seen.length ? el("span", { class: "vseen" }, seen.slice(0, 4).map((p) => el("button", { class: "link", type: "button", text: p.title || "Untitled", onclick: () => { closeAll(true); opts.openPage(p.id); } }))) : el("span", { class: "muted", text: g.source || "" }),
-        el("span", { class: "grow" }), el("button", { class: "btn", type: "button", onclick: () => { closeAll(true); opts.onEdit(g.id); } }, "Edit")));
+        el("span", { class: "grow" }), ...(opts.panelActions ? opts.panelActions(g, () => closeAll(true)) : []), el("button", { class: "btn", type: "button", onclick: () => { closeAll(true); opts.onEdit(g.id); } }, "Edit")));
   }
   // text with the terms in it as <mark>s, which open the next panel
   function marked(text, skipId) {
@@ -179,4 +179,67 @@ export function createVocab(opts) {
     watch, reindex, remark, closeTop, closeAll, open, marked, findIn: (text, skip) => findTerms(text, ix, skip), termFor: (text) => termFor(text, ix),
     get panels() { return P.list; }, get hits() { return hits; }, hitAt,
   };
+}
+
+// ---------- Flesh out with Claude: a copy and paste round trip, until there's a live connection ----------
+// The sentence the words were met in, from the text around a selection.
+export function sentenceAround(text, start, end) {
+  const before = text.slice(0, start), after = text.slice(end);
+  const a = Math.max(before.lastIndexOf(". "), before.lastIndexOf("? "), before.lastIndexOf("! "), before.lastIndexOf("\n"));
+  const m = after.search(/[.?!](\s|$)|\n/);
+  return text.slice(a < 0 ? 0 : a + (before[a] === "\n" ? 1 : 2), m < 0 ? text.length : end + m + 1).trim().slice(0, 400);
+}
+export function fleshPrompt({ term, quote = "", page = "", def = "", known = [] }) {
+  return [
+    `I keep a vocab list in my notes app. Explain the term "${term}" for it.`,
+    quote ? `I met it in this sentence${page ? ` (my notes, "${page}")` : ""}:\n> ${quote}` : page ? `It came up in my notes, "${page}".` : "",
+    def ? `What I've written about it so far:\n> ${def.replace(/\n/g, "\n> ")}` : "",
+    known.length ? `Other terms already in my list (name any that help, spelled as here, so they link up): ${known.slice(0, 80).join(", ")}.` : "",
+    `Reply in exactly this shape and nothing else:`,
+    `Also: other names or abbreviations, comma between (leave this line out if there are none)`,
+    `Then the meaning: two to four plain sentences, as you'd explain it to a classmate. A blank line, then one short example if it helps.`,
+  ].filter(Boolean).join("\n\n");
+}
+// Claude's reply → { aliases, def }. Strips fences, headings and a leading restatement of the term.
+export function readFlesh(text, term = "") {
+  let t = String(text || "").replace(/^```\w*\n?|```$/gm, "").replace(/^#+\s.*$/gm, "").replace(/\*\*(.+?)\*\*/g, "$1").trim();
+  let aliases = [];
+  t = t.replace(/^also\s*:\s*(.*)$/im, (_, a) => { aliases = a.split(",").map((x) => x.trim().replace(/\.$/, "")).filter((x) => x && !/^none$/i.test(x)); return ""; }).trim();
+  if (term) t = t.replace(new RegExp("^" + term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*[:—-]\\s*", "i"), "");
+  t = t.replace(/^meaning\s*:\s*/i, "").replace(/\n{3,}/g, "\n\n").trim();
+  return { aliases: aliases.slice(0, 8), def: t };
+}
+
+// ---------- the quick panel on selected words ----------
+// opts: { el, roots() → elements the panel works in, actions(sel) → [{ id, label, key, run }] }, where sel is
+// { text, quote, termId, rect }. Alt+1… run them while the panel shows, so typing over the selection still works.
+export function createQuick(opts) {
+  const el = opts.el; let box = null, sel = null, timer = 0, acts = [];
+  const inside = (node) => { const e = node?.nodeType === 1 ? node : node?.parentElement; return e && opts.roots().some((r) => r.contains(e)); };
+  function read() {
+    const s = getSelection(); if (!s || s.isCollapsed || !s.rangeCount) return null;
+    const r = s.getRangeAt(0); if (!inside(r.commonAncestorContainer)) return null;
+    const text = s.toString().replace(/\s+/g, " ").trim(); if (!text || text.length > 120 || text.split(" ").length > 8) return null;
+    const blk = (r.startContainer.nodeType === 1 ? r.startContainer : r.startContainer.parentElement).closest(".tx") || r.startContainer.parentElement;
+    let quote = "";
+    if (blk) { const pre = document.createRange(); pre.selectNodeContents(blk); pre.setEnd(r.startContainer, r.startOffset); const a = pre.toString().length, full = blk.textContent; quote = sentenceAround(full, a, a + s.toString().length); }
+    return { text, quote, range: r.cloneRange(), rect: r.getBoundingClientRect() };
+  }
+  function show() {
+    sel = read(); if (!sel) return hide();
+    acts = opts.actions(sel).filter(Boolean);
+    const n = el("div", { class: "qpanel", role: "toolbar", "aria-label": "Selection" }, acts.map((a, i) => el("button", { class: "btn", type: "button", dataset: { act: a.id }, title: `${a.label} (Alt+${i + 1})`,
+      onmousedown: (e) => e.preventDefault(), onclick: () => run(i) }, a.label, el("kbd", { text: "Alt+" + (i + 1) }))));
+    box?.remove(); box = n; document.body.append(n);
+    const w = n.offsetWidth, h = n.offsetHeight, r = sel.rect;
+    // below the words, since the editor's format bar sits above them
+    let y = r.bottom + 8; if (y + h > innerHeight - 8) y = r.top - h - 8;
+    n.style.left = Math.max(8, Math.min(innerWidth - w - 8, r.left + r.width / 2 - w / 2)) + "px"; n.style.top = y + "px";
+  }
+  function hide() { box?.remove(); box = null; sel = null; acts = []; }
+  function run(i) { const a = acts[i], s = sel; if (!a) return; hide(); a.run(s); }
+  document.addEventListener("selectionchange", () => { clearTimeout(timer); timer = setTimeout(() => { if (document.querySelector(".dialog")) return; show(); }, 180); });
+  document.addEventListener("keydown", (e) => { if (box && e.key === "Escape" && !e.shiftKey) { e.preventDefault(); e.stopPropagation(); return hide(); } if (!box || !e.altKey || e.ctrlKey || e.metaKey) return; const i = +e.key - 1; if (i >= 0 && i < acts.length) { e.preventDefault(); e.stopPropagation(); run(i); } }, true);
+  addEventListener("scroll", hide, true); addEventListener("resize", hide);
+  return { hide, get shown() { return !!box; }, get sel() { return sel; } };
 }

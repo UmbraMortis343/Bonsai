@@ -61,8 +61,8 @@ export function dialog({ title, fields = [], ok = "Save", danger = false, body =
     const close = open(scrim, () => resolve(result));
     function finish(v) { result = v; close(); }
     form.addEventListener("submit", (e) => { e.preventDefault(); const out = {}; for (const [k, i] of Object.entries(inputs)) out[k] = i.value; finish(out); });
-    const first = form.querySelector("input[type=text],textarea,select") || form.querySelector("button.primary,button.danger-fill");
-    first?.focus(); first?.select?.();
+    const pick = fields.find((f) => f.autofocus), first = (pick && inputs[pick.name]) || form.querySelector("input[type=text],textarea,select") || form.querySelector("button.primary,button.danger-fill");
+    first?.focus(); if (pick && first?.setSelectionRange) first.setSelectionRange(first.value.length, first.value.length); else first?.select?.();
   });
 }
 

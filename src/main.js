@@ -19,7 +19,7 @@ import { datePicker, longDate } from "./datepick.js";
 import { createMiniWeb } from "./miniweb.js";
 import { MARK_LIST, assignMarks } from "./marks.js";
 import { readExam, planExam, LEVELS } from "./exams.js";
-import { createVocab } from "./vocab.js";
+import { createVocab, createQuick, fleshPrompt, readFlesh } from "./vocab.js";
 
 const PALETTE = [["Blue", "#3b82f6"], ["Violet", "#8b5cf6"], ["Pink", "#ec4899"], ["Red", "#ef4444"], ["Orange", "#f97316"], ["Amber", "#f59e0b"], ["Green", "#22c55e"], ["Teal", "#14b8a6"], ["Cyan", "#06b6d4"]];
 const SWATCHES = [["Auto", ""], ...PALETTE];
@@ -1838,7 +1838,7 @@ function notesSidebar(close) {
     ondragover: (e) => { if (S.ndrag && e.target === tree) { e.preventDefault(); tree.classList.add("drop"); } }, ondragleave: () => tree.classList.remove("drop"),
     ondrop: (e) => { if (e.target !== tree) return; e.preventDefault(); tree.classList.remove("drop"); movePage(S.ndrag, null); } });
   const vrow = el("button", { class: "nvocab" + (S.view === "notes" && S.npage === VOCAB ? " on" : ""), id: "vocabBtn", type: "button", onclick: openVocab }, icon(ICON.book), el("span", { class: "nt", text: "Vocab" }),
-    el("span", { class: "muted", text: String((S.vocab || []).length || "") }), el("kbd", { text: "V" }));
+    el("span", { class: "muted vcount", text: String((S.vocab || []).length || "") }), el("kbd", { text: "V" }));
   const foot = el("div", { class: "nfoot" },
     el("button", { class: "btn", id: "newPageBtn", onclick: () => newPage() }, "+ Page", el("kbd", { text: "N" })),
     el("button", { class: "btn", id: "newFolderBtn", onclick: () => newPage(null, "folder") }, "+ Folder", el("kbd", { text: "F" })));
@@ -2146,7 +2146,46 @@ function notesKey(k, stop) {
 }
 // ---------- vocab: terms underlined across your notes, with nested panels (vocab.js) ----------
 const VOCAB = "vocab";
-let vocab = null;
+let vocab = null, selPanel = null;
+const google = (q) => window.open("https://www.google.com/search?q=" + encodeURIComponent(q), "_blank", "noopener");
+const notePageTitle = () => (S.view === "notes" ? pageOf(S.npage) : pageOf(S.sp))?.title || "";
+// The quick panel on words selected in a note (Alt+1… while it shows). Over a term already kept, it opens that term instead of adding.
+function selActions(sel) {
+  const id = vocab.termFor(sel.text), g = id && S.vocab.find((t) => t.id === id);
+  return g ? [
+    { id: "open", label: g.term, run: () => { getSelection()?.collapseToEnd(); vocab.open(g.id, { range: sel.range }, { locked: true }); } },
+    { id: "context", label: "Add context", run: () => editTerm({ id: g.id, focus: "def" }) },
+    { id: "claude", label: "Flesh out", run: () => fleshOut({ termId: g.id }) },
+    { id: "google", label: "Google", run: () => google(sel.text) },
+  ] : [
+    { id: "add", label: "Add to vocab", run: () => quickAdd(sel) },
+    { id: "context", label: "Add context", run: () => editTerm({ term: sel.text, quote: sel.quote, source: notePageTitle(), focus: "def" }) },
+    { id: "claude", label: "Flesh out", run: () => fleshOut({ term: sel.text, quote: sel.quote, source: notePageTitle() }) },
+    { id: "google", label: "Google", run: () => google(sel.text) },
+  ];
+}
+async function quickAdd(sel) {
+  const term = sel.text.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
+  if (!term) return;
+  const doc = { id: store.uid(), term, aliases: [], def: "", quote: sel.quote || "", source: notePageTitle(), at: new Date().toISOString(), editedAt: new Date().toISOString() };
+  await saveVocab([...S.vocab, doc]);
+  toast(`Added ${term}`, { label: "Edit", run: () => editTerm({ id: doc.id, focus: "def" }) });
+}
+// Flesh out with Claude: copy a prompt, paste the reply back, then check it in the term's editor before it's kept.
+async function fleshOut({ termId, term, quote = "", source = "" }) {
+  const g = termId && S.vocab.find((t) => t.id === termId), name = g?.term || term; if (!name) return;
+  const prompt = fleshPrompt({ term: name, quote: g?.quote || quote, page: g?.source || source, def: g?.def || "", known: S.vocab.filter((t) => t !== g).map((t) => t.term) });
+  const reply = el("textarea", { id: "fleshReply", rows: 7, placeholder: "Claude's reply", "aria-label": "Claude's reply",
+    onkeydown: (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); reply.form?.requestSubmit(); } } });
+  const box = el("textarea", { id: "fleshPrompt", readOnly: true, rows: 4, hidden: true, "aria-label": "For Claude", value: prompt });
+  const copy = el("button", { type: "button", class: "btn primary", id: "fleshCopy", onclick: async () => { try { await navigator.clipboard.writeText(prompt); copy.textContent = "Copied"; } catch { box.hidden = false; box.focus(); box.select(); } } }, "Copy for Claude");
+  S.lastPrompt = prompt;
+  const ok = await dialog({ title: "Flesh out " + name, ok: "Use this", body: el("div", { class: "growd" }, el("div", { class: "row" }, copy, el("a", { class: "btn", href: "https://claude.ai/new", target: "_blank", rel: "noopener", text: "Open Claude" })), box, reply) });
+  if (!ok) return;
+  const r = readFlesh(reply.value, name); if (!r.def) return toast("Nothing in the reply");
+  const def = g?.def ? g.def + "\n\n" + r.def : r.def, aliases = [...new Set([...(g?.aliases || []), ...r.aliases])].filter((a) => a.toLowerCase() !== name.toLowerCase());
+  return editTerm({ id: g?.id, term: name, def, aliases, quote: g?.quote || quote, source: g?.source || source, focus: "def" });
+}
 async function openVocab() {
   if (S.view !== "notes") { location.hash = notesHash(VOCAB); return; }
   await flushPage(); S.npage = VOCAB; setNotesHash(); drawPageList(); drawEditor(); renderActions();
@@ -2157,19 +2196,20 @@ const pageText = (p) => { const d = document.createElement("div"); d.innerHTML =
 function seenIn(id) { return S.pages.filter((p) => !isFolder(p) && vocab.findIn(pageText(p)).some((h) => h.id === id)); }
 async function saveVocab(list, note) {
   S.vocab = list; await safely(() => store.setMeta("vocab", list)); vocab.reindex();
+  for (const c of document.querySelectorAll(".vcount")) c.textContent = String(list.length || "");
   if (S.view === "notes") { drawPageList(); if (S.npage === VOCAB) drawVocabList(); }
   if (note) toast(note.text, note.undo ? { label: "Undo", run: note.undo } : undefined);
 }
-async function editTerm({ id, term = "", def = "", source = "" }) {
+async function editTerm({ id, term = "", def = "", source = "", quote = "", aliases = null, focus = "" }) {
   const was = (S.vocab || []).find((t) => t.id === id) || (term && (S.vocab || []).find((t) => t.term.toLowerCase() === term.trim().toLowerCase()));
   const v = await dialog({ title: was ? was.term : "New term", ok: was ? "Save" : "Add", fields: [
     { name: "term", label: "Term", value: was?.term || term, max: 120 },
-    { name: "aka", label: "Also called", value: (was?.aliases || []).join(", "), required: false, placeholder: "Other names, abbreviations, comma between", max: 300 },
-    { name: "def", label: "Meaning", type: "textarea", value: was?.def || def, placeholder: "In your own words. Other terms you name here link to their own panels." },
+    { name: "aka", label: "Also called", value: (aliases || was?.aliases || []).join(", "), required: false, placeholder: "Other names, abbreviations, comma between", max: 300 },
+    { name: "def", label: "Meaning", type: "textarea", value: def || was?.def || "", autofocus: focus === "def", placeholder: "In your own words. Other terms you name here link to their own panels." },
     { name: "source", label: "Where from", value: was?.source || source, required: false, max: 300 }] });
   if (!v || !v.term.trim()) return;
   const t = v.term.trim(), dupe = !was && (S.vocab || []).find((x) => x.term.toLowerCase() === t.toLowerCase()), base = was || dupe;
-  const doc = { id: base?.id || store.uid(), term: t, aliases: v.aka.split(",").map((x) => x.trim()).filter(Boolean).slice(0, 12), def: (v.def || "").trim(), source: (v.source || "").trim(), at: base?.at || new Date().toISOString(), editedAt: new Date().toISOString() };
+  const doc = { id: base?.id || store.uid(), term: t, aliases: v.aka.split(",").map((x) => x.trim()).filter(Boolean).slice(0, 12), def: (v.def || "").trim(), source: (v.source || "").trim(), quote: base?.quote || quote || "", at: base?.at || new Date().toISOString(), editedAt: new Date().toISOString() };
   await saveVocab([...(S.vocab || []).filter((x) => x.id !== doc.id), doc]);
   return doc;
 }
@@ -2196,6 +2236,7 @@ function vocabCards() {
     el("div", { class: "row" }, el("button", { class: "vterm", type: "button", onclick: () => editTerm({ id: t.id }) }, el("b", { text: t.term }), t.aliases?.length ? el("span", { class: "muted", text: " · " + t.aliases.join(", ") }) : null),
       el("span", { class: "grow" }), ib(null, "Remove " + t.term, ICON.close, () => removeTerm(t.id))),
     t.def ? el("div", { class: "vdef" }, t.def.split(/\n{2,}/).filter((x) => x.trim()).map((x) => vocab.marked(x.trim(), t.id))) : el("p", { class: "muted", text: "No meaning yet" }),
+    t.quote ? el("blockquote", { class: "vquote", text: t.quote }) : null,
     seen.length ? el("div", { class: "vseen" }, seen.map((p) => el("button", { class: "chip", type: "button", text: p.title || "Untitled", onclick: () => pickPage(p.id) }))) : null);
   const seen = new Map(all.map((t) => [t.id, seenIn(t.id)])), sort = S.vsort || "az";
   if (sort === "page") {
@@ -2260,7 +2301,8 @@ async function init() {
   stage.setTheme(T);
   stage.isPaused = () => overlayOpen() || !!S.review || S.view === "tech";
   stage.onTap = onTap; stage.labelOpacity = labelOpacity; stage.onGrab = grabIdea;
-  vocab = createVocab({ el, pinIcon: () => icon(ICON.pin), terms: () => S.vocab || [], onEdit: (id) => editTerm({ id }), seenIn, openPage: (id) => { if (S.view === "notes") pickPage(id); else location.hash = notesHash(id); } }); vocab.reindex();
+  vocab = createVocab({ el, pinIcon: () => icon(ICON.pin), panelActions: (g, done) => [el("button", { class: "btn", type: "button", dataset: { act: "claude" }, onclick: () => { done(); fleshOut({ termId: g.id }); } }, "Claude"), el("button", { class: "btn", type: "button", dataset: { act: "google" }, onclick: () => google(g.term) }, "Google")], terms: () => S.vocab || [], onEdit: (id) => editTerm({ id }), seenIn, openPage: (id) => { if (S.view === "notes") pickPage(id); else location.hash = notesHash(id); } }); vocab.reindex();
+  selPanel = createQuick({ el, roots: () => [...document.querySelectorAll(".page .blocks")], actions: selActions });
   S.joined = pref("joined", "0") === "1";
   stage.labelRank = (L) => (L.id === S.sel || (!ideaView() && L.id === S.fsel) ? 0 : S.near.has(L.id) ? 1 + L.depth * 0.01 : 2 + L.depth);
   stage.onHover = (hit, e) => {

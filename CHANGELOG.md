@@ -2,6 +2,12 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.20.0 — 2026-11-18
+
+- **Quick panel on selected words.** Select a few words in a note and a small bar appears under them: Add to vocab (Alt+1) keeps the term with the sentence you met it in and the page; Add context (Alt+2) opens it with Meaning ready to type; Flesh out (Alt+3) copies a prompt for Claude, and the reply you paste back fills the meaning and other names for you to check before it's kept; Google (Alt+4). Esc closes the bar and leaves the selection.
+- Over a term you already keep, the bar opens that term instead of adding it. A term's panel now has Claude and Google beside Edit, and shows the sentence it came from.
+- The Vocab row's count stays current as you add terms.
+
 ## 0.19.0 — 2026-11-17
 
 - **Vocab.** A Vocab row sits at the foot of the notes sidebar, above + Page and + Folder (V). It opens the vocab page: every term with its meaning and the pages it appears in, searchable (F), sorted A–Z, newest, or by the page you first met it in. + Term (N) adds one; click a term's name to edit it (meaning, other names, where from); × removes it, with undo.

@@ -565,3 +565,11 @@ body[data-wide="1"] #panel{left:var(--dl);width:auto;bottom:52px;padding:0;displ
 body[data-nbar="off"] .notes{grid-template-columns:0 1fr}
 body[data-nbar="off"] .notes .nside-bar{display:none}
 @container (max-width:640px){ .wide{grid-template-columns:1fr;grid-template-rows:minmax(220px,45%) 1fr} .wideweb{border-right:0;border-bottom:1px solid var(--line)} }
+.vquote{margin:6px 0 0;padding:2px 0 2px 10px;border-left:3px solid var(--line);color:var(--muted);font-size:13px;line-height:1.45}
+.qpanel{position:fixed;z-index:60;display:flex;gap:4px;padding:4px;background:var(--card);border:1px solid var(--line);border-radius:5px;box-shadow:0 4px 14px rgb(0 0 0 / .14)}
+.qpanel .btn{padding:4px 8px;font-size:13px;white-space:nowrap}
+.qpanel .btn:first-child{max-width:180px;overflow:hidden;text-overflow:ellipsis}
+.qpanel kbd{margin-left:6px;opacity:.6}
+@media (pointer:coarse){.qpanel kbd{display:none}}
+.vfoot{flex-wrap:wrap}.vfoot .vseen{flex:1 1 120px;min-width:0}.vfoot>.btn{padding:4px 9px;font-size:13px}
+.vfoot .vseen .link{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
