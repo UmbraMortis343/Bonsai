@@ -1,5 +1,5 @@
 // The Library: the notes sidebar holds Notes, Graphs (island › topic › graph) and Watering, each folding away.
-// A graph opens on a 2D board in the main area: numbers pick, Enter or double-click opens it in its graph,
+// A graph opens on a 2D board in the main area: numbers pick, Shift+Enter or double-click opens it in its graph,
 // what needs water is ringed in ochre. Every idea is the same size. On the beta, H in the knowledge view marks
 // what needs water in ochre.
 import { start, state } from "./lib.mjs";
@@ -22,14 +22,14 @@ t.eq(await page.evaluate(() => decodeURIComponent(location.hash)), "#/notes/g:" 
 t.eq(await page.isVisible("#nedit .page"), false, "in place of a note page");
 await page.screenshot({ path: "tests/shots/library-board.png" });
 
-// numbers pick, Enter opens it in its graph
+// numbers pick, Shift+Enter opens it in its graph
 await page.keyboard.press("2");
 const picked = await state(page, () => bonsai.S.gsel);
 t.eq(await state(page, (id) => bonsai.S.num.get(id), picked), 2, "a number picks an idea");
 t.eq((await page.textContent("#gfoot b")) === (await state(page, (id) => bonsai.S.byId.get(id).title, picked)), true, "its name shows at the foot");
 await page.keyboard.press("Escape");
 t.eq(await state(page, () => bonsai.S.gsel), null, "Esc lets go");
-await page.keyboard.press("2"); await page.keyboard.press("Enter");
+await page.keyboard.press("2"); await page.keyboard.press("Shift+Enter");
 await page.waitForFunction((id) => bonsai.S.view === "tree" && bonsai.S.sel === id, picked);
 await page.evaluate(() => history.back()); await page.waitForSelector(".gboard canvas");
 

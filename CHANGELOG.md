@@ -2,6 +2,17 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.24.0 — 2026-11-19
+
+- **Build on the board.** A graph opened in the Library is now where you make it:
+  - Tab adds an idea under the picked one, Enter one beside it; the name is typed straight onto the board where it will sit, and Tab or Enter again carries on with the next.
+  - Drag an idea to move it with everything under it; where it sits is kept.
+  - Drop an idea onto another to graft it there (Undo in the message).
+  - The + on the picked idea (or Alt-drag from any idea) pulls out a string: let go on empty paper for a new idea there, or on another idea to link them.
+  - Right-click an idea for its menu (add under, add beside, rename, link, graft, make its own graph, colour, open in 3D, delete); right-click the paper to add an idea there.
+  - R renames, Del deletes (Undo), L and G link and graft by searching, X makes an idea its own graph, C colour, 0 fits. Shift+Enter or a double-click opens it in 3D.
+- **Stitching graphs.** Drag a graph from the Library onto an idea on the board to stitch it there, onto another graph to stitch it under that one's first idea, or onto a topic to move it. Undo makes a stitched graph its own again.
+
 ## 0.23.0 — 2026-11-19
 
 - **The Library.** The notes sidebar now has three sections that fold away: Notes, Graphs and Watering. Graphs are listed island › topic › graph; Watering lists the graphs with ideas waiting, most first. Search finds graphs by name as well as notes.

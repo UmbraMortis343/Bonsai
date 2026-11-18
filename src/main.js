@@ -1684,7 +1684,7 @@ function onKey(e) {
   if (k === "o") { stop(); return openNotes(); }
   if (k === "[" || k === "]") { stop(); return sideKey(k === "["); }
   if (S.view === "tech") return techKey(k, stop);
-  if (S.view === "notes") return notesKey(k, stop);
+  if (S.view === "notes") return notesKey(k, stop, e);
   if (S.view === "tree" && S.cutoff == null && /^[0-9]$/.test(k) && (S.jump || k !== "0")) { stop(); return jumpDigit(k); }
   if (k === "t" && S.view !== "isles") { stop(); return toggleTimeline(); }
   if (k === "0") { stop(); return S.view === "isles" ? pickHub(-1) : fitView(); }
@@ -1860,7 +1860,12 @@ function openGraphPage(treeId) {
 }
 function graphRow(tr, depth, extra) {
   const on = S.view === "notes" && S.npage === GP + tr.id, dry = thirstyOf(tr);
-  return el("div", { class: "nrow graph" + (on ? " on" : ""), dataset: { tree: tr.id }, style: `--d:${depth}`, role: "treeitem" },
+  // drag a graph onto another to stitch it under that one's first idea, onto a topic to move it there, or onto the board
+  return el("div", { class: "nrow graph" + (on ? " on" : ""), dataset: { tree: tr.id }, style: `--d:${depth}`, role: "treeitem", draggable: "true",
+      ondragstart: (e) => { e.dataTransfer.setData("application/x-bonsai-tree", tr.id); e.dataTransfer.effectAllowed = "move"; },
+      ondragover: (e) => { if (e.dataTransfer.types.includes("application/x-bonsai-tree")) { e.preventDefault(); e.currentTarget.classList.add("drop"); } },
+      ondragleave: (e) => e.currentTarget.classList.remove("drop"),
+      ondrop: (e) => { e.preventDefault(); e.currentTarget.classList.remove("drop"); const from = e.dataTransfer.getData("application/x-bonsai-tree"); if (from && from !== tr.id) stitchGraphs(from, tr.id); } },
     el("span", { class: "chev none" }),
     el("button", { class: "nname", type: "button", onclick: () => openGraphPage(tr.id) }, icon(ICON.graph), el("span", { class: "nt", text: tr.name || "Untitled" }), extra ? el("span", { class: "npath", text: extra }) : null),
     dry ? el("span", { class: "thirst", text: String(dry) }) : null);
@@ -1874,7 +1879,11 @@ function drawGraphList() {
   }
   const open = notesOpen(), rows = [];
   const fold = (key, depth, label, n) => { const isOpen = open.has(key);
-    rows.push(el("div", { class: "nrow shelf", dataset: { shelf: key }, style: `--d:${depth}`, role: "treeitem", "aria-expanded": String(isOpen) },
+    const zid = key.startsWith("t:") ? key.slice(2) : null;
+    rows.push(el("div", { class: "nrow shelf", dataset: { shelf: key }, style: `--d:${depth}`, role: "treeitem", "aria-expanded": String(isOpen),
+        ondragover: (e) => { if (zid && e.dataTransfer.types.includes("application/x-bonsai-tree")) { e.preventDefault(); e.currentTarget.classList.add("drop"); } },
+        ondragleave: (e) => e.currentTarget.classList.remove("drop"),
+        ondrop: (e) => { e.preventDefault(); e.currentTarget.classList.remove("drop"); const from = e.dataTransfer.getData("application/x-bonsai-tree"); if (from && zid) moveGraph(from, zid); } },
       el("button", { class: "chev", type: "button", tabIndex: -1, "aria-label": isOpen ? "Close" : "Open", "aria-expanded": String(isOpen), onclick: () => { setOpen(key, !isOpen); drawGraphList(); } }),
       el("button", { class: "nname", type: "button", onclick: () => { setOpen(key, !isOpen); drawGraphList(); } }, el("span", { class: "nt", text: label })),
       el("span", { class: "muted lcount", text: String(n) })));
@@ -1891,24 +1900,148 @@ function drawWaterList() {
   put(host, list.map(([t]) => graphRow(t, 0, S.zones.find((z) => z.id === t.zoneId)?.name)), list.length ? null : el("p", { class: "muted nnone", text: "Nothing waiting" }));
   const c = $("#lcount-water"); if (c) c.textContent = String(list.length || "");
 }
-// A graph on a 2D board in the Library: pick an idea, double-click (or Enter) to open it in the graph.
-function graphBoard(tr) {
-  const host = el("div", { class: "gboard-c" }), nodes = shownNodes(tr), looks = looksFor(tr, nodes), ids = new Set(nodes.map((n) => n.id));
+// A graph on a 2D board in the Library, where you build it (0.24.0). Places are the ideas' own (node.xy).
+// Drag an idea to move it with what hangs from it; drop it on another to graft it there; pull the + knob (or Alt-drag)
+// out to empty paper for a new idea there, or onto an idea to link them; right-click for the rest. Keys as in a graph:
+// Tab adds under, Enter beside, R renames, Del deletes, L links, G grafts, X makes its own graph, C colour;
+// Shift+Enter or a double-click opens it in 3D. A graph dragged in from the Library onto an idea is grafted there.
+function boardData(tr) {
+  const nodes = shownNodes(tr), looks = looksFor(tr, nodes), ids = new Set(nodes.map((n) => n.id));
   numberGraph(tr);
+  return { nodes, rootId: tr.rootId, links: S.links.filter((l) => ids.has(l.fromId) && ids.has(l.toId)).map((l) => ({ a: l.fromId, b: l.toId })), colour: (id) => looks.get(id)?.color || T.root };
+}
+function graphBoard(tr) {
+  const host = el("div", { class: "gboard-c" });
   const info = el("div", { class: "gfoot", id: "gfoot" });
   const pick = (id) => { S.gsel = id || null; board.select(S.gsel); drawGraphFoot(info, tr); };
-  const board = createMiniWeb({ host, onPick: pick, onOpen: (id) => openIdea(tr, id), num: (id) => S.num.get(id), ring: (id) => { const n = S.byId.get(id); return n && !n.ghost && thirst(n) !== "ok" ? T.link : null; } });
-  board.setData({ nodes, rootId: tr.rootId, links: S.links.filter((l) => ids.has(l.fromId) && ids.has(l.toId)).map((l) => ({ a: l.fromId, b: l.toId })), colour: (id) => looks.get(id)?.color || T.root });
-  S.board = board; S.ed = { destroy: () => { board.destroy(); if (S.board === board) S.board = null; }, flush: () => {}, focus: () => {} };
-  if (S.gsel && ids.has(S.gsel)) board.select(S.gsel);
+  const board = createMiniWeb({ host, edit: true, onPick: pick, onOpen: (id) => openIdea(tr, id), num: (id) => S.num.get(id),
+    ring: (id) => { const n = S.byId.get(id); return n && !n.ghost && thirst(n) !== "ok" ? T.link : null; },
+    onMove: (list) => { for (const [id, x, y] of list) { const n = S.byId.get(id); if (n) n.xy = [x, y]; } safely(() => store.placeNodes(list)); },
+    onDrop: (id, to) => boardGraft(id, to),
+    onNew: (pid, x, y) => boardAsk({ parentId: pid, at: { x, y } }),
+    onLink: (a, b) => boardLink(a, b),
+    onMenu: (id, cx, cy, x, y) => boardMenu(id, cx, cy, x, y),
+    onDropTree: (treeId, to) => boardGraftTree(treeId, to) });
+  S.board = board; S.boardTree = tr.id;
+  if (S.boardView?.[tr.id]) board.view = S.boardView[tr.id];
+  S.ed = { destroy: () => { (S.boardView ||= {})[tr.id] = board.view; board.destroy(); if (S.board === board) S.board = null; }, flush: () => {}, focus: () => {} };
+  board.setData(boardData(tr));
+  if (S.gsel && S.byId.get(S.gsel)?.treeId === tr.id) board.select(S.gsel); else S.gsel = null;
   drawGraphFoot(info, tr);
   return el("div", { class: "gboard" }, host, info);
 }
+// after a change: the same board, freshly read; a graph that's gone (grafted away) gives way to where it went
+async function boardRedraw(goTo) {
+  await refresh();
+  if (goTo && goTo !== S.boardTree) return openGraphPage(goTo);
+  const tr = treeOf(S.boardTree); if (!tr || !S.board) return drawEditor();
+  S.board.setData(boardData(tr)); if (S.gsel && !S.byId.get(S.gsel)) S.gsel = null; S.board.select(S.gsel); drawGraphFoot($("#gfoot"), tr);
+}
+const boardKey = (label, key, run, id) => el("button", { class: "btn", id, onclick: run }, label, el("kbd", { text: key }));
 function drawGraphFoot(info, tr) {
+  if (!info) return;
   const n = S.gsel && S.byId.get(S.gsel);
-  put(info, n ? [el("b", { text: n.title }), n.note ? el("span", { class: "muted", text: n.note.split("\n")[0].slice(0, 140) }) : null, el("span", { class: "grow" }),
-      el("button", { class: "btn", id: "gOpen", onclick: () => openIdea(tr, n.id) }, "Open", el("kbd", { text: "↵" }))]
-    : [el("span", { class: "muted", text: `${(S.byTree.get(tr.id) || []).length} ideas` }), el("span", { class: "grow" }), el("button", { class: "btn", id: "gOpen", onclick: () => openIdea(tr, tr.rootId) }, "Open", el("kbd", { text: "↵" }))]);
+  if (!n) return put(info, el("span", { class: "muted", text: `${(S.byTree.get(tr.id) || []).length} ideas` }), el("span", { class: "grow" }),
+    boardKey("Add", "Tab", () => boardAsk({ parentId: tr.rootId }), "gAdd"), boardKey("Open", "⇧↵", () => openIdea(tr, tr.rootId), "gOpen"));
+  const top = n.parentId == null;
+  put(info, el("b", { text: n.title }), n.note ? el("span", { class: "muted", text: n.note.split("\n")[0].slice(0, 120) }) : null, el("span", { class: "grow" }),
+    boardKey("Add under", "Tab", () => boardAsk({ parentId: n.id }), "gAdd"),
+    top ? null : boardKey("Beside", "↵", () => boardAsk({ parentId: n.parentId }), "gBeside"),
+    boardKey("Rename", "R", () => boardAsk({ id: n.id }), "gRename"),
+    boardKey("Link", "L", () => boardLinkPick(n), "gLink"),
+    boardKey("Graft", "G", () => boardGraftPick(n), "gGraft"),
+    top ? null : boardKey("Delete", "Del", () => boardRemove(n.id), "gDel"),
+    boardKey("Open", "⇧↵", () => openIdea(tr, n.id), "gOpen"));
+}
+// a name typed straight onto the board, where the idea will sit
+function boardAsk({ parentId, id, at }) {
+  const tr = treeOf(S.boardTree), b = S.board, host = $(".gboard-c"); if (!tr || !b || !host) return;
+  host.querySelector(".bask")?.remove();
+  const was = id ? S.byId.get(id) : null, spot = was ? b.placeOf(id) : at || b.spotFor(parentId); if (!spot) return;
+  const sc = b.toScreen(spot.x, spot.y), hr = host.getBoundingClientRect();
+  const inp = el("input", { class: "bask", id: "boardAsk", value: was?.title || "", placeholder: was ? "" : "New idea", maxLength: 140, "aria-label": was ? "Rename" : "New idea",
+    style: `left:${Math.round(sc.x - hr.left - 6)}px;top:${Math.round(sc.y - hr.top - 15)}px` });
+  let done = false;
+  const finish = async (go, then) => {
+    if (done) return; done = true; const v = inp.value.trim(); inp.remove();
+    if (!go || !v) return $(".gboard-c canvas")?.focus();
+    if (was) { await safely(() => store.updateNode(id, { title: v })); return boardRedraw(); }
+    const n = await safely(() => store.addNode(parentId, { title: v })); if (!n) return;
+    await safely(() => store.placeNodes([[n.id, spot.x, spot.y]])); S.gsel = n.id; await boardRedraw();
+    if (then === "child") boardAsk({ parentId: n.id }); else if (then === "sibling") boardAsk({ parentId });
+  };
+  inp.addEventListener("keydown", (e) => {
+    e.stopPropagation();
+    if (e.key === "Enter") { e.preventDefault(); finish(true, was ? null : "sibling"); }
+    else if (e.key === "Tab") { e.preventDefault(); finish(true, was ? null : "child"); }
+    else if (e.key === "Escape") { e.preventDefault(); finish(false); }
+  });
+  inp.addEventListener("blur", () => finish(true));
+  host.append(inp); inp.focus(); inp.select();
+}
+async function boardLink(a, b) { if (S.links.some((l) => (l.fromId === a && l.toId === b) || (l.fromId === b && l.toId === a))) return toast("Already linked"); if (await safely(() => store.addLink(a, b))) { toast(`Linked to ${S.byId.get(b)?.title}`); boardRedraw(); } }
+async function boardLinkPick(n) {
+  const taken = new Set([n.id, ...S.links.filter((l) => l.fromId === n.id || l.toId === n.id).map((l) => (l.fromId === n.id ? l.toId : l.fromId))]);
+  const to = await pickNode({ title: `Link ${n.title} to`, exclude: taken }); if (to != null) boardLink(n.id, to);
+}
+async function boardGraft(id, to) {
+  const n = S.byId.get(id), target = S.byId.get(to); if (!n || !target) return boardRedraw();
+  if (n.parentId == null) return boardGraftTree(n.treeId, to);
+  if (store.subtreeIds(S.byTree.get(n.treeId), n.id).includes(to)) { toast("Not under itself"); return boardRedraw(); }
+  const from = n.parentId;
+  if ((await safely(() => store.moveNode(id, to))) === undefined) return boardRedraw();
+  S.gsel = id; await boardRedraw(target.treeId);
+  toast(`Grafted onto ${target.title}`, { label: "Undo", run: async () => { await safely(() => store.moveNode(id, from)); boardRedraw(); } });
+}
+async function boardGraftPick(n) {
+  const ex = new Set(store.subtreeIds(S.byTree.get(n.treeId), n.id)); if (n.parentId) ex.add(n.parentId);
+  const to = await pickNode({ title: `Graft ${n.title} onto`, exclude: ex }); if (to != null) boardGraft(n.id, to);
+}
+// stitching: a whole graph hung under an idea of another; Undo makes it its own graph again
+async function boardGraftTree(treeId, to) {
+  const t = treeOf(treeId), target = S.byId.get(to); if (!t || !target || target.treeId === treeId) return;
+  if ((await safely(() => store.graftTree(treeId, to))) === undefined) return;
+  S.gsel = t.rootId; await boardRedraw(target.treeId);
+  toast(`${t.name} stitched onto ${target.title}`, { label: "Undo", run: async () => { const back = await safely(() => store.splitToTree(t.rootId, { name: t.name, zoneId: t.zoneId })); await refresh(); if (back && S.view === "notes") { drawPageList(); boardRedraw(); } } });
+}
+async function boardRemove(id) {
+  const n = S.byId.get(id); if (!n || n.parentId == null) return;
+  const snap = await safely(() => store.deleteNode(id)); if (!snap) return;
+  S.gsel = n.parentId; await boardRedraw();
+  toast(snap.nodes.length > 1 ? `Deleted ${n.title} and ${snap.nodes.length - 1} more` : `Deleted ${n.title}`, { label: "Undo", run: async () => { await safely(() => store.restoreRows(snap)); S.gsel = id; boardRedraw(); } });
+}
+async function boardSplit(n) { const t = await safely(() => store.splitToTree(n.id)); if (!t) return; S.gsel = n.parentId; await boardRedraw(); drawPageList(); toast(`${t.name} is its own graph`, { label: "Open", run: () => openGraphPage(t.id) }); }
+function boardMenu(id, cx, cy, x, y) {
+  const tr = treeOf(S.boardTree); if (!tr) return;
+  const n = id && S.byId.get(id), under = n || S.byId.get(S.gsel) || S.byId.get(tr.rootId);
+  if (n) { S.gsel = n.id; S.board.select(n.id); drawGraphFoot($("#gfoot"), tr); }
+  const top = n && n.parentId == null;
+  menu({ left: cx, right: cx + 1, top: cy, bottom: cy }, n ? [
+    { label: "Add under", key: "Tab", run: () => boardAsk({ parentId: n.id }) },
+    !top && { label: "Add beside", key: "↵", run: () => boardAsk({ parentId: n.parentId }) },
+    { label: "Rename", key: "R", run: () => boardAsk({ id: n.id }) },
+    { label: "Link to…", key: "L", run: () => boardLinkPick(n) },
+    { label: "Graft onto…", key: "G", run: () => boardGraftPick(n) },
+    !top && { label: "Make its own graph", key: "X", run: () => boardSplit(n) },
+    { label: "Colour", key: "C", run: async () => { await cycleColour(n); boardRedraw(); } },
+    { label: "Open in 3D", key: "⇧↵", run: () => openIdea(tr, n.id) },
+    !top && { label: "Delete", key: "Del", danger: true, run: () => boardRemove(n.id) },
+  ] : [{ label: `New idea here, under ${under.title}`, key: "", run: () => boardAsk({ parentId: under.id, at: { x, y } }) }]);
+}
+async function stitchGraphs(fromId, ontoId) {
+  const a = treeOf(fromId), b = treeOf(ontoId); if (!a || !b) return;
+  if (!(await dialog({ title: `Stitch ${a.name} onto ${b.name}?`, ok: "Stitch" }))) return;
+  if (S.view === "notes" && S.boardTree === ontoId && S.board) return boardGraftTree(fromId, b.rootId);
+  if ((await safely(() => store.graftTree(fromId, b.rootId))) === undefined) return;
+  await refresh(); if (S.view === "notes") { if (S.boardTree === fromId) openGraphPage(ontoId); else drawPageList(); }
+  toast(`${a.name} stitched onto ${b.name}`, { label: "Undo", run: async () => { await safely(() => store.splitToTree(a.rootId, { name: a.name, zoneId: a.zoneId })); await refresh(); if (S.view === "notes") { drawPageList(); boardRedraw(); } } });
+}
+async function moveGraph(treeId, zoneId) {
+  const t = treeOf(treeId), z = S.zones.find((x) => x.id === zoneId); if (!t || !z || t.zoneId === zoneId) return;
+  const was = t.zoneId;
+  if (!(await safely(() => store.updateTree(treeId, { zoneId })))) return;
+  await refresh(); if (S.view === "notes") { drawPageList(); drawPageBar(); }
+  toast(`${t.name} moved to ${z.name}`, { label: "Undo", run: async () => { await safely(() => store.updateTree(treeId, { zoneId: was })); await refresh(); if (S.view === "notes") { drawPageList(); drawPageBar(); } } });
 }
 function openIdea(tr, id) { S.pendingSel = id; goTree(tr.id); }
 function drawPageList() {
@@ -2212,7 +2345,7 @@ function notesTopics() {
   const rest = S.zones.filter((z) => !seen.has(z.id)); if (rest.length) groups.push({ name: groups.length ? "Other" : "", zones: rest });
   return groups;
 }
-function notesKey(k, stop) {
+function notesKey(k, stop, e = {}) {
   const rows = noteRows().map((r) => r.p), i = rows.findIndex((p) => p.id === S.npage), p = pageOf(S.npage);
   if (k === "v") { stop(); return openVocab(); }
   if (S.npage === VOCAB) {
@@ -2221,8 +2354,21 @@ function notesKey(k, stop) {
   }
   const g = graphPage(S.npage);
   if (g) {
-    if (/^[1-9]$/.test(k)) { const id = [...S.num.entries()].find(([, n]) => n === +k)?.[0]; if (id) { stop(); S.gsel = id; S.board?.select(id); return drawGraphFoot($("#gfoot"), g); } }
-    if (k === "Enter") { stop(); return openIdea(g, S.gsel || g.rootId); }
+    const n = S.byId.get(S.gsel), top = n?.parentId == null;
+    if (/^[1-9]$/.test(k)) { const id = [...S.num.entries()].find(([, x]) => x === +k)?.[0]; if (id) { stop(); S.gsel = id; S.board?.select(id); return drawGraphFoot($("#gfoot"), g); } }
+    if (k === "Enter" && e.shiftKey) { stop(); return openIdea(g, S.gsel || g.rootId); }
+    if (k === "Tab") { stop(); return boardAsk({ parentId: n?.id || g.rootId }); }
+    if (k === "Enter") { stop(); return boardAsk({ parentId: n && !top ? n.parentId : g.rootId }); }
+    if (n) {
+      if (k === "r" || k === "F2") { stop(); return boardAsk({ id: n.id }); }
+      if (k === "Delete" || k === "Backspace") { stop(); return boardRemove(n.id); }
+      if (k === "l") { stop(); return boardLinkPick(n); }
+      if (k === "g") { stop(); return boardGraftPick(n); }
+      if (k === "x" && !top) { stop(); return boardSplit(n); }
+      if (k === "c") { stop(); return cycleColour(n).then(() => boardRedraw()); }
+    }
+    if (k === "0") { stop(); return S.board?.fit(); }
+    if (/^[nfwdv]$/.test(k)) return;   // nothing else of the notes' own keys on a board, bar new note, folder, pen, vocab
   }
   if (k === "n") { stop(); return newPage(); }
   if (k === "f") { stop(); return newPage(null, "folder"); }

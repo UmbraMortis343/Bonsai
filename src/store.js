@@ -189,7 +189,9 @@ export async function graftTree(treeId, parentId) {
     const order = sibs.length ? Math.max(...sibs.map((x) => x.order)) + 1 : 1;
     for (const n of nodes) {
       const isRoot = n.id === t.rootId || n.parentId === null;
-      s.nodes.put({ ...n, treeId: p.treeId, ...(isRoot ? { parentId, order, wasTree: { name: t.name, color: t.color } } : {}), updatedAt: now() });
+      const next = { ...n, treeId: p.treeId, ...(isRoot ? { parentId, order, wasTree: { name: t.name, color: t.color } } : {}), updatedAt: now() };
+      delete next.xy;   // its places were on its own board; the board it joins finds them new ones
+      s.nodes.put(next);
     }
     for (const pt of await reqP(s.patches.index("treeId").getAll(treeId))) s.patches.put({ ...pt, treeId: p.treeId });
     s.trees.delete(treeId);
@@ -260,6 +262,16 @@ export async function updateNode(id, patch) {
     const next = { ...n, ...p, updatedAt: now() };
     s.nodes.put(next); logEvent(s, "node.edit", id, { fields: Object.keys(p) });
     return next;
+  });
+}
+// Where ideas sit on the Library's board: [[id, x, y], …] in one go. Not logged: it's arrangement, not knowledge.
+export async function placeNodes(list) {
+  return tx(["nodes"], "readwrite", async (s) => {
+    for (const [id, x, y] of list) {
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      const n = await reqP(s.nodes.get(id)); if (n) s.nodes.put({ ...n, xy: [Math.round(x), Math.round(y)] });
+    }
+    return list.length;
   });
 }
 // Deletes an idea, everything branching from it, and any links touching them.
