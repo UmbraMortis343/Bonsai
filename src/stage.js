@@ -29,7 +29,7 @@ export class Stage {
     this.reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
     this.frame = this.frame.bind(this); this.last = 0; this.raf = 0;
 
-    new ResizeObserver(() => this.resize()).observe(container);
+    this.ro = new ResizeObserver(() => this.resize()); this.ro.observe(container);
     this.resize(); this.bind();
   }
 
@@ -253,12 +253,18 @@ export class Stage {
       this.userMoved = true;
       this.radius = clamp(this.radius * Math.exp(e.deltaY * (e.ctrlKey ? 0.01 : 0.0012)), 1.2, 600); this.invalidate();
     }, { passive: false });
-    window.addEventListener("keydown", (e) => {
+    const kd = (e) => {
       if (!FLY[e.code] || e.ctrlKey || e.metaKey || e.altKey || (this.isPaused && this.isPaused()) || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName)) return;
       this.keys.add(e.code); this.userMoved = true; this.invalidate();
-    });
-    window.addEventListener("keyup", (e) => this.keys.delete(e.code));
-    window.addEventListener("blur", () => this.keys.clear());
+    }, ku = (e) => this.keys.delete(e.code), bl = () => this.keys.clear();
+    window.addEventListener("keydown", kd); window.addEventListener("keyup", ku); window.addEventListener("blur", bl);
+    this.unbind = () => { window.removeEventListener("keydown", kd); window.removeEventListener("keyup", ku); window.removeEventListener("blur", bl); };
+  }
+  // a second stage (the Library's 3D view) is taken down when its page closes
+  destroy() {
+    cancelAnimationFrame(this.raf); this.raf = 0; this.ro?.disconnect(); this.unbind?.(); this.tickers.clear();
+    this.world.traverse((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); });
+    this.renderer.dispose(); this.renderer.forceContextLoss?.();
   }
   pan(dx, dy) {
     const k = this.radius * 0.0016, m = this.camera.matrixWorld.elements;

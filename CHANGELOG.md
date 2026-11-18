@@ -2,6 +2,14 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.25.0 — 2026-11-19
+
+- **2D and 3D side by side.** On a graph's board, B flips the main pane between the board and the graph in 3D. ] docks the other one beside it: the 3D when you're on the board, the board when you're in 3D. Both are remembered.
+- A pick in either is a pick in both: number keys, clicks on the board and clicks on names in the 3D all agree.
+- **The 3D follows the board.** Where an idea sits on the board is where it sits in 3D, a little higher for each step out from the first idea; move it on the board and the 3D moves with it. The graph view in the Knowledge window draws from the board too.
+- Move mode in a graph placed on the board now moves the idea on the board, so the two never disagree.
+- With only the 3D showing, adding or renaming asks in a box.
+
 ## 0.24.0 — 2026-11-19
 
 - **Build on the board.** A graph opened in the Library is now where you make it:
