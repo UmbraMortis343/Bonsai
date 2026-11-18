@@ -26,7 +26,7 @@ const PALETTE = [["Blue", "#3b82f6"], ["Violet", "#8b5cf6"], ["Pink", "#ec4899"]
 const SWATCHES = [["Auto", ""], ...PALETTE];
 const DAY = 86400000;
 const ICON = {
-  pin: "M9 3h6l-1 7 3 3H7l3-3zM12 13v8", ink: "M6 3h9l4 4v14H6zM9 16c1.5-3 3-1 4-2.5s1-2.5 2-2.5", sideOff: "M4 4h16v16H4zM9 4v16M15 9l-3 3 3 3", sideOn: "M4 4h16v16H4zM9 4v16M12 9l3 3-3 3",
+  pin: "M9 3h6l-1 7 3 3H7l3-3zM12 13v8", swap: "M4 8h13l-3-3M20 16H7l3 3", ink: "M6 3h9l4 4v14H6zM9 16c1.5-3 3-1 4-2.5s1-2.5 2-2.5", sideOff: "M4 4h16v16H4zM9 4v16M15 9l-3 3 3 3", sideOn: "M4 4h16v16H4zM9 4v16M12 9l3 3-3 3",
   book: "M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3zM5 17a3 3 0 0 1 3-3h11",
   back: "M15 5l-7 7 7 7", fold: "M6 9l6 6 6-6", unfold: "M6 15l6-6 6 6", close: "M6 6l12 12M18 6L6 18", plus: "M12 5v14M5 12h14", more: "M5 12h.01M12 12h.01M19 12h.01",
   search: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4", panel: "M4 5h16v14H4zM15 5v14", side: "M4 5h16v14H4zM9 5v14", drop: "M12 3c3 4.5 6 7.6 6 11a6 6 0 0 1-12 0c0-3.4 3-6.5 6-11z", page: "M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h5", folder: "M3 6h6l2 2h10v11H3z", graph: "M7 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM21 8a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM6.3 7.6l4.7 8.6M17.6 9.6l-4.6 6.8M7 6.2l10 1.6", sprout: "M12 21v-8M12 13c0-4 3-6 7-6 0 4-3 6-7 6zM12 15c0-3-2-5-6-5 0 3 2 5 6 5z", inbox: "M4 13l3-8h10l3 8v6H4zM4 13h5a3 3 0 0 0 6 0h5", play: "M8 5l11 7-11 7z", pause: "M8 5v14M16 5v14",
@@ -1928,7 +1928,7 @@ function boardData(tr) {
 function graphBoard(tr) {
   const host = el("div", { class: "gboard-c" });
   const info = el("div", { class: "gfoot", id: "gfoot" });
-  const pick = (id) => { S.gsel = id || null; board.select(S.gsel); S.g3?.select(S.gsel); drawGraphFoot(info, tr); };
+  const pick = (id) => { S.gsel = id || null; board.select(S.gsel); S.g3?.select(S.gsel); drawGraphFoot(info, tr); drawIdeaCard(); };
   const board = createMiniWeb({ host, edit: true, onPick: pick, onOpen: (id) => openIdea(tr, id), num: (id) => S.num.get(id),
     ring: (id) => { const n = S.byId.get(id); return n && !n.ghost && thirst(n) !== "ok" ? T.link : null; },
     onMove: (list) => { for (const [id, x, y] of list) { const n = S.byId.get(id); if (n) n.xy = [x, y]; } safely(() => store.placeNodes(list)); S.g3?.rebuild(); },
@@ -1939,13 +1939,20 @@ function graphBoard(tr) {
     onDropTree: (treeId, to) => boardGraftTree(treeId, to) });
   S.board = board; S.boardTree = tr.id; S.boardPick = pick;
   if (S.boardView?.[tr.id]) board.view = S.boardView[tr.id];
-  const main = el("div", { class: "gpane gmain" }), dock = el("div", { class: "gpane gdock", id: "gdock" });
+  // the other view in a little window in the corner, like a video kept playing on a phone; the picked idea's card under it
+  const main = el("div", { class: "gpane gmain" }), dock = el("div", { class: "gpane gpip", id: "gdock" }), card = el("div", { class: "gcard", id: "gcard" });
+  const grip = el("div", { class: "pipbar" }, el("span", { class: "grow" }),
+    el("button", { class: "ib keyed", type: "button", id: "pipSwap", title: "Swap (B)", "aria-label": "Swap", onclick: () => flipBoard() }, icon(ICON.swap), el("kbd", { text: "B" })),
+    el("button", { class: "ib keyed", type: "button", id: "pipClose", title: "Close (])", "aria-label": "Close", onclick: () => toggleDock() }, icon(ICON.close), el("kbd", { text: "]" })));
+  const pip = el("div", { class: "pipwin", id: "pipwin" }, dock, grip);
+  const side = el("div", { class: "gside" + (pref("pipside", "r") === "l" ? " left" : ""), id: "gside" }, pip, card);
+  pipDrag(grip, side);
   S.ed = { destroy: () => { (S.boardView ||= {})[tr.id] = board.view; board.destroy(); S.g3?.destroy(); S.g3 = null; if (S.board === board) S.board = null; }, flush: () => {}, focus: () => {} };
   board.setData(boardData(tr));
   if (S.gsel && S.byId.get(S.gsel)?.treeId === tr.id) board.select(S.gsel); else S.gsel = null;
   drawGraphFoot(info, tr);
-  const out = el("div", { class: "gboard" }, el("div", { class: "gpanes" }, main, dock), info);
-  S.gpanes = { main, dock, host };
+  const out = el("div", { class: "gboard" }, el("div", { class: "gpanes" }, main, side), info);
+  S.gpanes = { main, dock, host, pip, card };
   requestAnimationFrame(() => placePanes(tr));
   return out;
 }
@@ -1958,9 +1965,41 @@ function placePanes(tr = treeOf(S.boardTree)) {
   const two = S.g3?.el, [inMain, inDock] = g3On() ? [two, P.host] : [P.host, dockOn() ? two : null];
   if (inMain && inMain.parentElement !== P.main) P.main.replaceChildren(inMain);
   if (inDock) { if (inDock.parentElement !== P.dock) P.dock.replaceChildren(inDock); } else P.dock.replaceChildren();
-  P.dock.hidden = !dockOn(); document.body.dataset.gdock = dockOn() ? "1" : "";
+  P.pip.hidden = !dockOn(); document.body.dataset.gdock = dockOn() ? "1" : "";
   if (two && two !== inMain && two !== inDock) two.remove();
-  drawPageBar();
+  drawPageBar(); drawIdeaCard();
+}
+// drag the little window by its bar to the other side; it settles against the nearer edge
+function pipDrag(grip, side) {
+  grip.addEventListener("pointerdown", (e) => {
+    if (e.target.closest("button")) return;
+    const box = side.parentElement.getBoundingClientRect(), r0 = side.getBoundingClientRect(), dx = e.clientX - r0.left;
+    grip.setPointerCapture(e.pointerId); side.classList.add("moving");
+    const mv = (ev) => { side.style.left = Math.max(8, Math.min(box.width - r0.width - 8, ev.clientX - box.left - dx)) + "px"; side.style.right = "auto"; };
+    const up = (ev) => {
+      grip.removeEventListener("pointermove", mv); grip.removeEventListener("pointerup", up); side.classList.remove("moving");
+      const left = ev.clientX - box.left < box.width / 2; side.style.left = side.style.right = ""; side.classList.toggle("left", left); setPref("pipside", left ? "l" : "r");
+    };
+    grip.addEventListener("pointermove", mv); grip.addEventListener("pointerup", up);
+  });
+}
+// the picked idea: its name, short note, notes and colour, under the little window
+function drawIdeaCard() {
+  const c = S.gpanes?.card; if (!c?.isConnected) return;
+  const n = S.gsel && S.byId.get(S.gsel); c.hidden = !n; if (!n) return c.replaceChildren();
+  if (c.dataset.id === n.id && c.contains(document.activeElement)) return;   // don't redraw under the typing
+  c.dataset.id = n.id;
+  const save = async (patch) => { await safely(() => store.updateNode(n.id, patch)); boardRedraw(); };
+  const bodyBox = el("div", { class: "body" }), body = n.body || "";
+  const edit = () => put(bodyBox, el("textarea", { id: "cardBody", value: n.body || "", placeholder: "Notes", "aria-label": "Notes", rows: 6,
+    onblur: (e) => { if (e.target.value !== (n.body || "")) save({ body: e.target.value }); else if (n.body) view(); } }));
+  const view = () => put(bodyBox, el("div", { class: "md", id: "cardBodyView", tabIndex: 0, html: md(n.body || ""), onclick: (e) => { if (e.target.closest("a")) return; edit(); bodyBox.firstChild.focus(); } }));
+  body ? view() : edit();
+  put(c,
+    el("div", { class: "ph" }, numTag(n.id), el("input", { id: "cardTitle", class: "title", value: n.title, maxLength: 140, "aria-label": "Title", onchange: (e) => (e.target.value.trim() ? save({ title: e.target.value }) : (e.target.value = n.title)) })),
+    el("input", { id: "cardNote", class: "short", value: n.note || "", maxLength: 500, placeholder: "Short note", "aria-label": "Short note", onchange: (e) => save({ note: e.target.value }) }),
+    bodyBox,
+    el("div", { class: "swatches" }, SWATCHES.map(([name, hex]) => el("button", { class: "sw" + ((n.color || "") === hex ? " on" : "") + (hex ? "" : " none"), type: "button", title: name, "aria-label": name, style: hex ? `background:${hex}` : "", onclick: () => save({ color: hex || null }) }))));
 }
 function flipBoard() { setPref("g3d", g3On() ? "" : "1"); placePanes(); }
 function toggleDock() { setPref("gdock", dockOn() ? "" : "1"); placePanes(); }
@@ -1994,6 +2033,7 @@ async function boardRedraw(goTo) {
   if (goTo && goTo !== S.boardTree) return openGraphPage(goTo);
   const tr = treeOf(S.boardTree); if (!tr || !S.board) return drawEditor();
   S.board.setData(boardData(tr)); if (S.gsel && !S.byId.get(S.gsel)) S.gsel = null; S.board.select(S.gsel); S.g3?.rebuild(); drawGraphFoot($("#gfoot"), tr);
+  if (S.gpanes?.card) delete S.gpanes.card.dataset.id; drawIdeaCard();
 }
 const boardKey = (label, key, run, id) => el("button", { class: "btn", id, onclick: run }, label, el("kbd", { text: key }));
 function drawGraphFoot(info, tr) {
@@ -2141,7 +2181,7 @@ function drawPageBar() {
     const k3 = g3On(), seg = (id, label, on, run) => el("button", { class: "btn" + (on ? " on" : ""), id, "aria-pressed": String(on), onclick: run }, label);
     return put(bar, hide(), el("div", { class: "pcrumb" }, isl ? [el("span", { class: "sl0", text: isl.name }), el("span", { class: "sl", text: "/" })] : null, z ? [el("span", { class: "sl0", text: z.name }), el("span", { class: "sl", text: "/" })] : null, el("span", { class: "here", text: g.name || "Untitled" })), el("span", { class: "grow" }),
       el("div", { class: "seg keys", role: "group", "aria-label": "View" }, seg("g2d", "2D", !k3, () => k3 && flipBoard()), seg("g3d", "3D", k3, () => !k3 && flipBoard()), el("kbd", { text: "B" })),
-      el("button", { class: "btn" + (dockOn() ? " on" : ""), id: "gDock", "aria-pressed": String(dockOn()), title: "Show the other view beside (])", onclick: toggleDock }, k3 ? "2D beside" : "3D beside", el("kbd", { text: "]" })));
+      el("button", { class: "btn" + (dockOn() ? " on" : ""), id: "gDock", "aria-pressed": String(dockOn()), title: "The other view in a little window (])", onclick: toggleDock }, k3 ? "Mini 2D" : "Mini 3D", el("kbd", { text: "]" })));
   }
   const p = pageOf(S.npage);
   if (!p) { bar.replaceChildren(); return; }

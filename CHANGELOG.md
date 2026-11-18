@@ -2,6 +2,11 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.26.0 — 2026-11-19
+
+- **The other view in a little window.** On a graph's board, ] now shows the other view (the 3D on the board, the board in 3D) in a small window in the corner, like a video kept playing on a phone. Hover it for Swap (B) and Close (]); drag it by its top to the other side and it stays there.
+- The picked idea's card sits under it: its name, short note, notes and colour, all editable there.
+
 ## 0.25.0 — 2026-11-19
 
 - **2D and 3D side by side.** On a graph's board, B flips the main pane between the board and the graph in 3D. ] docks the other one beside it: the 3D when you're on the board, the board when you're in 3D. Both are remembered.

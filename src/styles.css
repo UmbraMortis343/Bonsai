@@ -645,13 +645,32 @@ body[data-nbar="off"] .notes .nside-bar{display:none}
 .bask{position:absolute;z-index:5;width:220px;padding:5px 8px;font:500 13px var(--font);border:1.5px solid var(--accent);border-radius:4px;background:var(--card);color:var(--ink);box-shadow:0 2px 8px rgb(0 0 0 / .12)}
 .gfoot .btn{padding:4px 8px;font-size:12.5px}
 .gfoot{flex-wrap:wrap;row-gap:6px}
-/* the board and its 3D: one in the main pane, the other docked beside (]) */
-.gpanes{flex:1;display:flex;min-height:0}
+/* the board and its 3D: one fills the page, the other sits in a little window in the corner (]), the pick's card under it */
+.gpanes{flex:1;display:flex;min-height:0;position:relative}
 .gpane{position:relative;min-width:0;min-height:0}
 .gpane.gmain{flex:1}
-.gpane.gdock{flex:0 0 38%;border-left:1px solid var(--line)}
 .gpane .gboard-c,.gpane .stage3{position:absolute;inset:0}
 .stage3{overflow:hidden;background:var(--bg)}
 .stage3 canvas{display:block;width:100%;height:100%;touch-action:none}
+.gside{position:absolute;top:12px;right:12px;width:min(340px,42%);max-height:calc(100% - 24px);display:flex;flex-direction:column;gap:10px;z-index:4;pointer-events:none}
+.gside.left{right:auto;left:12px}
+.gside>*{pointer-events:auto}
+.gside.moving{transition:none;opacity:.92}
+.pipwin{position:relative;aspect-ratio:16/10;flex:none;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:var(--bg);box-shadow:0 6px 22px rgb(0 0 0 / .18)}
+.pipwin[hidden]{display:none}
+.pipwin .gpane.gpip{position:absolute;inset:0}
+.pipbar{position:absolute;left:0;right:0;top:0;height:30px;display:flex;align-items:center;gap:2px;padding:0 4px;cursor:grab;background:linear-gradient(var(--bg),transparent);opacity:0;transition:opacity .15s;z-index:2}
+.pipwin:hover .pipbar,.pipwin:focus-within .pipbar{opacity:1}
+.pipbar .ib{width:auto;padding:0 5px;gap:3px;display:inline-flex;align-items:center;background:var(--card);border-radius:4px}
+.pipbar .ib svg{width:14px;height:14px}
+.pipbar kbd{font-size:10px}
+.gcard{flex:0 1 auto;min-height:0;overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:6px;box-shadow:0 6px 22px rgb(0 0 0 / .12);padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.gcard[hidden]{display:none}
+.gcard .ph{display:flex;align-items:center;gap:6px}
+.gcard .title{flex:1;min-width:0;font-weight:700;font-size:15px;border:0;background:none;padding:2px 0;color:var(--ink)}
+.gcard .short{width:100%;border:1px solid var(--line);border-radius:4px;padding:5px 8px;background:var(--bg);color:var(--ink)}
+.gcard textarea{width:100%;border:1px solid var(--line);border-radius:4px;padding:6px 8px;background:var(--bg);color:var(--ink);resize:vertical;font:inherit}
+.gcard .md{font-size:13px;line-height:1.5;cursor:text}
+@media (pointer:coarse){.pipbar{opacity:1}.pipbar kbd{display:none}}
 .pbar .seg.keys{display:inline-flex;align-items:center;gap:2px}
 .pbar .seg.keys kbd{margin-left:4px}

@@ -22,9 +22,9 @@ await page.screenshot({ path: "tests/shots/board-3d.png" });
 
 // ]: the 2D docked beside the 3D
 await page.keyboard.press("]");
-await page.waitForSelector(".gdock .gboard-c canvas");
+await page.waitForSelector(".gpip .gboard-c canvas");
 t.eq(await page.isVisible(".gmain #stage3"), true, "the 3D stays in the main pane");
-t.eq(await page.textContent("#gDock"), "2D beside]", "the dock shows the 2D");
+t.eq(await page.textContent("#gDock"), "Mini 2D]", "the dock shows the 2D");
 await page.waitForTimeout(800);
 await page.screenshot({ path: "tests/shots/board-3d-dock.png" });
 
@@ -39,8 +39,8 @@ if (box) { await page.mouse.click(...box); t.eq(await state(page, () => bonsai.S
 
 // B again: 2D back in the main pane, 3D docked
 await page.keyboard.press("b");
-await page.waitForSelector(".gmain .gboard-c canvas"); await page.waitForSelector(".gdock #stage3 canvas");
-t.eq(await page.textContent("#gDock"), "3D beside]", "flipping back docks the 3D");
+await page.waitForSelector(".gmain .gboard-c canvas"); await page.waitForSelector(".gpip #stage3 canvas");
+t.eq(await page.textContent("#gDock"), "Mini 3D]", "flipping back docks the 3D");
 await page.waitForTimeout(800);
 await page.screenshot({ path: "tests/shots/board-2d-dock.png" });
 
@@ -52,11 +52,28 @@ await page.mouse.move(p.x, p.y); await page.mouse.down(); await page.mouse.move(
 await page.waitForFunction(([id, x]) => { const L = [...bonsai.S.g3.stage.labels].find((L) => L.id === id); return L && Math.abs(L.pos.x - x) > 1; }, [id, x3]);
 t.eq(true, true, "the 3D follows the board");
 
+// the picked idea's card sits under the little window: note, notes, colour
+await page.keyboard.press("2");
+await page.waitForSelector("#gcard #cardNote");
+const pipBox = await page.$eval("#pipwin", (e) => e.getBoundingClientRect().bottom), cardTop = await page.$eval("#gcard", (e) => e.getBoundingClientRect().top);
+t.eq(cardTop > pipBox, true, "the card is under the little window");
+const two = await state(page, () => bonsai.S.gsel);
+await page.fill("#cardNote", "A quick note"); await page.press("#cardNote", "Tab");
+await page.waitForFunction((id) => bonsai.S.byId.get(id)?.note === "A quick note", two);
+await page.click("#gcard .sw >> nth=3");
+await page.waitForFunction((id) => !!bonsai.S.byId.get(id)?.color, two);
+t.eq(true, true, "the card saves the note and the colour");
+await page.screenshot({ path: "tests/shots/board-pip.png" });
+// the little window moves to the other side and stays
+const bar = await page.$eval("#pipwin .pipbar", (e) => { const r = e.getBoundingClientRect(); return [r.left + 20, r.top + 10]; });
+await page.mouse.move(...bar); await page.mouse.down(); await page.mouse.move(300, bar[1], { steps: 8 }); await page.mouse.up();
+t.eq(await page.$eval("#gside", (e) => e.classList.contains("left")), true, "dragged left, it settles on the left");
+t.eq(await state(page, () => localStorage.getItem("bonsai-beta.pipside")), "l", "and remembers");
 // both remembered
 await page.keyboard.press("]");
-t.eq(await page.isVisible("#gdock"), false, "] hides the dock");
+t.eq(await page.isVisible("#pipwin"), false, "] hides the dock");
 await page.reload(); await page.waitForSelector(".gmain .gboard-c canvas");
-t.eq(await page.isVisible("#gdock"), false, "and it stays hidden");
+t.eq(await page.isVisible("#pipwin"), false, "and it stays hidden");
 
 // the graph view draws from the board too
 await page.keyboard.press("Shift+Enter");
