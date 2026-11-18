@@ -366,7 +366,8 @@ export async function addPage({ title = "", blocks = [], parentId = null, kind =
 export async function updatePage(id, patch) {
   return tx(["pages"], "readwrite", async (s) => {
     const p = await reqP(s.pages.get(id)); if (!p) throw new Error("That page no longer exists.");
-    const q = pick(patch, ["title", "blocks", "order", "parentId", "props", "kind"]);
+    const q = pick(patch, ["title", "blocks", "order", "parentId", "props", "kind", "ink"]);
+    if ("ink" in q && JSON.stringify(q.ink).length > 8000000) throw new Error("That page has too much ink.");
     if ("title" in q) q.title = clean(q.title, 120);
     if ("blocks" in q && JSON.stringify(q.blocks).length > 2000000) throw new Error("That page is too long.");
     if ("parentId" in q && q.parentId) {   // never inside itself

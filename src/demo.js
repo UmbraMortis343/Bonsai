@@ -343,5 +343,27 @@ export function demoBackup(now = Date.now()) {
     if (inside.length) { addPages(inside, p.id); for (const c of pages.filter((x) => x.parentId === p.id)) p.blocks.push({ id: id("b"), type: "page", pageId: c.id, html: "", indent: 0 }); }
   });
   addPages(PAGES, null);
+  // a pen page: a sketch of two balls before a collision, a note under it, one line highlighted
+  const phys = pages.find((x) => x.kind === "folder" && x.title === "Physics");
+  if (phys) pages.push({ id: id("p"), kind: "ink", parentId: phys.id, title: "Collision sketch", blocks: [], props: [], ink: demoInk(), order: 9, createdAt: iso(now - DAY), updatedAt: iso(now - DAY), grown: [] });
   return { app: "bonsai", schema: 4, exportedAt: iso(now), zones, trees, nodes, links, events: [], patches: [], inbox: [], pages, meta: [{ key: "vocab", value: VOCAB.map(([term, aliases, def, source], k) => ({ id: "v" + k, term, aliases, def, source, at: iso(now - (VOCAB.length - k) * 3600000), editedAt: iso(now) })) }, { key: "garden", value: garden }, { key: "demo", value: iso(now) }] };
+}
+
+// Strokes for the demo's pen page, made by hand-ish curves (a fixed wobble, so the demo is the same each time).
+function demoInk() {
+  let k = 0; const wob = () => Math.sin(k++ * 1.7) * 0.8;
+  const stroke = (t, c, pts, w) => ({ id: "d" + k++, t, c, p: pts.flatMap(([x, y], i) => [Math.round((x + wob()) * 10) / 10, Math.round((y + wob()) * 10) / 10, t === "hl" ? w : Math.round(w * (0.75 + 0.5 * Math.sin((i / pts.length) * Math.PI)) * 10) / 10]) });
+  const circle = (cx, cy, r) => Array.from({ length: 46 }, (_, i) => { const a = -0.4 + (i / 42) * Math.PI * 2; return [cx + Math.cos(a) * r * (1 + 0.04 * Math.sin(a * 3)), cy + Math.sin(a) * r]; });
+  const line = (x0, y0, x1, y1, n = 12) => Array.from({ length: n + 1 }, (_, i) => [x0 + ((x1 - x0) * i) / n, y0 + ((y1 - y0) * i) / n + Math.sin(i) * 0.6]);
+  // joined-up loops along a line, a word at a time (a looped cycloid; every other loop taller, like an l)
+  const words = (x, y, ws) => ws.map((len) => { const pts = []; for (let i = 0; i <= len * 14; i++) { const u = (i / 14) * Math.PI * 2, d = Math.floor(i / 14) % 2 ? 9 : 6; pts.push([x + 4.2 * u - d * Math.sin(u), y - d - d * -Math.cos(u) * -1 - 2]); } x += len * 26 + 20; return pts; });
+  return { paper: "lined", strokes: [
+    stroke("pen", 0, circle(250, 250, 70), 3.2), stroke("pen", 0, circle(640, 260, 44), 3.2),
+    stroke("pen", 1, line(330, 250, 520, 252), 3), stroke("pen", 1, line(496, 236, 522, 252, 4), 3), stroke("pen", 1, line(496, 268, 522, 252, 4), 3),
+    ...words(196, 360, [3, 5]).map((p) => stroke("pen", 0, p, 2.4)), ...words(600, 360, [3, 4]).map((p) => stroke("pen", 0, p, 2.4)),
+    stroke("hl", 0, line(96, 467, 560, 467), 24),
+    ...words(100, 468, [5, 2, 6, 3, 7]).map((p) => stroke("pen", 0, p, 2.4)),
+    ...words(100, 540, [4, 6, 2, 5]).map((p) => stroke("pen", 0, p, 2.4)),
+    stroke("pen", 2, line(100, 556, 400, 556, 20), 2.6),
+  ] };
 }

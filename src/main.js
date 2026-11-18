@@ -20,12 +20,13 @@ import { createMiniWeb } from "./miniweb.js";
 import { MARK_LIST, assignMarks } from "./marks.js";
 import { readExam, planExam, LEVELS } from "./exams.js";
 import { createVocab, createQuick, fleshPrompt, readFlesh } from "./vocab.js";
+import { createInk } from "./ink.js";
 
 const PALETTE = [["Blue", "#3b82f6"], ["Violet", "#8b5cf6"], ["Pink", "#ec4899"], ["Red", "#ef4444"], ["Orange", "#f97316"], ["Amber", "#f59e0b"], ["Green", "#22c55e"], ["Teal", "#14b8a6"], ["Cyan", "#06b6d4"]];
 const SWATCHES = [["Auto", ""], ...PALETTE];
 const DAY = 86400000;
 const ICON = {
-  pin: "M9 3h6l-1 7 3 3H7l3-3zM12 13v8",
+  pin: "M9 3h6l-1 7 3 3H7l3-3zM12 13v8", ink: "M6 3h9l4 4v14H6zM9 16c1.5-3 3-1 4-2.5s1-2.5 2-2.5", sideOff: "M4 4h16v16H4zM9 4v16M15 9l-3 3 3 3", sideOn: "M4 4h16v16H4zM9 4v16M12 9l3 3-3 3",
   book: "M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3zM5 17a3 3 0 0 1 3-3h11",
   back: "M15 5l-7 7 7 7", fold: "M6 9l6 6 6-6", unfold: "M6 15l6-6 6 6", close: "M6 6l12 12M18 6L6 18", plus: "M12 5v14M5 12h14", more: "M5 12h.01M12 12h.01M19 12h.01",
   search: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4", panel: "M4 5h16v14H4zM15 5v14", side: "M4 5h16v14H4zM9 5v14", drop: "M12 3c3 4.5 6 7.6 6 11a6 6 0 0 1-12 0c0-3.4 3-6.5 6-11z", page: "M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h5", folder: "M3 6h6l2 2h10v11H3z", graph: "M7 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM21 8a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM6.3 7.6l4.7 8.6M17.6 9.6l-4.6 6.8M7 6.2l10 1.6", sprout: "M12 21v-8M12 13c0-4 3-6 7-6 0 4-3 6-7 6zM12 15c0-3-2-5-6-5 0 3 2 5 6 5z", inbox: "M4 13l3-8h10l3 8v6H4zM4 13h5a3 3 0 0 0 6 0h5", play: "M8 5l11 7-11 7z", pause: "M8 5v14M16 5v14",
@@ -766,7 +767,7 @@ async function capture() {
 function shortcuts() {
   const rows = [["↑ ↓ ← →", "The idea under, the idea above, the ideas beside"], ["1–9", "Go to an idea by its number"], ["Tab", "Add an idea under"], ["Enter", "Add an idea beside"], ["R", "Rename"], ["Del", "Delete"], ["Space", "The idea's panel"], ["N", "Write the idea's notes"], ["X", "Make the idea its own graph"], ["V", "Move ideas: drag one, or nudge the picked one with the arrows; U puts it back"],
     ["L", "Link"], ["G", "Graft"], ["C", "Colour"], ["F", "Fly to idea"], ["0", "Fit view"], ["W A S D  Q E", "Fly"], ["/", "Search"], ["I", "Capture"],
-    ["1–9", "Garden: go to a hub, an island, then a topic"], ["0  Esc", "Garden: step back out"], ["Esc", "Back: closes what is open first, then goes back"], ["Shift+Esc", "Back to the screen before, straight away"], ["W", "Garden: water"], ["D", "Garden: day or night"], ["S", "Garden: split a topic past 200%"], ["P", "Patches"], ["T", "Timeline"], ["M", "Meaning view"], ["K", "Tech tree"], ["1–9  Enter", "Tech tree: pick, then go in or open"], ["Space", "Tech tree: open or close an idea"], ["Esc", "Tech tree: let go, then step back a tier"], ["T  A  H", "Tech tree: this tier only, show all, back to the start"], ["B", "Tech tree: what an island grows from"], ["L", "Tech tree: tree or web"], ["Y", "Tech tree: simple or organic look"], ["J", "Tech tree web: jiggle while dragging, or hold still"], ["N  Z", "New knowledge graph, new topic"], ["J", "Knowledge: graphs separate in their rings, or joined into one structure"], ["G", "Garden: the knowledge graphs of what's picked"], ["O", "Notes; in a graph, notes beside it"], ["N  G", "Notes: new page, grow with Claude"], ["1–9  ↑ ↓", "Notes: pick a page"], ["← →", "Notes: topics"], ["A", "Notes: attach the page to a graph"], ["/", "Notes, while writing: blocks"], ["Tab  Shift+Tab", "Notes, while writing: indent a block"], ["Ctrl+B I U E K", "Notes, while writing: bold, italic, underline, code, link"], ["Ctrl+Shift+↑ ↓", "Notes, while writing: move a block"], ["Shift+Tab", "Garden, knowledge, notes"], ["[  ]", "Close or open the menu on the left, on the right"], ["Enter  V", "Watering: water the graph picked, water everything"], ["Esc", "Back"]];
+    ["1–9", "Garden: go to a hub, an island, then a topic"], ["0  Esc", "Garden: step back out"], ["Esc", "Back: closes what is open first, then goes back"], ["Shift+Esc", "Back to the screen before, straight away"], ["W", "Notes: new pen page"], ["P H E L", "Pen page: pen, highlighter, eraser, lasso"], ["C  S  B", "Pen page: colour, size, paper"], ["T", "Pen page: touch draws or pans"], ["+ − 0", "Pen page: zoom, fit width"], ["D", "Pen page: properties"], ["W", "Garden: water"], ["D", "Garden: day or night"], ["S", "Garden: split a topic past 200%"], ["P", "Patches"], ["T", "Timeline"], ["M", "Meaning view"], ["K", "Tech tree"], ["1–9  Enter", "Tech tree: pick, then go in or open"], ["Space", "Tech tree: open or close an idea"], ["Esc", "Tech tree: let go, then step back a tier"], ["T  A  H", "Tech tree: this tier only, show all, back to the start"], ["B", "Tech tree: what an island grows from"], ["L", "Tech tree: tree or web"], ["Y", "Tech tree: simple or organic look"], ["J", "Tech tree web: jiggle while dragging, or hold still"], ["N  Z", "New knowledge graph, new topic"], ["J", "Knowledge: graphs separate in their rings, or joined into one structure"], ["G", "Garden: the knowledge graphs of what's picked"], ["O", "Notes; in a graph, notes beside it"], ["N  G", "Notes: new page, grow with Claude"], ["1–9  ↑ ↓", "Notes: pick a page"], ["← →", "Notes: topics"], ["A", "Notes: attach the page to a graph"], ["/", "Notes, while writing: blocks"], ["Tab  Shift+Tab", "Notes, while writing: indent a block"], ["Ctrl+B I U E K", "Notes, while writing: bold, italic, underline, code, link"], ["Ctrl+Shift+↑ ↓", "Notes, while writing: move a block"], ["Shift+Tab", "Garden, knowledge, notes"], ["[  ]", "Close or open the menu on the left, on the right"], ["Enter  V", "Watering: water the graph picked, water everything"], ["Esc", "Back"]];
   dialog({ title: "Shortcuts", ok: null, cancel: "Close", body: el("table", { class: "keys" }, rows.map(([k, d]) => el("tr", {}, el("td", {}, el("kbd", { text: k })), el("td", { text: d })))) });
 }
 async function exportBackup() {
@@ -1841,7 +1842,8 @@ function notesSidebar(close) {
     el("span", { class: "muted vcount", text: String((S.vocab || []).length || "") }), el("kbd", { text: "V" }));
   const foot = el("div", { class: "nfoot" },
     el("button", { class: "btn", id: "newPageBtn", onclick: () => newPage() }, "+ Page", el("kbd", { text: "N" })),
-    el("button", { class: "btn", id: "newFolderBtn", onclick: () => newPage(null, "folder") }, "+ Folder", el("kbd", { text: "F" })));
+    el("button", { class: "btn", id: "newFolderBtn", onclick: () => newPage(null, "folder") }, "+ Folder", el("kbd", { text: "F" })),
+    el("button", { class: "btn", id: "newInkBtn", title: "New page to write on", onclick: () => newPage(null, "ink") }, "+ Pen", el("kbd", { text: "W" })));
   const filter = el("div", { class: "nfilter", role: "group", "aria-label": "Status" }, [["", "All"], ...STATUSES.map(([v]) => [v, v])].map(([v, text]) =>
     el("button", { type: "button", class: "nf" + ((S.nf || "") === v ? " on" : ""), "aria-pressed": String((S.nf || "") === v), dataset: { status: v }, text,
       onclick: (e) => { S.nf = v; for (const b of e.currentTarget.parentElement.children) { const on = b.dataset.status === v; b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); } drawPageList(); } })));
@@ -1860,7 +1862,7 @@ function drawPageList() {
       ondrop: (e) => { e.preventDefault(); row.classList.remove("drop"); if (S.ndrag) movePage(S.ndrag, p.id); } },
       hit ? null : el("button", { class: "chev" + (kids || folder ? "" : " none"), type: "button", tabIndex: -1, "aria-label": isOpen ? "Close" : "Open", "aria-expanded": kids || folder ? String(isOpen) : null, onclick: () => { if (kids || folder) { setOpen(p.id, !isOpen); drawPageList(); } } }),
       el("button", { class: "nname", type: "button", onclick: () => pickPage(p.id) },
-        icon(folder ? ICON.folder : ICON.page), el("span", { class: "nt", text: p.title || (folder ? "New folder" : "Untitled") }),
+        icon(folder ? ICON.folder : p.kind === "ink" ? ICON.ink : ICON.page), el("span", { class: "nt", text: p.title || (folder ? "New folder" : "Untitled") }),
         hit && pagePath(p).length ? el("span", { class: "npath", text: pagePath(p).map((q) => q.title || "Untitled").join(" / ") }) : null),
       el("kbd", { text: i < 9 ? String(i + 1) : "", class: i < 9 ? "" : "blank" }),
       hit ? null : el("button", { class: "nadd", type: "button", tabIndex: -1, title: folder ? "New page in this folder" : "New page inside", "aria-label": "New page inside", onclick: () => newPage(p.id) }, "+"));
@@ -1872,7 +1874,9 @@ function drawPageBar() {
   const bar = $("#pbar"); if (!bar) return;
   const p = pageOf(S.npage);
   if (!p) { bar.replaceChildren(); return; }
-  put(bar, el("div", { class: "pcrumb" }, pagePath(p).map((q) => [el("button", { class: "link", type: "button", text: q.title || "Untitled", onclick: () => pickPage(q.id) }), el("span", { class: "sl", text: "/" })]),
+  const off = document.body.dataset.nbar === "off";
+  put(bar, el("button", { class: "ib sidehide", id: "sideHide", type: "button", title: (off ? "Show" : "Hide") + " the sidebar ([)", "aria-label": (off ? "Show" : "Hide") + " the sidebar", onclick: () => sideKey(true) }, icon(off ? ICON.sideOn : ICON.sideOff), el("kbd", { text: "[" })),
+    el("div", { class: "pcrumb" }, pagePath(p).map((q) => [el("button", { class: "link", type: "button", text: q.title || "Untitled", onclick: () => pickPage(q.id) }), el("span", { class: "sl", text: "/" })]),
       el("span", { class: "here", text: p.title || (isFolder(p) ? "New folder" : "Untitled") })),
     el("span", { class: "grow" }),
     p.grown?.length ? el("span", { class: "muted", text: `Grown ${p.grown.length}×` }) : null,
@@ -1890,7 +1894,7 @@ function drawEditor() {
 function folderView(p) {
   const kids = kidPages(p.id);
   return el("article", { class: "page" }, titleInput(p, false),
-    el("div", { class: "flist" }, kids.map((k) => el("button", { class: "frow", type: "button", onclick: () => pickPage(k.id) }, icon(isFolder(k) ? ICON.folder : ICON.page), el("span", { text: k.title || (isFolder(k) ? "New folder" : "Untitled") }),
+    el("div", { class: "flist" }, kids.map((k) => el("button", { class: "frow", type: "button", onclick: () => pickPage(k.id) }, icon(isFolder(k) ? ICON.folder : k.kind === "ink" ? ICON.ink : ICON.page), el("span", { text: k.title || (isFolder(k) ? "New folder" : "Untitled") }),
       el("span", { class: "muted", text: fmtDate(k.updatedAt) }))),
       el("button", { class: "frow add", type: "button", id: "folderAdd", onclick: () => newPage(p.id) }, "+ New page")));
 }
@@ -1899,7 +1903,23 @@ function titleInput(p, side) {
     oninput: (e) => { queuePage(p.id, { title: e.target.value }); const r = $(`#nlist .nrow[data-id="${p.id}"] .nt`); if (r) r.textContent = e.target.value || "Untitled"; const h = $("#pbar .here"); if (h && !side) h.textContent = e.target.value || "Untitled"; const o = $(`#sidePage option[value="${p.id}"]`); if (o) o.textContent = e.target.value || "Untitled"; },
     onkeydown: (e) => { if (e.key === "Enter" || e.key === "ArrowDown") { e.preventDefault(); if (S.ed) S.ed.focus("start"); else e.target.blur(); } } });
 }
+// A page to write on (ink.js): the title, properties folded away (D), then the page with the tool rail docked right.
+const darkPage = () => { const c = getComputedStyle(document.body).getPropertyValue("--bg").trim(); return /^#/.test(c) && parseInt(c.slice(1, 3), 16) < 90; };
+const inkPropsOpen = () => pref("inkprops", "0") === "1";
+function foldInkProps() {
+  setPref("inkprops", inkPropsOpen() ? "0" : "1");
+  for (const v of document.querySelectorAll(".inkview")) { v.classList.toggle("propsopen", inkPropsOpen()); const b = v.querySelector(".inkfold"); b?.setAttribute("aria-expanded", String(inkPropsOpen())); }
+  S.ed?.redraw?.();
+}
+function inkView(p, side) {
+  const area = el("div", { class: "inkarea" });
+  const ink = createInk({ host: area, el, store: PREF + "ink", global: !side, icon: (d) => icon(d), doc: p.ink, night: darkPage, onChange: (doc) => queuePage(p.id, { ink: doc }) });
+  S.ed = { destroy: ink.destroy, flush: ink.flush, focus: ink.focus, redraw: ink.redraw, ink };
+  const fold = el("button", { class: "inkfold", type: "button", "aria-expanded": String(inkPropsOpen()), title: "Properties (D)", onclick: foldInkProps }, icon(ICON.fold), el("span", { text: "Properties" }), el("kbd", { text: "D" }));
+  return el("div", { class: "inkview" + (side ? " side" : "") + (inkPropsOpen() ? " propsopen" : "") }, el("article", { class: "page inkhead" + (side ? " side" : "") }, titleInput(p, side), fold, propsView(p)), area);
+}
 function pageView(p, side) {
+  if (p.kind === "ink") return inkView(p, side);
   const body = el("div", { class: "pbody" });
   const blocks = (p.blocks || []).filter((b) => b.type !== "page" || pageOf(b.pageId));
   S.ed = createEditor({ host: body, blocks, onChange: (bl) => queuePage(p.id, { blocks: bl }), pageTitle,
@@ -2018,7 +2038,7 @@ function queuePage(id, patch) {
   clearTimeout(pageTimer); pageTimer = setTimeout(() => { const d = pageDirty; pageDirty = null; if (d) store.updatePage(d.id, d.patch).catch(() => {}); }, 500);
 }
 async function newPage(parentId = null, kind = "page") {
-  if (parentId === null && S.view === "notes" && isFolder(pageOf(S.npage)) && kind === "page") parentId = S.npage;   // new pages go in the open folder
+  if (parentId === null && S.view === "notes" && isFolder(pageOf(S.npage)) && kind !== "folder") parentId = S.npage;   // new pages go in the open folder
   await flushPage();
   const p = await safely(() => store.addPage({ parentId, kind })); if (!p) return;
   const par = pageOf(parentId);
@@ -2055,7 +2075,7 @@ function moveMenu(p, anchor) {
 }
 function pageMenu(p, anchor) {
   menu(anchor, [
-    !isFolder(p) && { label: "Grow into a knowledge graph", key: "G", run: () => growDialog(p.id) },
+    !isFolder(p) && p.kind !== "ink" && { label: "Grow into a knowledge graph", key: "G", run: () => growDialog(p.id) },
     p.grown?.length && { label: "Take back the last grow", run: () => ungrow(p.id) },
     { label: isFolder(p) ? "New page in this folder" : "New page inside", run: () => newPage(p.id) },
     { label: "Move to", run: () => moveMenu(p, anchor) },
@@ -2133,7 +2153,9 @@ function notesKey(k, stop) {
   }
   if (k === "n") { stop(); return newPage(); }
   if (k === "f") { stop(); return newPage(null, "folder"); }
-  if (k === "g" && p && !isFolder(p)) { stop(); return growDialog(p.id); }
+  if (k === "w") { stop(); return newPage(null, "ink"); }
+  if (k === "d" && p?.kind === "ink") { stop(); return foldInkProps(); }
+  if (k === "g" && p && !isFolder(p) && p.kind !== "ink") { stop(); return growDialog(p.id); }
   if ((k === "Delete" || k === "Backspace") && p) { stop(); return removePage(p.id); }
   if (k === "Enter" && p) { stop(); if (isFolder(p)) { setOpen(p.id, !notesOpen().has(p.id)); return drawPageList(); } return S.ed?.focus("end"); }
   if (/^[1-9]$/.test(k) && rows[+k - 1]) { stop(); return pickPage(rows[+k - 1].id); }
@@ -2272,7 +2294,7 @@ function renderSide() {
 function sideKey(left) {
   if (S.view === "tree") { if (left) return toggleSide(); if (S.panel) { S.panel = null; return renderPanel(); } return togglePanel(); }
   if (S.view === "meaning" && !left) { if (S.panel) { S.panel = null; return renderPanel(); } return togglePanel(); }
-  if (S.view === "notes" && left) { const off = document.body.dataset.nbar !== "off"; document.body.dataset.nbar = off ? "off" : ""; return; }
+  if (S.view === "notes" && left) { const off = document.body.dataset.nbar !== "off"; document.body.dataset.nbar = off ? "off" : ""; drawPageBar(); return; }
   if (S.view === "isles" && !left) { gfold = !gfold; renderGarden(); renderTop(); return; }
   if (S.panel && !left) { S.panel = null; renderPanel(); }
 }

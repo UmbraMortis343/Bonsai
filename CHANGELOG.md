@@ -2,6 +2,16 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.21.0 — 2026-11-18
+
+- **Pen pages.** + Pen (W) at the foot of the notes sidebar makes a page you write on, with the tools on a rail docked right: pen (P), highlighter (H), eraser (E), lasso (L), four colours (C), three sizes (S), undo and redo (Ctrl+Z, Ctrl+Y), zoom (+, −, 0 fits the width), paper (B: lined, grid, dots, blank).
+- The pen draws wider the harder you press, and broader when tilted over like a pencil. Flip to the eraser end, or hold the barrel button, to erase whole strokes. Fingers scroll and pinch to zoom and never draw, and a palm landing while the pen is near is ignored; T lets a finger draw instead, for a phone.
+- The lasso picks strokes to drag, recolour (C) or delete (Delete).
+- Colours are roles, not fixed shades: black ink turns white at night and the greens and ochres shift to match, so writing stays readable either way.
+- Ink is kept as strokes, so it stays sharp at any zoom. The title sits above the page, with its properties folded away (D).
+- The arrow at the left of the page bar hides and shows the notes sidebar ([). Hiding it used to squash the page to nothing; it now gives the page the whole width.
+- Beta: the demo has a pen page, Collision sketch, in Physics.
+
 ## 0.20.0 — 2026-11-18
 
 - **Quick panel on selected words.** Select a few words in a note and a small bar appears under them: Add to vocab (Alt+1) keeps the term with the sentence you met it in and the page; Add context (Alt+2) opens it with Meaning ready to type; Flesh out (Alt+3) copies a prompt for Claude, and the reply you paste back fills the meaning and other names for you to check before it's kept; Google (Alt+4). Esc closes the bar and leaves the selection.

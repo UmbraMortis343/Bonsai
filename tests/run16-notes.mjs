@@ -207,13 +207,13 @@ await k("["); await page.waitForFunction(() => document.querySelector("#nside").
 // Deleting a folder takes what's in it, and undo brings it all back.
 await page.click("#winNotes"); await page.waitForSelector("#nlist");
 await page.click('#nlist .nrow:has-text("Physics") .nname'); await page.waitForFunction(() => document.querySelector("#pageTitle")?.value === "Physics");
-t.eq(await page.locator("#nedit .frow").count(), 2, "a folder lists what's in it");
+t.eq(await page.locator("#nedit .frow").count(), 3, "a folder lists what's in it");
 await page.evaluate(() => document.activeElement?.blur()); await k("Delete");
 await page.waitForFunction(() => !bonsai.S.pages.some((p) => p.title === "Problem sheet 6"));
 await page.click("#toast .link");
 await page.waitForFunction(() => bonsai.S.pages.some((p) => p.title === "Problem sheet 6"));
 const b = await state(page, async () => { const x = await bonsai.store.exportAll(); return [x.schema, x.pages.length]; });
-t.eq(b, [4, 8], "backup has schema 4 and the pages");
+t.eq(b, [4, 9], "backup has schema 4 and the pages");
 
 // The garden panel: the name comes first and renames in place; Tech tree opens at the island's tier.
 await page.click("#winGarden"); await page.waitForSelector("body[data-isles=ready]");
