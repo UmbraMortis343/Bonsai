@@ -366,6 +366,17 @@ function joinedTap(id) {
   if (n) { S.pendingSel = id; return openTree(n.treeId); }
   const m = /^([hit]):(.*)$/.exec(id); if (m && m[2] !== S.fscope?.id) openScope(m[2]);
 }
+// The Knowledge window's three looks over what's in scope: Separate, Joined and Meaning.
+function setLook(look) {
+  if (look === "meaning") { if (S.view !== "meaning") goMeaning(S.fscope?.id); return; }
+  if (S.view === "meaning") { S.joined = look === "joined"; setPref("joined", S.joined ? "1" : "0"); return openScope(S.fscope?.id); }
+  toggleJoined(look === "joined");
+}
+function lookSeg() {
+  const b = (id, text, k, look, on) => el("button", { class: "btn" + (on ? " on" : ""), id, "aria-pressed": String(on), onclick: () => setLook(look) }, text, el("kbd", { text: k }));
+  const m = S.view === "meaning";
+  return el("div", { class: "seg keys", role: "group", "aria-label": "View" }, b("viewApart", "Separate", "V", "apart", !m && !S.joined), b("viewJoined", "Joined", "V", "joined", !m && S.joined), b("viewMeaning", "Meaning", "M", "meaning", m));
+}
 function toggleJoined(on = !S.joined) {
   if (S.view !== "forest" || on === S.joined) return;
   S.joined = on; setPref("joined", on ? "1" : "0"); S.fsel = null;
@@ -377,7 +388,8 @@ const rebuild = () => (S.view === "tree" ? buildTree(false) : S.view === "meanin
 // ---------- meaning view ----------
 // Ideas placed by what they mean (an on-device model), for one zone or for
 // everything. Colour marks the tree (in a zone) or the zone (everything).
-const scopeNodes = (zoneId) => { const ok = new Set(S.trees.filter((t) => !zoneId || t.zoneId === zoneId).map((t) => t.id)); return S.nodes.filter((n) => ok.has(n.treeId)); };
+const inScope = (zoneId) => !S.fscope || S.fscope.zones.has(zoneId);
+const scopeNodes = () => { const ok = new Set(S.trees.filter((t) => inScope(t.zoneId)).map((t) => t.id)); return S.nodes.filter((n) => ok.has(n.treeId)); };
 const aiItems = (nodes) => nodes.map((n) => ({ id: n.id, text: textFor(n, S.byId.get(n.parentId), treeOf(n.treeId)) }));
 function setStatus(text) { const e = $("#status"); e.hidden = !text; e.textContent = text || ""; }
 const progressText = (p) => (p.stage === "model" ? `Loading model ${Math.round((100 * p.done) / (p.total || 1))}%` : p.stage === "embed" ? `Reading ${p.done}/${p.total}` : "Arranging");
@@ -391,12 +403,13 @@ let meanRun = 0;
 const meanCache = new Map();
 async function showMeaning(scope) {
   const run = ++meanRun, jumpTo = S.pendingSel; S.pendingSel = null;
-  S.view = "meaning"; S.scope = S.zones.some((z) => z.id === scope) ? scope : null;
+  S.view = "meaning"; S.fscope = scopeOf(scope);   // the same scopes as the Knowledge window: a hub, an island, a topic or everything
+  S.scope = S.fscope?.kind === "topic" ? S.fscope.id : null;
   S.tree = null; S.lay = null; S.sel = null; S.panel = null; S.mean = null; S.suggest = null;
   document.body.dataset.meaning = "";
   clearScene(); stage.setLabels([]); addDecor(grid(60, T.grid)); placeSel(); renderChrome();
   if (!(await aiAllowed())) { if (run === meanRun) location.hash = S.meanBack; return; }
-  const nodes = scopeNodes(S.scope), ids = nodes.map((n) => n.id), items = aiItems(nodes);
+  const nodes = scopeNodes(), ids = nodes.map((n) => n.id), items = aiItems(nodes);
   try {
     setStatus("Starting");
     await ai.ensure(items, (p) => run === meanRun && setStatus(progressText(p)));
@@ -415,9 +428,9 @@ async function showMeaning(scope) {
 }
 function buildMeaning() {
   clearScene();
-  const M = S.mean, trees = S.trees.filter((t) => !S.scope || t.zoneId === S.scope);
+  const M = S.mean, trees = S.trees.filter((t) => inScope(t.zoneId));
   const groups = S.scope ? trees.map((t) => ({ id: t.id, name: t.name, color: t.color, trees: [t] }))
-    : S.zones.map((z) => ({ id: z.id, name: z.name, color: z.color, trees: trees.filter((t) => t.zoneId === z.id) }));
+    : S.zones.filter((z) => inScope(z.id)).map((z) => ({ id: z.id, name: z.name, color: z.color, trees: trees.filter((t) => t.zoneId === z.id) }));
   const items = [], heads = [], shown = new Set(), depth = new Map(), all = [];
   groups.forEach((g, gi) => {
     const color = g.color || PALETTE[gi % PALETTE.length][1], sum = [0, 0, 0]; let k = 0, top = 0;
@@ -518,11 +531,11 @@ async function go() {
   // remember where a graph or the meaning view was opened from, so Back returns there
   const from = S.hashNow; S.hashNow = location.hash;
   const origin = from == null || /^#\/(tree|meaning)/.test(from) ? null : from || "#/";
-  if (origin && mm && S.view !== "meaning") S.meanBack = origin;
+  if (origin && mm && S.view !== "meaning") S.meanBack = /^#\/forest/.test(origin) ? (S.fscope ? S.forestBack || "#/" : "#/") : origin;
   if (origin && id && S.view !== "tree") S.treeBack = origin;
   if (from != null && tm && !/^#\/(tree|techtree)/.test(from)) S.techBack = from || "#/";
   const fm = location.hash.match(/^#\/forest(?:\/([^/?]+))?/);
-  if (fm) { S.fscope = scopeOf(fm[1] && decodeURIComponent(fm[1])); if (from != null && !/^#\/(tree|forest)/.test(from)) S.forestBack = from || "#/"; }
+  if (fm) { S.fscope = scopeOf(fm[1] && decodeURIComponent(fm[1])); if (from != null && !/^#\/(tree|forest|meaning)/.test(from)) S.forestBack = from || "#/"; else if (/^#\/meaning/.test(from || "")) S.forestBack = S.meanBack; }
   const home = !mm && !tm && !nm && !location.hash.startsWith("#/garden") && !location.hash.startsWith("#/forest") && !(id && treeOf(id));
   showWindow(home, !!tm, !!nm);
   if (home) { if (id) history.replaceState(null, "", "#/"); showIsles(); }
@@ -672,10 +685,6 @@ function renderTop() {
       add([{ label: "New page", key: "N", run: () => newPage() }, { label: "New folder", key: "F", run: () => newPage(null, "folder") }]), more());
   } else if (S.view === "tech") {
     put($("#top"), back(S.techBack), el("div", { class: "crumb" }, el("h1", { text: "Tech tree" })), beta, el("span", { class: "grow" }), swap, search);
-  } else if (S.view === "meaning") {
-    const pick = el("select", { id: "scopeSel", "aria-label": "Show", onchange: (e) => goMeaning(e.target.value) }, el("option", { value: "", text: "Everything", selected: !S.scope }), S.zones.map((z) => el("option", { value: z.id, text: z.name, selected: z.id === S.scope })));
-    put($("#top"), back(S.meanBack), el("div", { class: "crumb" }, el("h1", { text: "Meaning" }), pick), beta,
-      el("span", { class: "grow" }), S.mean && el("button", { class: "btn", id: "suggestBtn", text: "Suggest", onclick: openSuggest }), swap, search);
   } else if (S.view === "tree") {
     const zone = S.zones.find((z) => z.id === S.tree.zoneId);
     put($("#top"), back(S.treeBack), el("div", { class: "crumb" }, el("h1", { text: S.tree.name }), el("span", { text: zone?.name || "" })), beta,
@@ -693,7 +702,8 @@ function renderTop() {
     put($("#top"), back("#/", "Garden"), el("div", { class: "crumb" }, el("h1", { text: "Watering" })), beta, el("span", { class: "grow" }),
       waterBtn(() => startReview(null)), swap, more());
   } else if (S.fscope) {
-    put($("#top"), back(S.forestBack || "#/"), el("div", { class: "crumb" }, el("h1", { text: S.fscope.name }), el("button", { class: "link", id: "scopeAll", type: "button", text: "Show all", onclick: () => openScope() })), beta, el("span", { class: "grow" }),
+    const m = S.view === "meaning";
+    put($("#top"), back(m ? S.meanBack : S.forestBack || "#/"), el("div", { class: "crumb" }, el("h1", { text: S.fscope.name }), el("button", { class: "link", id: "scopeAll", type: "button", text: "Show all", onclick: () => (m ? goMeaning() : openScope()) })), beta, el("span", { class: "grow" }),
       waterBtn(() => water(null)), swap, search, add([{ label: "New knowledge graph", key: "N", run: () => newGraph() }, { label: "New topic", key: "Z", run: newZone }, { label: "Capture a thought", key: "I", run: capture }]), more());
   } else {
     put($("#top"), brand, beta, el("span", { class: "grow" }),
@@ -780,7 +790,7 @@ async function capture() {
 function shortcuts() {
   const groups = [
     ["Everywhere", [["Click", "Pick"], ["Double-click  ↵", "Go in, open"], ["Right-click", "Its menu (tech tree: open or close what's under it)"], ["Drag", "Move what you hold; on empty space, turn or pan"],
-      ["Wheel", "Zoom"], ["1–9  ← ↑ ↓ →", "Pick by number, or the next one"], ["Esc", "Let go, then step back out"], ["⇧Esc", "Straight back"], ["0", "Fit"], ["V", "The other view: board and 3D, separate and joined, tree and web"],
+      ["Wheel", "Zoom"], ["1–9  ← ↑ ↓ →", "Pick by number, or the next one"], ["Esc", "Let go, then step back out"], ["⇧Esc", "Straight back"], ["0", "Fit"], ["V", "The other view: board and 3D, separate and joined, tree and web"], ["M", "Meaning: ideas arranged by what they mean"],
       ["⇧Tab", "Garden, Knowledge, Library (Knowledge shows what's picked; Tab alone in the garden)"], ["[  ]", "The panel on the left, on the right"], ["/", "Search"], ["I", "Capture a thought"], ["K", "Tech tree"], ["O", "Notes beside a graph"], ["?", "These keys"]]],
     ["Building a graph", [["Tab", "Add under"], ["↵", "Add beside"], ["R", "Rename"], ["Del", "Delete (a picked link too)"], ["L", "Link"], ["G", "Graft"], ["X", "Make its own graph"], ["C", "Colour"], ["Space", "Notes"], ["⇧↵", "Open the board's graph in 3D"],
       ["Drag", "Move an idea; drop it on another to graft"], ["+ or Alt-drag", "Pull out a new idea, or a link"]]],
@@ -835,11 +845,15 @@ function renderActions() {
   }
   if (S.view === "forest" && S.cutoff == null && !S.pick && S.trees.length) {
     const b = (id, text, k, run, on) => el("button", { class: "btn" + (on ? " on" : ""), id, "aria-pressed": on == null ? null : String(on), onclick: run }, text, el("kbd", { text: k }));
-    put(a, el("div", { class: "seg keys", role: "group", "aria-label": "View" }, b("viewApart", "Separate", "V", () => toggleJoined(false), !S.joined), b("viewJoined", "Joined", "V", () => toggleJoined(true), S.joined)),
-      el("span", { class: "sep" }), b("viewFit", "Fit", "0", fitView), S.fscope ? b("viewAll", "Show all", "A", () => openScope()) : null, b("viewThirsty", "Thirsty", "H", toggleThirsty, !!S.thirsty), el("span", { class: "sep" }), b("viewTech", "Tech tree", "K", openTech));
+    put(a, lookSeg(), el("span", { class: "sep" }), b("viewFit", "Fit", "0", fitView), S.fscope ? b("viewAll", "Show all", "A", () => openScope()) : null, b("viewThirsty", "Thirsty", "H", toggleThirsty, !!S.thirsty), el("span", { class: "sep" }), b("viewTech", "Tech tree", "K", openTech));
     a.hidden = false; return;
   }
   const idea = S.view === "meaning" && !S.pick ? S.byId.get(S.sel) : null;
+  if (S.view === "meaning" && !idea && !S.pick && S.mean) {
+    const b = (id, text, k, run, on) => el("button", { class: "btn" + (on ? " on" : ""), id, "aria-pressed": on == null ? null : String(on), onclick: run }, text, el("kbd", { text: k }));
+    put(a, lookSeg(), el("span", { class: "sep" }), b("viewFit", "Fit", "0", fitView), S.fscope ? b("viewAll", "Show all", "A", () => goMeaning()) : null, b("suggestBtn", "Suggest", "S", openSuggest), el("span", { class: "sep" }), b("viewTech", "Tech tree", "K", openTech));
+    a.hidden = false; return;
+  }
   if (idea) {
     put(a, el("div", { class: "plant" }, el("b", { text: idea.title }), el("span", { class: "muted", text: pathOf(idea) })),
       el("button", { class: "btn", dataset: { act: "open" }, onclick: () => { S.pendingSel = idea.id; goTree(idea.treeId); } }, "Open", el("kbd", { text: "↵" })),
@@ -1611,7 +1625,7 @@ function techData() {
     trees: S.trees, nodes: S.nodes.map((n) => ({ ...n, st: n.ghost ? "ghost" : thirst(n) })), links: S.links };
 }
 function openTech() {
-  if (S.view === "tree" || S.view === "meaning") { S.pendingSel = S.sel; location.hash = "#/techtree" + (S.tree ? "/" + encodeURIComponent(S.tree.zoneId) : ""); return; }
+  if (S.view === "tree" || S.view === "meaning") { S.pendingSel = S.sel; const z = S.tree ? S.tree.zoneId : S.scope; location.hash = "#/techtree" + (z ? "/" + encodeURIComponent(z) : ""); return; }
   if (S.view === "forest" || S.view === "garden") {   // the knowledge view opens it on what's in view: a topic, an island, or a picked graph's topic
     const at = S.fscope && S.fscope.kind !== "hub" ? S.fscope.id : treeOf(S.fsel)?.zoneId;
     location.hash = "#/techtree" + (at ? "/" + encodeURIComponent(at) : ""); return;
@@ -1797,6 +1811,7 @@ function back() {
   if (S.view === "notes") return;   // a window of its own: nothing to step back to
   if (S.view === "isles") { if (S.topic >= 0) return pickTopic(-1); if (S.isle >= 0) return pickIsle(-1); if (S.hub >= 0) pickHub(-1); return; }
   if (S.view === "tech") return techEsc();
+  if (S.view === "meaning" && S.sel) return select(null);   // let go first, then step out
   location.hash = S.view === "tree" ? S.treeBack : S.view === "meaning" ? S.meanBack : "#/";
 }
 function onKey(e) {
@@ -1833,7 +1848,7 @@ function onKey(e) {
     return;
   }
   if (S.view === "forest") {
-    if (k === "m") { stop(); return goMeaning(); }
+    if (k === "m") { stop(); return setLook("meaning"); }
     if (k === "n") { stop(); return newGraph(); }
     if (k === "v") { stop(); return toggleJoined(); }
     if (k === "h") { stop(); return toggleThirsty(); }
@@ -1846,7 +1861,9 @@ function onKey(e) {
   }
   const n = S.byId.get(S.sel);
   if (S.view === "meaning") {
-    if (k === "m") { stop(); location.hash = S.meanBack; }
+    if (k === "v") { stop(); return setLook(S.joined ? "joined" : "apart"); }
+    else if (k === "s" && S.mean) { stop(); openSuggest(); }
+    else if (k === "a" && S.fscope) { stop(); goMeaning(); }
     else if (k === "Enter" && n) { stop(); S.pendingSel = n.id; goTree(n.treeId); }
     else if (k === " ") { stop(); togglePanel(); }
     else if (k === "l") { stop(); linkFrom(); }

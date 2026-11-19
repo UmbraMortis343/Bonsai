@@ -24,17 +24,28 @@ const spread = await state(page, () => { const ys = [...bonsai.S.mean.pos.values
 t.eq(spread, [true, 15], "ideas float above the floor, none stacked");
 await page.waitForTimeout(400); await page.screenshot({ path: "tests/shots/meaning-all.png" });
 
-// One zone: coloured and labelled by tree.
-await page.selectOption("#scopeSel", ids.zone);
+t.eq(await state(page, () => [...document.querySelectorAll("#actions .seg .btn")].map((b) => [b.firstChild.textContent, b.classList.contains("on")])), [["Separate", false], ["Joined", false], ["Meaning", true]], "meaning is a look in the Knowledge window's bar, beside Separate and Joined");
+t.eq(await page.$$("#scopeSel").then((x) => x.length), 0, "no scope picker of its own");
+
+// One topic: coloured and labelled by graph, the same scope as the Knowledge window.
+await page.evaluate((z) => { location.hash = "#/meaning/" + z; }, ids.zone);
 await page.waitForFunction(() => document.body.dataset.meaning === "ready" && bonsai.S.scope);
-t.eq(await state(page, () => [bonsai.S.mean.ids.length, [...document.querySelectorAll(".lbl.group")].map((e) => e.textContent).sort()]), [12, ["Basic electronics", "Op-amps"]], "zone scope");
+t.eq(await state(page, () => [bonsai.S.mean.ids.length, [...document.querySelectorAll(".lbl.group")].map((e) => e.textContent).sort(), document.querySelector("#top h1").textContent]), [12, ["Basic electronics", "Op-amps"], "Electronics"], "topic scope, named like the Knowledge window");
 await page.waitForTimeout(300); await page.screenshot({ path: "tests/shots/meaning-zone.png" });
+
+// V goes to Separate on the same topic, M straight back, with nothing worked out again.
+await key("v"); await page.waitForFunction(() => bonsai.S.view === "forest" && bonsai.S.fscope);
+t.eq(await state(page, () => [bonsai.S.fscope.kind, document.querySelector("#viewApart").classList.contains("on")]), ["topic", true], "V shows the same topic separate");
+await key("m"); await page.waitForSelector('body[data-meaning="ready"]');
+t.eq(await state(page, () => [bonsai.S.view, bonsai.S.mean.ids.length]), ["meaning", 12], "M brings the meaning look back on that topic");
 
 // Click an idea: its notes open here too, and Enter opens it in its tree.
 await page.evaluate(() => { bonsai.S.sel = bonsai.S.nodes.find((n) => n.title === "Capacitors").id; });
 await key("ArrowUp"); await page.waitForSelector('.lbl.sel');
 await key(" "); await page.waitForSelector("#nodeTitle");
 await key("Escape");
+await key("Escape"); await page.waitForSelector("#suggestBtn");
+t.eq(await state(page, () => [bonsai.S.view, bonsai.S.sel]), ["meaning", null], "Esc lets go of the idea before stepping out");
 
 // Suggestions: accept one, dismiss one.
 await page.click("#suggestBtn");

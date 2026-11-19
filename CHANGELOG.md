@@ -2,6 +2,10 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.29.3 — 2026-11-19
+- Meaning is now a look in the Knowledge window, beside Separate and Joined (M; V goes back). It shows the same hub, island or topic as the rest of the window, with the same top bar and Show all; its own scope picker is gone. Suggest (S) sits in the bottom bar.
+- In the meaning look, Esc lets go of a picked idea before stepping out.
+
 ## 0.29.2 — 2026-11-19
 - The little 3D window beside a board shows the shape only, no names.
 - One + Page button in the Library; it asks Page (N) or Pen page (W).
