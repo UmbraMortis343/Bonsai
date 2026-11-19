@@ -90,6 +90,7 @@ await page.waitForFunction(() => bonsai.S.nodes.some((n) => n.title === "Sieve")
 t.eq(true, true, "Del deletes and Undo restores");
 
 // stitching: a graph dragged from the Library onto an idea on the board
+if (!(await page.$("#glist"))) { await page.click("#lib-graphs"); await page.waitForSelector("#glist"); }
 await page.click('#glist .nrow.shelf[data-shelf="i:found"] .nname');
 await page.click('#glist .nrow.shelf[data-shelf^="t:"] >> text=Patterns');
 const pat = await state(page, () => bonsai.S.trees.find((x) => x.name === "Patterns"));

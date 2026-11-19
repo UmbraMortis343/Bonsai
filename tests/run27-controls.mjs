@@ -93,6 +93,13 @@ t.eq(true, true, "an idea opens in its graph, picked");
 
 // the shortcuts list is grouped
 await page.keyboard.press("?"); await page.waitForSelector(".keygroups");
-t.eq(await page.$$eval(".keygroups h3", (h) => h.map((x) => x.textContent)), ["Everywhere", "Building a graph", "Garden", "Tech tree", "Notes"], "one list of rules, grouped");
+t.eq(await page.$$eval(".keygroups h3", (h) => h.map((x) => x.textContent)), ["Everywhere", "Building a graph", "Garden", "Tech tree", "Library"], "one list of rules, grouped");
 await page.screenshot({ path: "tests/shots/controls-keys.png" });
+await page.keyboard.press("Escape");
+
+// in the garden, Tab alone switches windows too
+await page.evaluate(() => { location.hash = "#/"; }); await page.waitForFunction(() => bonsai.S.view === "isles");
+await page.keyboard.press("Tab");
+await page.waitForFunction(() => bonsai.S.view === "forest", null, { timeout: 30000 });
+t.eq(await page.textContent("#winNotes .wl"), "Library", "the third window is the Library");
 await t.end();

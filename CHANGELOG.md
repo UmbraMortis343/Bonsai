@@ -2,6 +2,11 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.29.0 — 2026-11-19
+- Notes is now the Library, with three tabs: Notes, Graphs and Watering (Shift+1–3). Each has its own filter (All/Raw/Tidied/Grown; All/Waiting/Watered; All/Thirsty/Dry) and folds by island and topic. N adds a graph on the Graphs tab; W waters on the Watering tab.
+- The board's name box is a small box beside the new idea, never under the idea card.
+- In the garden, Tab on its own switches windows too; the window switcher shows ⇧Tab.
+
 ## 0.28.0 — 2026-11-19
 - The watering screen is gone. Watering happens where you are: Water (W) in the top bar waters what's in view; in a graph it waters that graph and the round picks each idea as it comes up; on the board it waters that graph. A graph's menu has Water and All good.
 - Thirsty is on for everyone by default (H hides it): what needs water shows ochre in the knowledge views.
