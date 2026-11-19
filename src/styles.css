@@ -676,3 +676,16 @@ body[data-nbar="off"] .notes .nside-bar{display:none}
 .pbar .seg.keys kbd{margin-left:4px}
 .keygroups{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:4px 22px;max-height:70vh;overflow:auto}
 .keygroups h3{margin:10px 0 4px;font-size:12px;color:var(--muted)}
+/* "/" go anywhere */
+.goto{position:fixed;z-index:80;left:50%;top:14vh;transform:translateX(-50%);width:min(560px,92vw);background:var(--card);border:1px solid var(--line);border-radius:6px;box-shadow:0 14px 40px rgb(0 0 0 / .22);overflow:hidden}
+.grow1{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line)}
+.grow1 svg{width:16px;height:16px;color:var(--muted)}
+.grow1 input{flex:1;border:0;background:none;font:500 15px var(--font);color:var(--ink);outline:none}
+.glist2{max-height:52vh;overflow:auto;padding:4px}
+.grow2{display:flex;align-items:center;gap:10px;width:100%;padding:7px 10px;border:0;background:none;border-radius:4px;text-align:left;color:var(--ink);font:inherit;cursor:pointer}
+.grow2.on,.grow2:hover{background:var(--hover)}
+.grow2 .gk{flex:0 0 44px;font-size:11px;font-weight:700;color:var(--muted)}
+.grow2 .gl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.grow2 .gw{font-size:12px;white-space:nowrap}
+.pcrumb .sl0.link{border:0;background:none;padding:0;font:inherit;color:var(--muted);cursor:pointer}
+.pcrumb .sl0.link:hover{color:var(--ink);text-decoration:underline}

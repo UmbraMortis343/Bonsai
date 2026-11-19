@@ -16,37 +16,32 @@ await page.evaluate(async () => {
 });
 t.eq(await page.textContent("#winGarden .thirst"), "5", "thirsty count on the Garden button");   // 3 trunks, Resistors, Capacitors
 await page.click("#winGarden");
-await page.waitForSelector("#waterAll");
-t.eq(await state(page, () => [bonsai.S.view, location.hash]), ["isles", "#/"], "the switch opens the garden");
+await page.waitForFunction(() => bonsai.S.view === "isles"); await page.waitForSelector("#waterAll");
+t.eq(await state(page, () => location.hash), "#/", "the switch opens the garden");
 await page.click("#waterAll"); await page.waitForSelector("#showAnswer");
-t.eq(await state(page, () => [bonsai.S.view, bonsai.S.review.ids.length]), ["garden", 5], "Water starts a round in the watering view");
+t.eq(await state(page, () => [bonsai.S.view, bonsai.S.review.ids.length]), ["isles", 5], "Water starts a round where you are");
 await key("Escape"); await page.waitForSelector("#review", { state: "hidden" });
-await key("0"); await page.waitForTimeout(900);   // the round leaves the camera on the last plant; 0 shows them all
-await page.click('.lbl.tree:has-text("Basic electronics")');
-await page.waitForSelector("#waterBtn");
-t.eq(await page.textContent("#waterBtn"), "Water 3↵", "thirsty in this graph");
-const ringsBefore = await state(page, (id) => bonsai.S.forest.rings.get(id), ids.basic);
-await page.screenshot({ path: "tests/shots/garden-thirsty.png" });
-await page.click("#waterBtn"); await page.waitForSelector("#showAnswer");
+
+// a graph waters from its own bar (W), and its menu has All good
+await openTree(page, ids.basic); await page.waitForSelector("#waterTree");
+t.eq(await page.textContent("#waterTree .thirst"), "3", "thirsty in this graph");
+await key("w"); await page.waitForSelector("#showAnswer");
 for (let i = 0; i < 3; i++) { await key(" "); await page.waitForSelector(".rate"); await key("3"); await page.waitForFunction((n) => !bonsai.S.review || bonsai.S.review.i === n, i + 1); }
 await page.waitForSelector("#review", { state: "hidden" });
 const passes = () => state(page, () => bonsai.S.nodes.reduce((a, n) => a + (n.srs?.passes || 0), 0));
 t.eq(await passes(), 3, "passes after watering");
-t.eq([ringsBefore, await state(page, (id) => bonsai.S.forest.rings.get(id), ids.basic)], [0, 1], "the graph's disc gains a ring after watering");
-t.eq(await page.textContent("#waterBtn"), "Practise↵", "graph still thirsty after watering");
-
-// "All good" passes a whole plant in one tap, and can be undone.
-await page.click('.lbl.tree:has-text("Op-amps")'); await page.waitForSelector("#allGood");
-await page.click("#allGood"); await page.waitForFunction(() => !document.querySelector("#allGood"));
+if (await page.$("#waterTree")) t.fail("graph still thirsty after watering");
+await state(page, (id) => bonsai.openTree(id), ids.op); await page.waitForSelector("#waterTree");
+const opItems = await state(page, (id) => bonsai.graphItems(bonsai.S.trees.find((x) => x.id === id)).filter(Boolean).map((x) => x.label), ids.op);
+if (!opItems.includes("All good")) t.fail("All good not in the graph's menu");
+await state(page, (id) => bonsai.graphItems(bonsai.S.trees.find((x) => x.id === id)).find((x) => x?.label === "All good").run(), ids.op);
+await page.waitForFunction(() => !document.querySelector("#waterTree"));
 t.eq(await passes(), 4, "passes after All good");
-await page.click("#toast .link"); await page.waitForSelector("#allGood");
+await page.click("#toast .link"); await page.waitForSelector("#waterTree");
 t.eq(await passes(), 3, "passes after undo");
-await page.waitForTimeout(500); await page.screenshot({ path: "tests/shots/garden-laptop.png" });
+await page.keyboard.press("Escape");
 
-// Back in the knowledge window the trees carry no roots or fading.
-await page.keyboard.press("Shift+Tab");
-await page.waitForFunction(() => bonsai.S.view !== "garden"); await page.waitForSelector(".lbl.tree");
-t.eq(await state(page, () => bonsai.S.view), "forest", "Shift+Tab returns to knowledge");
+// a graph carries no roots or fading
 await openTree(page, ids.basic);
 t.eq(await state(page, () => [bonsai.S.flora.limbMesh.count, bonsai.S.flora.ids.length]), [8, 9], "a stick between ideas and nothing else: none down to the ground");
 if (await page.$("#reviewBtn")) t.fail("review button in the knowledge window");
@@ -76,7 +71,7 @@ t.eq(await state(page, () => [bonsai.S.byTree.get(bonsai.S.tree.id).length, bons
 await page.click("#toast .link"); await page.waitForSelector('.lbl.node:text-is("Charge")');
 
 // Inbox: capture, then file under an idea.
-await key("Escape");
+await page.evaluate(() => { location.hash = "#/forest"; });
 await page.waitForSelector(".lbl.zone");
 await key("i"); await page.fill("#f-text", "Kirchhoff's laws"); await key("Enter");
 await page.click("#inboxBtn"); await page.click('.inboxrow .btn'); await page.keyboard.type("Sources"); await page.waitForSelector(".res"); await key("Enter");

@@ -2,6 +2,12 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.28.0 — 2026-11-19
+- The watering screen is gone. Watering happens where you are: Water (W) in the top bar waters what's in view; in a graph it waters that graph and the round picks each idea as it comes up; on the board it waters that graph. A graph's menu has Water and All good.
+- Thirsty is on for everyone by default (H hides it): what needs water shows ochre in the knowledge views.
+- / goes anywhere in one step: islands, topics, graphs, ideas and notes in one list (meaning matches too when the model is on); Enter takes you there.
+- The path over a board (island › topic) opens that place in the garden in one click.
+
 ## 0.27.0 — 2026-11-19
 
 - **One set of controls.** The same few rules on every screen: click picks, double-click goes in or opens, right-click gives that thing's menu, drag moves what you hold (or turns the view), wheel zooms. Esc lets go then steps back out, 0 fits, numbers and arrows pick. ? shows the rules, grouped.

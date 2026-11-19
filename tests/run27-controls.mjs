@@ -31,8 +31,8 @@ t.eq(["Add under", "Rename", "Link to…", "Graft onto…", "On the board"].ever
 await page.keyboard.press("Escape");
 t.eq(await state(page, (id) => bonsai.S.sel, sp.id), sp.id, "and picks it");
 const r0 = await state(page, () => bonsai.stage.target.x);
-await page.keyboard.down("w"); await page.waitForTimeout(400); await page.keyboard.up("w");
-t.eq(await state(page, () => bonsai.stage.target.x), r0, "W no longer flies");
+await page.keyboard.down("d"); await page.waitForTimeout(400); await page.keyboard.up("d");
+t.eq(await state(page, () => bonsai.stage.target.x), r0, "WASD no longer fly");
 await page.keyboard.press("v");
 await page.waitForFunction(() => bonsai.S.view === "notes" && bonsai.S.board);
 t.eq(await state(page, () => bonsai.S.gsel), sp.id, "V opens the graph on the board with the same idea picked");
@@ -76,6 +76,20 @@ const picked = await state(page, () => { const isl = bonsai.S.model[bonsai.S.isl
 await page.keyboard.press("Shift+Tab");
 await page.waitForFunction(() => bonsai.S.view === "forest");
 t.eq(await state(page, () => bonsai.S.fscope?.id), picked, "Shift+Tab from the garden shows what's picked in Knowledge");
+
+// "/" goes anywhere in one step: a graph to its board, then the board's path back to the garden in one click
+await page.keyboard.press("/"); await page.waitForSelector("#gotoInput");
+await page.keyboard.type("newton");
+t.eq(await page.$eval("#gotoList .res .gk", (e) => e.textContent), "Graph", "a graph comes before its ideas");
+await page.keyboard.press("Enter");
+await page.waitForFunction(() => bonsai.S.view === "notes" && bonsai.S.board && bonsai.S.trees.find((x) => x.id === bonsai.S.boardTree)?.name === "Newton's laws");
+t.eq(true, true, "Enter goes straight to its board");
+await page.click(".pcrumb .sl0.link >> nth=1");
+await page.waitForFunction(() => bonsai.S.view === "isles" && bonsai.S.model[bonsai.S.isle]?.topics[bonsai.S.topic]?.name === "Mechanics");
+t.eq(true, true, "the topic in the board's path opens it in the garden");
+await page.keyboard.press("/"); await page.keyboard.type("Inertia"); await page.keyboard.press("Enter");
+await page.waitForFunction(() => bonsai.S.view === "tree" && bonsai.S.byId.get(bonsai.S.sel)?.title === "Inertia");
+t.eq(true, true, "an idea opens in its graph, picked");
 
 // the shortcuts list is grouped
 await page.keyboard.press("?"); await page.waitForSelector(".keygroups");

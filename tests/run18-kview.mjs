@@ -124,16 +124,20 @@ await key("k"); await page.waitForFunction(() => bonsai.S.view === "tech");
 t.eq(await page.evaluate(() => location.hash), "#/techtree/" + encodeURIComponent(ztech), "K in a graph opens the tech tree on its topic");
 await page.evaluate(() => history.back()); await page.waitForSelector(".lbl.trunk");
 
-// ---- watering: the same rings, discs for pots, a ring on the disc for reviews passed
-await page.evaluate(() => { location.hash = "#/garden"; }); await page.waitForFunction(() => bonsai.S.view === "garden" && bonsai.S.forest);
-t.eq(await state(page, () => [bonsai.S.forest.fl.zones.size, bonsai.S.forest.fl.trees.size, bonsai.S.forest.rings.size, bonsai.S.flora.limbMesh.count === bonsai.S.flora.ids.length - 4]), [2, 4, 4, true], "every graph over its disc; sticks only between ideas, none down to the ground");
-await key("0"); await page.waitForTimeout(900);   // it opened on the graph just left; step back to see them all
-await page.click('.lbl.tree:has-text("Synthesis")'); await page.waitForSelector("#waterBtn kbd");
-t.eq(await state(page, () => [...document.querySelectorAll("#actions .btn")].every((b) => b.querySelector("kbd"))), true, "the watering bar shows its keys");
-await words("#actions", "the watering bar");
+// ---- watering happens where you are: in a graph each idea comes up picked; Thirsty (H) shows what's waiting in ochre
+await page.evaluate(() => { location.hash = "#/garden"; }); await page.waitForFunction(() => bonsai.S.view === "forest");
+t.eq(await page.evaluate(() => location.hash), "#/forest", "the old watering screen lands in Knowledge");
+t.eq(await page.getAttribute("#viewThirsty", "aria-pressed"), "true", "Thirsty is on");
+await state(page, async () => { const old = new Date(Date.now() - 3 * 864e5).toISOString(); await bonsai.store.restoreRows({ nodes: bonsai.S.nodes.map((n) => ({ ...n, createdAt: old })) }); await bonsai.refresh(); });   // three days on: ideas are waiting for water
+const syn = await state(page, () => bonsai.S.trees.find((x) => (bonsai.S.byTree.get(x.id) || []).some((n) => !n.ghost && bonsai.thirst(n) !== "ok")).id);
+await page.evaluate((id) => { location.hash = "#/tree/" + id; }, syn); await page.waitForSelector(".lbl.trunk");
+await page.waitForTimeout(600); await key("w");   // W waters the graph you're in
+await page.waitForSelector("#review:not([hidden]) #showAnswer");
+t.eq(await state(page, () => bonsai.S.sel === bonsai.S.review.ids[0]), true, "watering in a graph picks each idea as it comes up");
 await page.waitForTimeout(700); await page.screenshot({ path: "tests/shots/kview-water.png" });
-await key("Shift+Enter"); await page.waitForSelector(".lbl.trunk");
-t.eq(await state(page, () => bonsai.S.tree.name), "Synthesis", "Shift+Enter opens the graph picked");
+await key(" "); await key("3");
+await page.waitForFunction(() => !bonsai.S.review || bonsai.S.review.i === 1 || !document.querySelector("#review:not([hidden])"));
+await key("Escape"); await page.waitForTimeout(300); await key("Escape");
 
 // ---- night follows the garden, as in the tech tree
 const lum = () => state(page, () => { const c = bonsai.stage.scene.background; return [document.body.classList.contains("night-ui"), c.r + c.g + c.b < 0.6]; });

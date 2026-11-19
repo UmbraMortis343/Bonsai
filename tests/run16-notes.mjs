@@ -57,8 +57,8 @@ t.eq(await page.isVisible(".gchip, #attachBtn"), false, "nothing ties it to a gr
 await page.screenshot({ path: "tests/shots/notes-laptop.png" });
 
 // Search by name and by tag.
-await k("Escape"); await k("/");
-t.eq(await state(page, () => document.activeElement?.id), "notesSearch", "/ goes to the search");
+await k("Escape"); await page.click("#notesSearch");
+t.eq(await state(page, () => document.activeElement?.id), "notesSearch", "the sidebar's search");
 await type("#coaching");
 t.eq(await page.$$eval("#nlist .nrow .nt", (r) => r.map((x) => x.textContent)), ["Workshop: GROW model"], "found by tag");
 await page.fill("#notesSearch", "sheet");

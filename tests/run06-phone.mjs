@@ -16,14 +16,17 @@ t.eq(await state(page, () => document.querySelector("#top").scrollWidth <= 390),
 await page.tap("#winGarden"); await page.waitForSelector("body[data-isles=ready]");
 await page.waitForSelector(".tag.isle"); await page.waitForTimeout(600); await page.screenshot({ path: "tests/shots/isles-phone.png" });
 t.eq(await state(page, () => document.querySelector("#top").scrollWidth <= 390), true, "garden top bar fits the phone");
-await page.evaluate(() => { location.hash = "#/garden"; }); await page.waitForSelector(".lbl.tree");
-// names give way to each other on a narrow screen, so the graph itself is tapped
-await page.waitForTimeout(800);
-{ const p = await page.evaluate(() => { const S = bonsai.S, tr = S.trees.find((x) => x.name === "Synthesis"), at = bonsai.stage.screenOf(S.flora.pos.get(tr.rootId)), r = bonsai.stage.container.getBoundingClientRect(); return { x: r.left + at.x, y: r.top + at.y }; }); await page.touchscreen.tap(p.x, p.y); }
-await page.waitForSelector("#waterBtn");
+// watering happens where you are: the water button in the Knowledge bar fits the phone
+await state(page, async () => { const old = new Date(Date.now() - 3 * 864e5).toISOString(); await bonsai.store.restoreRows({ nodes: bonsai.S.nodes.map((n) => ({ ...n, createdAt: old })) }); await bonsai.refresh(); });   // three days on: ideas are waiting for water
+await page.tap("#winKnowledge"); await page.waitForSelector(".lbl.tree");
+await page.waitForSelector("#waterAll, #waterTree");
 const card = await page.locator("#actions").boundingBox();
-if (card.x < 0 || card.x + card.width > 390) t.fail("plant card wider than the screen");
-await page.waitForTimeout(500); await page.screenshot({ path: "tests/shots/garden-phone.png" });
+if (card.x < 0 || card.x + card.width > 390) t.fail("action bar wider than the screen");
+await page.tap("#waterAll, #waterTree"); await page.waitForSelector("#review:not([hidden]) #showAnswer");
+const rv = await page.locator("#review").boundingBox();
+if (rv.x < 0 || rv.x + rv.width > 390) t.fail("watering card wider than the screen");
+await page.waitForTimeout(500); await page.screenshot({ path: "tests/shots/water-phone.png" });
+await page.tap("#review .ib >> nth=0").catch(() => {}); await page.keyboard.press("Escape");
 await page.tap("#winKnowledge"); await page.waitForSelector("#addBtn");
 await page.waitForSelector('.lbl.tree:text-is("Basic electronics")');
 await page.tap('.lbl.tree:text-is("Basic electronics")'); await page.waitForTimeout(250); await page.tap('.lbl.tree:text-is("Basic electronics")');   // a tap picks, a second opens
