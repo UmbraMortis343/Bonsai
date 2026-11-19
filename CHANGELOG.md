@@ -2,6 +2,11 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.29.2 — 2026-11-19
+- The little 3D window beside a board shows the shape only, no names.
+- One + Page button in the Library; it asks Page (N) or Pen page (W).
+- Right-click a row in the Library for its quick actions: a page (open, rename, new page or pen page inside, move, grow, delete), a graph (open on the board or in 3D, water, rename, colour, move, archive), a topic (new graph here, water, show in the garden, knowledge graphs, tech tree) or an island.
+
 ## 0.29.1 — 2026-11-19
 - The Library's picked tab is highlighted (a green tint and underline), in dark and light.
 - Pen pages: better palm rejection. The pen hovering anywhere on the page drops any touch in progress and ignores new ones for 1.5 s; a palm-sized contact, or three or more at once, is ignored; a finger only pans or pinches once it has moved, so a resting palm no longer jiggles the page.

@@ -10,6 +10,17 @@ await page.waitForSelector("body[data-ready]"); await page.waitForTimeout(500);
 
 t.eq(await page.$$eval(".ltab", (h) => h.map((x) => x.firstChild.textContent)), ["Notes", "Graphs", "Watering"], "the Library has tabs for Notes, Graphs and Watering");
 t.eq(await page.$("#glist"), null, "it opens on Notes");
+// one + Page button that asks: page or pen page
+await page.click("#newPageBtn"); await page.waitForSelector(".menu .mi");
+t.eq(await page.$$eval(".menu .mi", (m) => m.map((x) => x.textContent)), ["PageN", "Pen pageW"], "+ Page asks which kind");
+await page.click(".menu .mi >> nth=1");
+await page.waitForFunction(() => bonsai.S.pages.find((p) => p.id === bonsai.S.npage)?.kind === "ink");
+t.eq(true, true, "and makes a pen page");
+// right-click a page in the list for its quick actions
+await page.click('#nlist .nrow[data-id] .nname >> nth=0', { button: "right" }); await page.waitForSelector(".menu .mi");
+const pm = await page.$$eval(".menu .mi", (m) => m.map((x) => x.textContent));
+if (!pm.some((x) => x.startsWith("Rename")) || !pm.some((x) => x.startsWith("Delete"))) t.fail("a page's right-click menu misses Rename or Delete: " + pm.join(", "));
+await page.keyboard.press("Escape");
 await page.keyboard.press("Shift+Digit2"); await page.waitForSelector("#glist");
 t.eq(await page.getAttribute("#lib-graphs", "aria-selected"), "true", "Shift+2 goes to Graphs");
 t.eq(await page.textContent("#lcount-graphs"), String(await state(page, () => bonsai.S.trees.length)), "Graphs counts every graph");
@@ -24,6 +35,14 @@ await page.waitForSelector(".gboard canvas");
 t.eq(await page.evaluate(() => decodeURIComponent(location.hash)), "#/notes/g:" + tid, "a graph opens in the Library");
 t.eq(await page.isVisible("#nedit .page"), false, "in place of a note page");
 await page.screenshot({ path: "tests/shots/library-board.png" });
+
+// right-click a graph in the list
+await page.click("#glist .nrow.graph >> nth=0 >> .nname", { button: "right" }); await page.waitForSelector(".menu .mi");
+t.eq(await page.textContent(".menu .mi >> nth=0"), "Open on the board↵", "a graph's right-click menu starts with Open on the board");
+await page.keyboard.press("Escape");
+await page.click('#glist .nrow.shelf[data-shelf^="t:"] .nname >> nth=0', { button: "right" }); await page.waitForSelector(".menu .mi");
+t.eq(await page.textContent(".menu .mi >> nth=0"), "New knowledge graph hereN", "a topic's right-click menu adds a graph there");
+await page.keyboard.press("Escape");
 
 // numbers pick, Shift+Enter opens it in its graph
 await page.keyboard.press("2");

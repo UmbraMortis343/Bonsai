@@ -704,3 +704,7 @@ input.bask::placeholder{color:var(--muted)}
 .nside-bar[data-tab] .nlib{border-top:0}
 .nfoot .btn.water{gap:6px}
 @container (max-width:235px){.ltab kbd{display:none}}
+
+/* the little 3D window shows the shape only, no names (0.29.2, his ask) */
+.pipwin .lbl{display:none!important}
+#newPageBtn .caret{font-size:10px;color:var(--muted);margin-left:2px}

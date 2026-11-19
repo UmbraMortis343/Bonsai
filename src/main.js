@@ -1948,9 +1948,9 @@ function notesSidebar(close) {
   const vrow = el("button", { class: "nvocab" + (S.view === "notes" && S.npage === VOCAB ? " on" : ""), id: "vocabBtn", type: "button", onclick: openVocab }, icon(ICON.book), el("span", { class: "nt", text: "Vocab" }),
     el("span", { class: "muted vcount", text: String((S.vocab || []).length || "") }), el("kbd", { text: "⇧V" }));
   const foot = el("div", { class: "nfoot" },
-    el("button", { class: "btn", id: "newPageBtn", onclick: () => newPage() }, "+ Page", el("kbd", { text: "N" })),
-    el("button", { class: "btn", id: "newFolderBtn", onclick: () => newPage(null, "folder") }, "+ Folder", el("kbd", { text: "F" })),
-    el("button", { class: "btn", id: "newInkBtn", title: "New page to write on", onclick: () => newPage(null, "ink") }, "+ Pen", el("kbd", { text: "W" })));
+    el("button", { class: "btn", id: "newPageBtn", "aria-haspopup": "menu", onclick: (e) => menu(e.currentTarget, [
+      { label: "Page", key: "N", run: () => newPage() }, { label: "Pen page", key: "W", run: () => newPage(null, "ink") }]) }, "+ Page", el("span", { class: "caret" }, "▾")),
+    el("button", { class: "btn", id: "newFolderBtn", onclick: () => newPage(null, "folder") }, "+ Folder", el("kbd", { text: "F" })));
   const filter = el("div", { class: "nfilter", role: "group", "aria-label": "Status" }, [["", "All"], ...STATUSES.map(([v]) => [v, v])].map(([v, text]) =>
     el("button", { type: "button", class: "nf" + ((S.nf || "") === v ? " on" : ""), "aria-pressed": String((S.nf || "") === v), dataset: { status: v }, text,
       onclick: (e) => { S.nf = v; for (const b of e.currentTarget.parentElement.children) { const on = b.dataset.status === v; b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); } drawPageList(); } })));
@@ -2003,7 +2003,8 @@ function graphRow(tr, depth, extra) {
       ondragstart: (e) => { e.dataTransfer.setData("application/x-bonsai-tree", tr.id); e.dataTransfer.effectAllowed = "move"; },
       ondragover: (e) => { if (e.dataTransfer.types.includes("application/x-bonsai-tree")) { e.preventDefault(); e.currentTarget.classList.add("drop"); } },
       ondragleave: (e) => e.currentTarget.classList.remove("drop"),
-      ondrop: (e) => { e.preventDefault(); e.currentTarget.classList.remove("drop"); const from = e.dataTransfer.getData("application/x-bonsai-tree"); if (from && from !== tr.id) stitchGraphs(from, tr.id); } },
+      ondrop: (e) => { e.preventDefault(); e.currentTarget.classList.remove("drop"); const from = e.dataTransfer.getData("application/x-bonsai-tree"); if (from && from !== tr.id) stitchGraphs(from, tr.id); },
+      oncontextmenu: (e) => { e.preventDefault(); menu(atPointer(e), [{ label: "Open on the board", key: "↵", run: () => openGraphPage(tr.id) }, ...graphItems(tr).filter((x) => x && x.label !== "On the board").map((x) => (x.label === "Open" ? { ...x, label: "Open in 3D", key: "⇧↵" } : x))]); } },
     el("span", { class: "chev none" }),
     el("button", { class: "nname", type: "button", onclick: () => openGraphPage(tr.id) }, icon(ICON.graph), el("span", { class: "nt", text: tr.name || "Untitled" }), extra ? el("span", { class: "npath", text: extra }) : null),
     dry ? el("span", { class: "thirst", text: String(dry) }) : null);
@@ -2021,7 +2022,8 @@ function drawShelves(host, keep, { pre = "", shut = false, order } = {}) {
     rows.push(el("div", { class: "nrow shelf", dataset: { shelf: pre + key }, style: `--d:${depth}`, role: "treeitem", "aria-expanded": String(on),
         ondragover: (e) => { if (zid && e.dataTransfer.types.includes("application/x-bonsai-tree")) { e.preventDefault(); e.currentTarget.classList.add("drop"); } },
         ondragleave: (e) => e.currentTarget.classList.remove("drop"),
-        ondrop: (e) => { e.preventDefault(); e.currentTarget.classList.remove("drop"); const from = e.dataTransfer.getData("application/x-bonsai-tree"); if (from && zid) moveGraph(from, zid); } },
+        ondrop: (e) => { e.preventDefault(); e.currentTarget.classList.remove("drop"); const from = e.dataTransfer.getData("application/x-bonsai-tree"); if (from && zid) moveGraph(from, zid); },
+        oncontextmenu: (e) => shelfMenu(pre + key, e) },
       el("button", { class: "chev", type: "button", tabIndex: -1, "aria-label": on ? "Close" : "Open", "aria-expanded": String(on), onclick: () => { flip(key); drawPageList(); } }),
       el("button", { class: "nname", type: "button", onclick: () => { flip(key); drawPageList(); } }, el("span", { class: "nt", text: label })),
       el("span", { class: "muted lcount", text: String(n) })));
@@ -2308,7 +2310,7 @@ function drawPageList() {
       ondragstart: (e) => { S.ndrag = p.id; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", p.id); },
       ondragend: () => { S.ndrag = null; },
       ondragover: (e) => { if (S.ndrag && S.ndrag !== p.id) { e.preventDefault(); row.classList.add("drop"); } }, ondragleave: () => row.classList.remove("drop"),
-      ondrop: (e) => { e.preventDefault(); row.classList.remove("drop"); if (S.ndrag) movePage(S.ndrag, p.id); } },
+      ondrop: (e) => { e.preventDefault(); row.classList.remove("drop"); if (S.ndrag) movePage(S.ndrag, p.id); }, oncontextmenu: (e) => pageRowMenu(p, e) },
       hit ? null : el("button", { class: "chev" + (kids || folder ? "" : " none"), type: "button", tabIndex: -1, "aria-label": isOpen ? "Close" : "Open", "aria-expanded": kids || folder ? String(isOpen) : null, onclick: () => { if (kids || folder) { setOpen(p.id, !isOpen); drawPageList(); } } }),
       el("button", { class: "nname", type: "button", onclick: () => pickPage(p.id) },
         icon(folder ? ICON.folder : p.kind === "ink" ? ICON.ink : ICON.page), el("span", { class: "nt", text: p.title || (folder ? "New folder" : "Untitled") }),
@@ -2531,6 +2533,31 @@ function moveMenu(p, anchor) {
   const spots = S.pages.filter((q) => !inside.has(q.id)).sort((a, b) => isFolder(b) - isFolder(a) || (a.title || "").localeCompare(b.title || ""));
   menu(anchor, [{ label: (p.parentId ? "" : "✓ ") + "Top level", run: () => movePage(p.id, null) }, "-",
     ...spots.map((q) => ({ label: (p.parentId === q.id ? "✓ " : "") + [...pagePath(q), q].map((x) => x.title || (isFolder(x) ? "New folder" : "Untitled")).join(" / "), run: () => movePage(p.id, q.id) }))]);
+}
+// right-click a row in the Library: what you can do with that page, graph, topic or island
+const atPointer = (e) => ({ left: e.clientX, right: e.clientX + 1, top: e.clientY, bottom: e.clientY });
+function pageRowMenu(p, e) {
+  e.preventDefault(); const folder = isFolder(p);
+  menu(atPointer(e), [
+    !folder && { label: "Open", key: "↵", run: () => pickPage(p.id) },
+    { label: "Rename", key: "R", run: async () => { const v = await dialog({ title: folder ? "Rename folder" : "Rename page", fields: [{ name: "t", label: "Name", value: p.title || "" }], ok: "Rename" }); if (v?.t?.trim()) { const t = v.t.trim(); queuePage(p.id, { title: t }); await flushPage(); p.title = t; drawPageList(); if (S.npage === p.id) drawEditor(); } } },
+    { label: folder ? "New page in this folder" : "New page inside", run: () => newPage(p.id) },
+    { label: folder ? "New pen page in this folder" : "New pen page inside", run: () => newPage(p.id, "ink") },
+    folder && { label: "New folder inside", run: () => newPage(p.id, "folder") },
+    { label: "Move to", run: () => moveMenu(p, atPointer(e)) },
+    !folder && p.kind !== "ink" && { label: "Grow into a knowledge graph", key: "G", run: () => growDialog(p.id) },
+    p.grown?.length && { label: "Take back the last grow", run: () => ungrow(p.id) },
+    "-", { label: folder ? "Delete folder" : "Delete page", key: "Del", danger: true, run: () => removePage(p.id) },
+  ]);
+}
+function shelfMenu(key, e) {
+  e.preventDefault(); const k = key.replace(/^w/, ""), id = k.slice(2);
+  if (k.startsWith("t:")) {
+    const z = S.zones.find((x) => x.id === id), due = (S.trees.filter((t) => t.zoneId === id)).flatMap((t) => dueList(t.id)).map((n) => n.id);
+    return menu(atPointer(e), [{ label: "New knowledge graph here", key: "N", run: () => newGraph(id) }, due.length && { label: `Water ${due.length}`, key: "W", run: () => water(due) },
+      { label: "Show in the garden", run: () => toGarden({ topic: id }) }, { label: "Knowledge graphs", run: () => openScope(id) }, z && { label: "Tech tree", key: "K", run: () => { location.hash = "#/techtree/" + id; } }]);
+  }
+  if (k.startsWith("i:") && id !== "_loose") menu(atPointer(e), [{ label: "Show in the garden", run: () => toGarden({ isle: id }) }, { label: "Knowledge graphs", run: () => openScope(id) }]);
 }
 function pageMenu(p, anchor) {
   menu(anchor, [

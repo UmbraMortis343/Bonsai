@@ -55,6 +55,7 @@ t.eq(true, true, "the 3D follows the board");
 // the picked idea's card sits under the little window: note, notes, colour
 await page.keyboard.press("2");
 await page.waitForSelector("#gcard #cardNote");
+t.eq(await page.$$eval("#pipwin .lbl", (l) => l.filter((x) => getComputedStyle(x).display !== "none").length), 0, "the little window shows no names");
 const pipBox = await page.$eval("#pipwin", (e) => e.getBoundingClientRect().bottom), cardTop = await page.$eval("#gcard", (e) => e.getBoundingClientRect().top);
 t.eq(cardTop > pipBox, true, "the card is under the little window");
 const two = await state(page, () => bonsai.S.gsel);
