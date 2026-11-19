@@ -74,8 +74,6 @@ main{flex:1;min-height:0;overflow:auto;padding:20px 16px 28px}
 .opt{display:flex;gap:10px;align-items:flex-start;text-align:left;border:1px solid var(--line);background:var(--card);border-radius:6px;padding:11px 12px}
 .opt:hover{border-color:var(--ink)}
 .opt kbd{margin-top:2px}
-.cues{display:flex;flex-wrap:wrap;gap:6px;list-style:none;padding:0}
-.cues li{border:1px solid var(--line);border-radius:4px;padding:2px 8px;font-size:13px;color:var(--muted)}
 .probs{padding-left:22px;display:flex;flex-direction:column;gap:10px}
 .box{display:flex;flex-direction:column;gap:6px}
 .box textarea{width:100%;min-height:132px;resize:vertical;border:1px solid var(--line);border-radius:6px;background:var(--card);padding:10px 12px;line-height:1.5}
@@ -86,6 +84,7 @@ main{flex:1;min-height:0;overflow:auto;padding:20px 16px 28px}
 .shots button{position:absolute;top:3px;right:3px;border:1px solid var(--line);background:var(--card);border-radius:4px;padding:0 6px;line-height:20px}
 .turn{border-left:3px solid var(--line);padding-left:12px;display:flex;flex-direction:column;gap:4px}
 .turn .q{font-weight:600}
+.turns{display:flex;flex-direction:column;gap:10px;max-height:38vh;overflow:auto;padding-bottom:4px;border-bottom:1px solid var(--line)}
 .wait{display:flex;flex-direction:column;align-items:center;gap:14px;padding:64px 0;color:var(--muted)}
 .wait .dots{display:flex;gap:6px}
 .wait .dots i{width:8px;height:8px;border-radius:2px;background:var(--accent);animation:hop 1s infinite ease-in-out}
@@ -162,7 +161,7 @@ addEventListener("keydown", (e) => {
   const typing = e.target.matches?.("textarea, input");
   if (typing) {
     if (e.key === "Escape") e.target.blur();
-    else if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && X.keys.mark) { e.preventDefault(); X.keys.mark(); }
+    else if (e.key === "Enter" && X.keys.mark && ((e.ctrlKey || e.metaKey) || (e.target.dataset.enter && !e.shiftKey && !e.isComposing))) { e.preventDefault(); X.keys.mark(); }
     return;
   }
   if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -272,6 +271,7 @@ function answerBox({ photos = true } = {}) {
 function speak() {
   if (!X.dict) return;
   if (X.dict.active()) { X.dict.stop().catch(() => {}); return; }
+  hush();
   X.dict.start().catch((e) => { if (e?.code === "not_granted" || e?.code === "unavailable") { X.dict = null; $("#speak")?.remove(); say("Dictation is off here. Type, or use your keyboard's microphone."); } else if (e?.code !== "stopped" && e?.code !== "dismissed") say("Dictation didn't start. Try again."); });
 }
 const answerActs = (markLabel, mark) => [
@@ -300,35 +300,57 @@ function question() {
   for (let n = 0; n < 4; n++) X.keys[String(n + 1)] = () => pick(n);
 }
 
-// ---------- Explain ----------
-function sitExplain() { const P = X.paper; P.turns = []; P.got = new Map(); P.follows = 0; P.q = ""; P.feedback = ""; explainView(); }
+// ---------- Explain: an adaptive oral ----------
+// Each question is shown and read aloud; he answers by voice, typing or a photo, and Enter sends. Claude keeps
+// its own tally and decides when it has enough; marks and feedback come only at the end.
+const VOICE_KEY = "bonsai-exams.voice";
+const voiceOn = () => { try { return localStorage.getItem(VOICE_KEY) !== "off"; } catch { return true; } };
+const tts = () => (window.speechSynthesis && window.SpeechSynthesisUtterance ? window.speechSynthesis : null);
+function voice() {
+  const vs = tts()?.getVoices?.() || [], en = vs.filter((v) => /^en[-_]/i.test(v.lang));
+  return en.find((v) => /^en[-_](NZ|AU|GB)/i.test(v.lang) && v.localService) || en.find((v) => /^en[-_](NZ|AU|GB)/i.test(v.lang)) || en.find((v) => v.default) || en[0] || null;
+}
+function sayAloud(text) {
+  const s = tts(); if (!s || !text) return;
+  try { s.cancel(); if (!voiceOn()) return; const u = new SpeechSynthesisUtterance(text), v = voice(); if (v) { u.voice = v; u.lang = v.lang; } u.rate = 1; s.speak(u); } catch {}
+}
+const hush = () => { try { tts()?.cancel(); } catch {} };
+function sitExplain() { const P = X.paper; P.turns = []; P.shown = []; P.q = oralOpen(P.g); explainView(); sayAloud(P.q); }
 function explainView() {
   const P = X.paper; X.view = "paper"; head();
-  const box = answerBox();
+  const box = answerBox(); box.ta.dataset.enter = "send"; box.ta.placeholder = X.dict ? "Speak or type, Enter sends" : "Type or use your keyboard's microphone, Enter sends";
   show(
-    P.turns.map((t) => el("div", { class: "turn" }, t.q ? el("p", { class: "q", text: t.q }) : null, el("p", { class: "muted", text: t.a || "Handwritten" }))),
-    P.q ? [P.feedback ? el("p", { text: P.feedback }) : null, el("p", { class: "ask", id: "ask", text: P.q })]
-        : [el("p", { class: "ask", id: "ask", text: `Talk through ${P.g.name}.` }), el("ul", { class: "cues" }, explainCues(P.g).map((c) => el("li", { text: c })))],
+    P.turns.length ? el("div", { class: "turns", id: "turns" }, P.turns.map((t) => el("div", { class: "turn" }, el("p", { class: "q", text: t.q }), el("p", { class: "muted", text: t.a || t.read || "Handwritten" })))) : null,
+    el("p", { class: "muted", id: "qn", text: `Question ${P.turns.length + 1}` }),
+    el("p", { class: "ask", id: "ask", text: P.q }),
     box.node);
-  bar([...answerActs("Mark", markExplain), P.turns.length ? { id: "finish", label: "Finish", key: "F", run: explainDone } : null, { id: "back", label: "Leave", key: "Escape", show: "Esc", run: async () => { await settle(); home(); } }]);
+  const leave = async () => { hush(); await settle(); home(); };
+  bar([...answerActs("Send", sendExplain),
+    tts() ? { id: "repeat", label: "Repeat", key: "R", run: () => sayAloud(P.q) } : null,
+    tts() ? { id: "voice", label: voiceOn() ? "Voice on" : "Voice off", key: "V", run: () => { try { localStorage.setItem(VOICE_KEY, voiceOn() ? "off" : "on"); } catch {} voiceOn() ? sayAloud(P.q) : hush(); const b = $("#voice"); if (b) b.firstChild.textContent = voiceOn() ? "Voice on" : "Voice off"; } } : null,
+    P.turns.length ? { id: "finish", label: "Finish", key: "F", run: async () => { hush(); await settle(); markExplain(); } } : null,
+    { id: "back", label: "Leave", key: "Escape", show: "Esc", run: leave }]);
 }
-async function markExplain() {
-  const P = X.paper, box = X.box; await settle();
-  const a = box.text(), files = [...box.files]; if (!a && !files.length) return say("Nothing to mark yet");
-  const turns = [...P.turns.map((t) => ({ ...t, a: t.a || "(handwritten, marked earlier)" })), { q: P.q, a }], keys = explainIdeas(P.g).map((i) => i.key);
+async function sendExplain() {
+  const P = X.paper, box = X.box; hush(); await settle();
+  const a = box.text(), files = [...box.files]; if (!a && !files.length) return say("Nothing to send yet");
+  const turns = [...P.turns, { q: P.q, a, photos: files.length }];
   const run = async () => {
     try {
-      const r = readMarks(await ask(explainPrompt(P.m, P.g, turns, { photos: files.length, follows: 2 - P.follows, had: [...P.got.keys()] }), "Marking", files), keys);
-      for (const m of r.marks) if (m.shown) P.got.set(m.key, m.why); else if (!P.got.has(m.key)) (P.missed ||= new Map()).set(m.key, m.why);
-      P.turns.push({ q: P.q, a, photos: files.length }); P.feedback = r.feedback;
-      if (r.follow && P.follows < 2 && P.got.size < keys.length) { P.follows++; P.q = r.follow; explainView(); } else explainDone();
-    } catch (e) { failed(e, run); }
+      const r = readOral(await ask(oralPrompt(P.m, P.g, turns, { photos: files.length, shown: P.shown }), "Next question", files), P.g);
+      P.turns = turns; turns.at(-1).read = r.read; P.shown = r.shown;
+      if (r.done || turns.length >= ORAL_MAX || P.shown.length >= explainIdeas(P.g).length) return markExplain();
+      P.q = r.next; explainView(); sayAloud(P.q);
+    } catch (e) { if (e?.code === "cancelled") { explainView(); X.box.ta.value = a; return; } failed(e, run); }
   };
   run();
 }
-function explainDone() {
-  const P = X.paper;
-  results(explainIdeas(P.g).map((i) => ({ key: i.key, title: i.title, note: i.note, shown: P.got.has(i.key), why: P.got.get(i.key) || P.missed?.get(i.key) || "" })), P.feedback, { turns: P.turns });
+async function markExplain() {
+  const P = X.paper; if (!P.turns.length) return home();
+  try {
+    const keys = explainIdeas(P.g).map((i) => i.key), r = readMarks(await ask(oralMarkPrompt(P.m, P.g, P.turns), "Marking"), keys);
+    results(explainIdeas(P.g).map((i, k) => ({ key: i.key, title: i.title, note: i.note, shown: r.marks[k].shown, why: r.marks[k].why })), r.feedback, { turns: P.turns.map(({ q, a, photos, read }) => ({ q, a, photos, ...(read ? { read } : {}) })), tally: P.shown });
+  } catch (e) { failed(e, markExplain); }
 }
 
 // ---------- Apply ----------

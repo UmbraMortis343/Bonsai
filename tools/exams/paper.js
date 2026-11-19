@@ -43,28 +43,67 @@ export function readRecall(value, g) {
 // The order the options are shown in; the correct one is options[0].
 export function shuffle(n, rnd = Math.random) { const a = Array.from({ length: n }, (_, i) => i); for (let i = n - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 
-// Explain: I talk through the section; Claude marks which ideas I showed and may ask one thing more.
+// Explain: an adaptive oral, like an interviewer. Claude asks one question at a time, read aloud, keeps a private
+// tally of what I've shown, probes what I haven't and pushes "why" on shaky answers, and stops when it has
+// covered the section. Nothing is marked until the end, in its own call over the whole transcript.
+export const ORAL_MAX = 12;
 export const explainIdeas = (g) => g.ideas.filter((i) => i.kind !== "apply");
-export const explainCues = (g) => g.ideas.filter((i) => i.kind === "key" && i.depth === 1).map((i) => i.title);
-export function explainPrompt(map, g, turns, { photos = 0, follows = 0, had = [] } = {}) {
-  const said = turns.map((t, k) => (t.q ? `You asked: ${t.q}\n` : "") + answerText(t.a, k === turns.length - 1 ? photos : 0)).join("\n\n");
+export const oralOpen = (g) => `Tell me about ${g.name}. What is it about, and how do its main ideas fit together?`;
+const transcript = (turns, photos = 0) => turns.map((t, k) => {
+  const last = k === turns.length - 1, hand = last ? photos : 0;
+  const a = hand ? answerText(t.a, hand) : t.read ? `My answer was handwritten; it read: "${t.read}"${t.a ? "\n" + answerText(t.a) : ""}` : t.a ? answerText(t.a) : "My answer: (nothing)";
+  return `Question ${k + 1}: ${t.q}\n${a}`;
+}).join("\n\n");
+export function oralPrompt(map, g, turns, { photos = 0, shown = [] } = {}) {
+  const n = turns.length, last = n >= ORAL_MAX;
   return [
-    "Mark my oral exam answer. " + about(map, g),
-    "I was asked to talk through the section in my own words, without notes.",
+    "Interview me: an adaptive oral exam. " + about(map, g),
+    "I'm a graduate mapping what I already know, not sitting a real exam. The ideas below are what the section covers. Find out which of them I really understand.",
+    "",
+    "How to interview:",
+    "- One question at a time, under 30 words, in plain spoken English. It is read aloud, so no symbols, formulas, lists or markdown.",
+    "- Start broad, then narrow onto ideas I haven't shown. When an answer is vague, shaky or only names something, ask why or how, or for an example.",
+    "- Never give an answer away, hint at what an idea says, or tell me whether I was right. No praise, marks or feedback.",
+    "- If I say I don't know, or stay stuck, move on to another part of the section.",
+    `- Cover the whole section in about 6 to ${ORAL_MAX} questions. Stop when every idea is shown or has been probed and missed.`,
+    "- A spoken answer comes through dictation: ignore mis-heard words, filler and loose grammar when the meaning is clear. A handwritten one comes as photos.",
+    "",
+    "Reply with only JSON in this shape:",
+    `{"read": "", "shown": ["k1abc"], "next": "...", "done": false}`,
+    `- "read": if my latest answer is handwritten in the attached photo${photos === 1 ? "" : "s"}, what it says in under 600 characters; else "".`,
+    `- "shown": the keys of every idea I've shown so far in the whole interview: stated or used correctly, not merely named.${shown.length ? " Last time you had: " + shown.join(", ") + "." : ""}`,
+    last ? `- This was question ${n}, the last: "done": true, "next": "".` : `- "next": the next question; "done": true and "next": "" when you have enough. This was question ${n} of at most ${ORAL_MAX}.`,
+    "",
+    "The ideas (key | idea | what it is):",
+    sheet(explainIdeas(g)),
+    "",
+    transcript(turns, photos),
+  ].join("\n");
+}
+export function readOral(value, g) {
+  const keys = new Set(explainIdeas(g).map((i) => i.key));
+  const next = String(value?.next || "").trim().slice(0, 400);
+  return {
+    read: String(value?.read || "").trim().slice(0, 800),
+    shown: [...new Set((Array.isArray(value?.shown) ? value.shown : []).filter((k) => keys.has(k)))],
+    next, done: value?.done === true || !next,
+  };
+}
+export function oralMarkPrompt(map, g, turns) {
+  return [
+    "Mark my oral exam. " + about(map, g),
+    "An examiner interviewed me on the section, one question at a time; the transcript is below.",
     "",
     STRICT,
-    `- Include every idea in "marks", in the order given.`,
-    follows > 0
-      ? `- "follow": one short question probing one or two ideas I haven't shown, without giving the answer away. "" if I've shown them all.`
-      : `- "follow": "".`,
-    had.length ? `- I showed these in an earlier answer; mark them shown and don't ask about them again: ${had.join(", ")}.` : "",
+    `- Include every idea in "marks", in the order given. Credit an idea shown anywhere in the interview.`,
+    `- "feedback": how I did overall and what to work on, two sentences at most. "follow": "".`,
     "",
     MARKS,
     "",
     "The ideas (key | idea | what it is):",
     sheet(explainIdeas(g)),
     "",
-    said,
+    transcript(turns),
   ].join("\n");
 }
 

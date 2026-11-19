@@ -5,7 +5,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { start, state } from "./lib.mjs";
 import { readMap, checkMaps, progress, exportExam, readExam, planExam, ideaKey } from "../src/exams.js";
-import { recallPrompt, readRecall, readMarks, explainPrompt, connectPairs } from "../tools/exams/paper.js";
+import { recallPrompt, readRecall, readMarks, oralPrompt, readOral, oralMarkPrompt, ORAL_MAX, connectPairs } from "../tools/exams/paper.js";
 
 const t = await start("run20-exams", 4320);
 const dir = "tools/exams/maps/", rows = readdirSync(dir).map((f) => readFileSync(dir + f, "utf8")).map((text) => ({ ...readMap(text), text }));
@@ -19,7 +19,11 @@ const ig = physics[0], forces = ig.graphs.find((g) => g.name === "Forces");
 t.eq(forces.ideas.filter((i) => i.title === "Using F = ma").map((i) => [i.kind, i.depth, forces.ideas.find((p) => p.key === i.parent).title]), [["apply", 2, "Resultant force"]], "an apply idea hangs off the idea it uses");
 t.eq(readRecall([{ key: forces.ideas[0].key, q: "Q?", options: ["a", "b", "c", "d"] }, { key: "nope", q: "Q?", options: ["a", "b", "c", "d"] }, { key: forces.ideas[1].key, q: "Q?", options: ["a", "a", "c", "d"] }], forces).length, 1, "a question for an unknown idea or with a repeated option is dropped");
 t.eq(recallPrompt(ig, forces).includes(forces.ideas[1].key + " | "), true, "the paper names each idea by its key");
-t.eq(explainPrompt(ig, forces, [{ q: "", a: "x" }], { follows: 0 }).includes('"follow": "".'), true, "no follow-up is asked for once they are used up");
+const turn = (n) => Array.from({ length: n }, (_, k) => ({ q: "Q" + k, a: "a" + k }));
+t.eq([oralPrompt(ig, forces, turn(3)).includes("This was question 3 of at most"), oralPrompt(ig, forces, turn(ORAL_MAX)).includes('"done": true, "next": "".')], [true, true], "the oral counts its questions and must stop at the last");
+t.eq(oralPrompt(ig, forces, [{ q: "Q", a: "", photos: 1 }], { photos: 1 }).includes("handwritten in the 1 attached photo"), true, "a handwritten answer is sent to be read");
+t.eq(oralMarkPrompt(ig, forces, [{ q: "Q", a: "", read: "F = ma" }]).includes('it read: "F = ma"'), true, "the marker sees what a handwritten answer said");
+t.eq([readOral({ next: "Why?", shown: [forces.ideas[0].key, "zz"] }, forces), readOral({ next: "" }, forces).done], [{ read: "", shown: [forces.ideas[0].key], next: "Why?", done: false }, true], "the interviewer's tally keeps only real keys, and no next question means done");
 t.eq(readMarks({ marks: [{ key: "a", shown: "yes" }, { key: "zz", shown: true }, { key: "b", shown: true, why: "ok" }] }, ["a", "b", "c"]).marks.map((m) => m.shown), [false, true, false], "only a plain true counts as shown, and only for what was asked");
 const some = { ideas: { [ideaKey("Acceleration")]: 1, [ideaKey("Force and acceleration")]: 2 }, links: {} };
 t.eq(connectPairs(ig, (k) => !!some.ideas[k], some).map((p) => p.a), ["Acceleration"], "a connection opens once both its ideas are shown");
@@ -42,7 +46,8 @@ const stub = ({ maps, marks }) => {
   const json = async (prompt, opts = {}) => {
     asked.push({ prompt, images: opts.images?.length || 0 }); await new Promise((r) => setTimeout(r, 30));
     if (prompt.startsWith("Set a quick")) return sheet(prompt).map((i) => ({ key: i.key, q: `What is ${i.title}?`, options: ["right: " + i.title, "wrong one", "wrong two", "wrong three"] }));
-    if (prompt.startsWith("Mark my oral")) { const ideas = sheet(prompt), said = mine(prompt), marks = ideas.map((i) => ({ key: i.key, shown: said.includes(i.title.toLowerCase()), why: "you said it" })); return { marks, feedback: "Clear so far.", follow: prompt.includes("one short question") && marks.some((m) => !m.shown) ? "What about the rest?" : "" }; }
+    if (prompt.startsWith("Interview me")) { const said = mine(prompt), n = (prompt.match(/^Question \d+:/gm) || []).length; return { read: opts.images?.length ? "Written answer" : "", shown: sheet(prompt).filter((i) => said.includes(i.title.toLowerCase())).map((i) => i.key), next: n < 3 ? (n === 1 ? "Why does averaging help?" : "How would you time one swing?") : "", done: n >= 3 }; }
+    if (prompt.startsWith("Mark my oral exam")) { const said = mine(prompt), marks = sheet(prompt).map((i) => ({ key: i.key, shown: said.includes(i.title.toLowerCase()), why: "you said it" })); return { marks, feedback: "Clear on measuring." }; }
     if (prompt.startsWith("Set problems")) return sheet(prompt).map((i) => ({ key: i.key, q: `Work out ${i.title}.`, guide: "The answer is 42." }));
     if (prompt.startsWith("Mark my answers")) return { marks: [...prompt.matchAll(/key (k[a-z0-9]+) \(/g)].map((m) => ({ key: m[1], shown: mine(prompt).includes("42"), why: "method right" })), feedback: "" };
     if (prompt.startsWith("Mark how well")) return { marks: [...prompt.matchAll(/key (k[a-z0-9]+_k[a-z0-9]+):[^\n]*\n[^\n]*\n\s*I said: ([^\n]*)/g)].map((m) => ({ key: m[1], shown: m[2].includes("because"), why: "a real link" })), feedback: "" };
@@ -54,8 +59,11 @@ const stub = ({ maps, marks }) => {
     start: async () => { live = true; on.state.forEach((h) => h({ state: "listening" })); on.final.forEach((h) => h({ text: " Measuring multiples and volume by displacement." })); },
     stop: async () => { live = false; on.state.forEach((h) => h({ state: "idle", reason: "stopped" })); } };
   const saved = [], downloads = { save: async (f) => { saved.push(f); return { status: "saved" }; } };
+  const spoken = [];
+  Object.defineProperty(window, "speechSynthesis", { configurable: true, value: { speak: (u) => spoken.push(u.text), cancel: () => {}, getVoices: () => [] } });
+  window.SpeechSynthesisUtterance = class { constructor(text) { this.text = text; } };
   window.claude = { use: async (name) => ({ db, sample, dictation, downloads })[name] ?? null };
-  window.__t = { store, asked, saved };
+  window.__t = { store, asked, saved, spoken };
 };
 const seeded = { [lead.find((m) => m.order === 1).id]: { ideas: { [ideaKey("Asking for feedback")]: 1, [ideaKey("Receiving feedback")]: 1 }, links: {} } };
 const ctx = await t.browser.newContext({ viewport: { width: 1100, height: 800 }, permissions: ["clipboard-read", "clipboard-write"] }), page = await ctx.newPage();
@@ -78,16 +86,21 @@ t.eq(await page.textContent("#score"), "4 / 5", "four right and one not known");
 await page.keyboard.press("Enter"); await page.waitForSelector(".tier");
 t.eq(await page.$$eval(".row.on .cell", (c) => c.map((x) => x.textContent)), ["4/5", "0/7", "0/2"], "saving records what was shown");
 
-// Explain: spoken (dictation) and typed, a follow-up, then the marks, one of which he overrules
+// Explain: an adaptive oral. Questions are shown and read aloud, Enter sends, Claude decides when it's done; marks only at the end
 await page.keyboard.press("2"); await page.waitForSelector("#answer");
-t.eq([await page.textContent("#ask"), await page.$$eval(".cues li", (l) => l.length)], ["Talk through Measurement.", 4], "the oral paper asks him to talk the graph through, with its key ideas as cues");
+t.eq([await page.textContent("#ask"), await page.textContent("#qn"), await page.evaluate(() => __t.spoken.at(-1))], ["Tell me about Measurement. What is it about, and how do its main ideas fit together?", "Question 1", "Tell me about Measurement. What is it about, and how do its main ideas fit together?"], "the oral opens broad, and the question is read aloud");
 await page.keyboard.press("s"); await page.waitForFunction(() => document.querySelector("#answer").value.includes("Measuring multiples"));
 t.eq(await page.textContent("#speak"), "StopS", "speaking fills the answer and the button offers Stop");
-await page.focus("#answer"); await page.keyboard.type(" Averaging readings cuts random error."); await page.keyboard.press("Control+Enter");
-await page.waitForFunction(() => document.querySelector("#ask")?.textContent === "What about the rest?");
-t.eq(await page.$$eval(".turn", (x) => x.length), 1, "a follow-up question comes back, under what he said");
-await page.keyboard.press("f"); await page.waitForSelector("#marks");
-t.eq([await page.textContent("#score"), await page.$$eval(".mark.shown .t", (x) => x.map((e) => e.firstChild.textContent))], ["3 / 7", ["Measuring multiples", "Volume by displacement", "Averaging readings"]], "the ideas he covered are shown");
+await page.focus("#answer"); await page.keyboard.type(" Averaging readings cuts random error."); await page.keyboard.press("Enter");
+await page.waitForFunction(() => document.querySelector("#ask")?.textContent === "Why does averaging help?");
+t.eq([await page.$$eval(".turn", (x) => x.length), await page.textContent("#qn"), await page.evaluate(() => __t.spoken.at(-1)), await page.$$("#marks").then((x) => x.length)], [1, "Question 2", "Why does averaging help?", 0], "Enter sends; the next question comes back, spoken, with no marks yet");
+await page.fill("#answer", "Random errors cancel out."); await page.keyboard.press("Escape"); await page.keyboard.press("Enter");
+await page.waitForFunction(() => document.querySelector("#ask")?.textContent === "How would you time one swing?");
+t.eq(await page.evaluate(() => __t.asked.at(-1).prompt.includes("Last time you had: ")), true, "the interviewer is reminded of its tally");
+await page.screenshot({ path: "tests/shots/exams-oral.png" });
+await page.fill("#answer", "Time twenty swings and divide."); await page.keyboard.press("Enter");
+await page.waitForSelector("#marks");
+t.eq([await page.textContent("#score"), await page.$$eval(".mark.shown .t", (x) => x.map((e) => e.firstChild.textContent)), await page.evaluate(() => __t.asked.at(-1).prompt.startsWith("Mark my oral exam"))], ["3 / 7", ["Measuring multiples", "Volume by displacement", "Averaging readings"], true], "when Claude has enough it stops, and the whole interview is marked once");
 await page.keyboard.press("1");
 t.eq([await page.textContent("#score"), await page.$$eval(".mark.changed", (x) => x.length)], ["4 / 7", 1], "he can overrule a mark before saving");
 await page.screenshot({ path: "tests/shots/exams-results.png" });
