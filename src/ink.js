@@ -2,8 +2,9 @@
 // Ink is kept as strokes in page units (the page is W wide and grows downward), so it stays sharp at any zoom
 // and can be moved. A stroke: { id, t: "pen" | "hl", c: colour role, p: [x, y, w, x, y, w, …] }.
 // Colours are roles, drawn per theme, so writing reads the same by day and night.
-// Pen and mouse draw; touch pans and pinches (never draws unless Touch draws is on), and is ignored while a pen
-// is near, which is the palm rejection. The pen's eraser end, or its barrel button, erases.
+// Pen and mouse draw; touch pans and pinches (never draws unless Touch draws is on). Palm rejection: any pen
+// activity, hover included, drops every touch in progress and ignores new ones for a while; a big contact patch
+// is a palm and is ignored for good; a finger only pans once it has really moved. The pen's eraser end, or its barrel button, erases.
 
 export const W = 1000;
 export const PAPERS = ["lined", "grid", "dots", "blank"];
@@ -59,6 +60,10 @@ export function createInk(opts) {
   const undo = [], redo = [];
   let sel = null;          // { ids: Set, box }
   let live = null, lasso = null, drag = null, penAt = 0, dirty = 0, raf = 0;
+  const PALM_MS = 1500, PALM_PX = 30, SLOP = 12, palms = new Set();
+  const penNear = () => performance.now() - penAt < PALM_MS;
+  const sawPen = () => { penAt = performance.now(); if (touches.size) { for (const id of touches.keys()) { palms.add(id); try { canvas.releasePointerCapture(id); } catch {} } touches.clear(); pinch = null; } };
+  const bigContact = (e) => (e.width || 0) > PALM_PX || (e.height || 0) > PALM_PX;
   const touches = new Map(); let pinch = null;
 
   const canvas = el("canvas", { class: "inkc", tabIndex: 0, "aria-label": "Page to write on" });
@@ -179,12 +184,16 @@ export function createInk(opts) {
     full();
   }
   canvas.addEventListener("pointerdown", (e) => {
-    if (e.pointerType === "pen") penAt = performance.now();
-    if (e.pointerType === "touch" && (!st.touchDraws || performance.now() - penAt < 800 || touches.size)) {
-      if (performance.now() - penAt < 800) return;   // a palm while the pen is near
-      touches.set(e.pointerId, local(e)); capture(e);
-      if (touches.size === 2) { const [a, b] = [...touches.values()]; pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), z: st.zoom, m: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] }; }
-      return;
+    if (e.pointerType === "pen") sawPen();
+    if (e.pointerType === "touch") {
+      if (penNear() || bigContact(e) || live) { palms.add(e.pointerId); e.preventDefault(); return; }   // a palm
+      if (!st.touchDraws || touches.size) {
+        const at = local(e); at.start = at.slice(); at.moved = false;
+        touches.set(e.pointerId, at); capture(e);
+        if (touches.size === 2) { const [a, b] = [...touches.values()]; pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), z: st.zoom, m: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], on: false }; }
+        if (touches.size > 2) { for (const id of touches.keys()) palms.add(id); touches.clear(); pinch = null; }   // three or more contacts: a hand, not fingers
+        return;
+      }
     }
     if (e.pointerType === "mouse" && e.button !== 0) return;
     if (live || drag || lasso) return;
@@ -200,16 +209,22 @@ export function createInk(opts) {
     frame();
   });
   canvas.addEventListener("pointermove", (e) => {
-    if (e.pointerType === "pen") penAt = performance.now();
+    if (e.pointerType === "pen") sawPen();
+    if (palms.has(e.pointerId)) return;
+    if (e.pointerType === "touch" && bigContact(e) && touches.has(e.pointerId)) { palms.add(e.pointerId); touches.delete(e.pointerId); pinch = null; return; }
     if (touches.has(e.pointerId)) {
-      const was = touches.get(e.pointerId), now = local(e); touches.set(e.pointerId, now);
+      const was = touches.get(e.pointerId), now = local(e); now.start = was.start; now.moved = was.moved || Math.hypot(now[0] - was.start[0], now[1] - was.start[1]) > SLOP;
+      touches.set(e.pointerId, now);
+      if (!now.moved) return;   // a resting finger or palm doesn't nudge the page
       if (touches.size === 2 && pinch) {
         const [a, b] = [...touches.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]), m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+        if (!pinch.on) { pinch.on = true; pinch.d = d; pinch.m = m; pinch.z = st.zoom; return; }   // start from here, not from where the fingers landed
         const s = scale(); st.sy -= (m[1] - pinch.m[1]) / s; st.sx -= (m[0] - pinch.m[0]) / s; pinch.m = m;
         zoomAt(pinch.z * d / pinch.d, m[0], m[1]);
       } else if (touches.size === 1) { const s = scale(); st.sy -= (now[1] - was[1]) / s; st.sx -= (now[0] - was[0]) / s; clampView(); full(); }
       return;
     }
+    if (e.pointerType === "touch") return;
     const [x, y] = toPage(...local(e));
     if (st.tool === "eraser" && !live) { eraserAt = [x, y]; later(); }
     if (drag && e.pointerId === drag.id) { const ddx = x - drag.x, ddy = y - drag.y; drag.x = x; drag.y = y; drag.dx += ddx; drag.dy += ddy; moveOp(picked(), ddx, ddy).redo(); sel.box = selBox(picked()); full(); return; }
@@ -228,6 +243,7 @@ export function createInk(opts) {
     later();
   });
   const up = (e) => {
+    if (palms.delete(e.pointerId)) return;
     if (touches.delete(e.pointerId)) { if (touches.size < 2) pinch = null; return; }
     if (drag && e.pointerId === drag.id) {
       const op = moveOp(picked(), drag.dx, drag.dy), moved = drag.dx || drag.dy; drag = null;
@@ -252,6 +268,8 @@ export function createInk(opts) {
     commit(addOp(s));
   };
   canvas.addEventListener("pointerup", up); canvas.addEventListener("pointercancel", up);
+  const penAnywhere = (e) => { if (e.pointerType === "pen") sawPen(); };
+  document.addEventListener("pointermove", penAnywhere, true); document.addEventListener("pointerover", penAnywhere, true);
   canvas.addEventListener("pointerleave", () => { if (eraserAt && !live) { eraserAt = null; frame(); } });
   canvas.addEventListener("contextmenu", (e) => e.preventDefault());
   canvas.addEventListener("wheel", (e) => {
@@ -339,6 +357,6 @@ export function createInk(opts) {
     setTool, setColour, setSize, undo: () => step(undo, redo), redo: () => step(redo, undo), redraw: () => { full(); bar(); },
     flush: () => { if (dirty) { clearTimeout(dirty); dirty = 0; opts.onChange?.(out()); } },
     focus: () => canvas.focus({ preventScroll: true }),
-    destroy: () => { document.removeEventListener("keydown", onKey, true); ro.disconnect(); mo.disconnect(); mq.removeEventListener?.("change", onMq); cancelAnimationFrame(raf); },
+    destroy: () => { document.removeEventListener("pointermove", penAnywhere, true); document.removeEventListener("pointerover", penAnywhere, true); document.removeEventListener("keydown", onKey, true); ro.disconnect(); mo.disconnect(); mq.removeEventListener?.("change", onMq); cancelAnimationFrame(raf); },
   };
 }

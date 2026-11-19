@@ -2,6 +2,10 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.29.1 — 2026-11-19
+- The Library's picked tab is highlighted (a green tint and underline), in dark and light.
+- Pen pages: better palm rejection. The pen hovering anywhere on the page drops any touch in progress and ignores new ones for 1.5 s; a palm-sized contact, or three or more at once, is ignored; a finger only pans or pinches once it has moved, so a resting palm no longer jiggles the page.
+
 ## 0.29.0 — 2026-11-19
 - Notes is now the Library, with three tabs: Notes, Graphs and Watering (Shift+1–3). Each has its own filter (All/Raw/Tidied/Grown; All/Waiting/Watered; All/Thirsty/Dry) and folds by island and topic. N adds a graph on the Graphs tab; W waters on the Watering tab.
 - The board's name box is a small box beside the new idea, never under the idea card.

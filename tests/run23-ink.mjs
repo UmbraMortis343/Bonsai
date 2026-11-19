@@ -50,7 +50,7 @@ if (!(strokes[0].p[2] > strokes[1].p[2] * 2)) t.fail("a harder press doesn't dra
 // Touch pans, never draws; and a touch while the pen is near does nothing at all
 const n1 = await state(page, () => bonsai.S.ed.ink.doc.strokes.length);
 const sy0 = await state(page, () => bonsai.S.ed.ink.view.sy);
-await page.waitForTimeout(900);
+await page.waitForTimeout(1600);
 await draw("touch", [[300, 600], [300, 500], [300, 400]]);
 t.eq(await state(page, () => bonsai.S.ed.ink.doc.strokes.length), n1, "a finger doesn't draw");
 if (!((await state(page, () => bonsai.S.ed.ink.view.sy)) > sy0)) t.fail("a finger doesn't scroll the page");
@@ -64,6 +64,24 @@ const sy1 = await state(page, () => bonsai.S.ed.ink.view.sy);
   }, [a, b, c]);
 }
 t.eq(await state(page, () => bonsai.S.ed.ink.view.sy), sy1, "a palm on the screen right after the pen is ignored");
+{ // a palm that lands before the pen comes near: it's dropped when the pen shows up; a big contact patch never counts; a resting finger doesn't nudge
+  await page.waitForTimeout(1600);
+  const [a, b, c, d] = [await at(300, 950), await at(300, 600), await at(300, 400), await at(300, 606)];
+  const sy = await page.evaluate(([a, b, c, d]) => {
+    const cv = document.querySelector(".inkc"), ink = bonsai.S.ed.ink, ev = (type, kind, [x, y], buttons, id, w = 10) => cv.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: id, pointerType: kind, clientX: x, clientY: y, buttons, width: w, height: w }));
+    const out = [];
+    ev("pointerdown", "touch", b, 1, 21); ev("pointermove", "touch", d, 1, 21); out.push(ink.view.sy);   // resting: under the slop
+    ev("pointermove", "pen", a, 0, 3); ev("pointermove", "touch", c, 1, 21); out.push(ink.view.sy); ev("pointerup", "touch", c, 0, 21);   // the pen arrives: the palm is dropped
+    return out;
+  }, [a, b, c, d]);
+  t.eq(sy, [sy1, sy1], "a palm that was there first neither nudges the page nor pans once the pen comes near");
+  await page.waitForTimeout(1600);
+  const sy2 = await page.evaluate(([b, c]) => {
+    const cv = document.querySelector(".inkc"), ev = (type, [x, y], buttons) => cv.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 22, pointerType: "touch", clientX: x, clientY: y, buttons, width: 60, height: 60 }));
+    ev("pointerdown", b, 1); ev("pointermove", c, 1); ev("pointerup", c, 0); return bonsai.S.ed.ink.view.sy;
+  }, [b, c]);
+  t.eq(sy2, sy1, "a contact the size of a palm is ignored");
+}
 await page.keyboard.press("Control+z");
 t.eq(await state(page, () => bonsai.S.ed.ink.doc.strokes.length), n1, "undo takes back the last stroke");
 await page.evaluate(() => { bonsai.S.ed.ink.redraw(); });
