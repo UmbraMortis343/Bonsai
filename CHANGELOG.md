@@ -2,6 +2,10 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.30.0 — 2026-11-20
+- Bonsai Desktop for Windows (Bonsai-Setup.exe, release desktop-v0.1.0): the live Bonsai in its own window, plus a Bonsai Beta shortcut. In it, Grow and Flesh out have **Ask Claude**, which asks Claude Code on the computer (on the plan it's signed in with) and writes the reply into the same box you'd paste into; you check it and keep it as before. Flesh out asks straight away. Copy and paste stays everywhere else.
+- Menu: Bonsai for Windows (in a browser on Windows) and a note when a newer Bonsai Desktop is out (in the desktop app).
+
 ## 0.29.3 — 2026-11-19
 - Meaning is now a look in the Knowledge window, beside Separate and Joined (M; V goes back). It shows the same hub, island or topic as the rest of the window, with the same top bar and Show all; its own scope picker is gone. Suggest (S) sits in the bottom bar.
 - In the meaning look, Esc lets go of a picked idea before stepping out.

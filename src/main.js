@@ -20,6 +20,7 @@ import { createMiniWeb } from "./miniweb.js";
 import { MARK_LIST, assignMarks } from "./marks.js";
 import { readExam, planExam, LEVELS } from "./exams.js";
 import { createVocab, createQuick, fleshPrompt, readFlesh } from "./vocab.js";
+import { desktop, liveStatus, liveProblem, askClaude, desktopUpdate } from "./live.js";
 import { createInk } from "./ink.js";
 
 const PALETTE = [["Blue", "#3b82f6"], ["Violet", "#8b5cf6"], ["Pink", "#ec4899"], ["Red", "#ef4444"], ["Orange", "#f97316"], ["Amber", "#f59e0b"], ["Green", "#22c55e"], ["Teal", "#14b8a6"], ["Cyan", "#06b6d4"]];
@@ -716,6 +717,7 @@ async function resetDemo() {
   if (!(await dialog({ title: "Put the beta back to the demo islands?", ok: "Reset", danger: true }))) return;
   await safely(() => store.importAll(demoBackup())); await load(); location.hash = "#/"; refresh();
 }
+const DESKTOP_URL = "https://github.com/UmbraMortis343/Bonsai/releases?q=desktop&expanded=true";
 function appMenu(anchor) {
   const archived = [...S.allZones.filter((z) => z.archived), ...S.allTrees.filter((t) => t.archived)];
   menu(anchor, [
@@ -730,6 +732,8 @@ function appMenu(anchor) {
     { label: "Check for updates", run: async () => { const r = await shell.check(); if (r !== "update") toast(r === "latest" ? "Up to date" : "Offline"); } },
     { label: "What's new", run: () => window.open("https://github.com/UmbraMortis343/Bonsai/releases", "_blank", "noopener") },
     shell.canInstall() && { label: "Install app", run: () => shell.install() },
+    S.desk && { label: `Bonsai Desktop ${S.desk.latest}`, run: () => window.open(S.desk.url, "_blank", "noopener") },
+    !desktop && /Windows/.test(navigator.userAgent) && { label: "Bonsai for Windows", run: () => window.open(DESKTOP_URL, "_blank", "noopener") },
     { label: `Bonsai ${CHANNEL ? CHANNEL + " " : ""}${shell.version}`, disabled: true },
   ]);
 }
@@ -2585,8 +2589,27 @@ function pageMenu(p, anchor) {
     "-", { label: isFolder(p) ? "Delete folder" : "Delete page", key: "Del", danger: true, run: () => removePage(p.id) },
   ]);
 }
+// Asking Claude from a dialog. In Bonsai Desktop, Ask Claude fills the reply box straight from Claude Code on this
+// computer (his plan, no key); elsewhere it's the copy and paste round trip. Either way he checks the reply before it's kept.
+function claudeRow(getPrompt, reply, copy, { auto = false } = {}) {
+  const open = el("a", { class: "btn", href: "https://claude.ai/new", target: "_blank", rel: "noopener", text: "Open Claude" });
+  if (!desktop) return el("div", { class: "row" }, copy, open);
+  copy.classList.remove("primary");
+  let job = null; const hint = reply.placeholder;
+  const fill = (t) => { if (!ask.isConnected) return job?.cancel(); reply.value = t; reply.dispatchEvent(new Event("input", { bubbles: true })); };
+  const ask = el("button", { type: "button", class: "btn primary", id: "askClaude", onclick: async () => {
+    if (job) return job.cancel();
+    const bad = liveProblem(await liveStatus()); if (bad) return toast(bad);
+    ask.textContent = "Stop"; reply.readOnly = true; reply.placeholder = "Claude is writing";
+    job = askClaude(getPrompt(), { onText: fill });
+    const r = await job.done; job = null;
+    ask.textContent = "Ask Claude"; reply.readOnly = false; reply.placeholder = hint;
+    if (r.ok) fill(r.text); else if (r.code !== "cancelled" && ask.isConnected) toast(r.message || "Claude didn't answer");
+  } }, "Ask Claude");
+  if (auto) setTimeout(() => ask.isConnected && ask.click(), 0);
+  return el("div", { class: "row" }, ask, copy);
+}
 // Grow: Claude reads the page and says which ideas it holds and how they string onto a topic's graphs.
-// For now that's a copy and paste round trip, so it runs on the Claude plan with no key.
 async function growDialog(id) {
   await flushPage(); const page = pageOf(id); if (!page || isFolder(page)) return;
   const text = blocksToText(page.blocks, pageTitle);
@@ -2614,7 +2637,7 @@ async function growDialog(id) {
   const topic = el("select", { id: "growTopic", "aria-label": "Topic", onchange: (e) => { zoneId = e.target.value; make(); } },
     notesTopics().map((g) => (g.name ? el("optgroup", { label: g.name }, g.zones.map((z) => el("option", { value: z.id, text: z.name, selected: z.id === zoneId }))) : g.zones.map((z) => el("option", { value: z.id, text: z.name, selected: z.id === zoneId })))));
   make();
-  const body = el("div", { class: "growd" }, el("label", {}, el("span", { text: "Topic" }), topic), el("div", { class: "row" }, copy, el("a", { class: "btn", href: "https://claude.ai/new", target: "_blank", rel: "noopener", text: "Open Claude" })), reply, sum, box);
+  const body = el("div", { class: "growd" }, el("label", {}, el("span", { text: "Topic" }), topic), claudeRow(() => prompt, reply, copy), reply, sum, box);
   const ok = await dialog({ title: "Grow into a knowledge graph", ok: "Grow", body });
   if (!ok) return;
   check();
@@ -2730,7 +2753,7 @@ async function fleshOut({ termId, term, quote = "", source = "" }) {
   const box = el("textarea", { id: "fleshPrompt", readOnly: true, rows: 4, hidden: true, "aria-label": "For Claude", value: prompt });
   const copy = el("button", { type: "button", class: "btn primary", id: "fleshCopy", onclick: async () => { try { await navigator.clipboard.writeText(prompt); copy.textContent = "Copied"; } catch { box.hidden = false; box.focus(); box.select(); } } }, "Copy for Claude");
   S.lastPrompt = prompt;
-  const ok = await dialog({ title: "Flesh out " + name, ok: "Use this", body: el("div", { class: "growd" }, el("div", { class: "row" }, copy, el("a", { class: "btn", href: "https://claude.ai/new", target: "_blank", rel: "noopener", text: "Open Claude" })), box, reply) });
+  const ok = await dialog({ title: "Flesh out " + name, ok: "Use this", body: el("div", { class: "growd" }, claudeRow(() => prompt, reply, copy, { auto: true }), box, reply) });
   if (!ok) return;
   const r = readFlesh(reply.value, name); if (!r.def) return toast("Nothing in the reply");
   const def = g?.def ? g.def + "\n\n" + r.def : r.def, aliases = [...new Set([...(g?.aliases || []), ...r.aliases])].filter((a) => a.toLowerCase() !== name.toLowerCase());
@@ -2859,6 +2882,7 @@ async function init() {
   vocab = createVocab({ el, pinIcon: () => icon(ICON.pin), panelActions: (g, done) => [el("button", { class: "btn", type: "button", dataset: { act: "claude" }, onclick: () => { done(); fleshOut({ termId: g.id }); } }, "Claude"), el("button", { class: "btn", type: "button", dataset: { act: "google" }, onclick: () => google(g.term) }, "Google")], terms: () => S.vocab || [], onEdit: (id) => editTerm({ id }), seenIn, openPage: (id) => { if (S.view === "notes") pickPage(id); else location.hash = notesHash(id); } }); vocab.reindex();
   selPanel = createQuick({ el, roots: () => [...document.querySelectorAll(".page .blocks")], actions: selActions });
   S.joined = pref("joined", "0") === "1"; S.thirsty = pref("thirsty", "1") === "1";
+  if (desktop) desktopUpdate().then((u) => { S.desk = u; });
   stage.labelRank = (L) => (L.id === S.sel || (!ideaView() && L.id === S.fsel) ? 0 : S.near.has(L.id) ? 1 + L.depth * 0.01 : 2 + L.depth);
   stage.onHover = (hit, e) => {
     stage.container.style.cursor = hit && !(S.view === "forest" && hit.kind === "link") ? "pointer" : "";

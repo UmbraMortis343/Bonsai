@@ -1,0 +1,66 @@
+name: Desktop
+
+# Builds Bonsai Desktop (desktop/, the Windows app) when its version in desktop/package.json changes, and
+# publishes Bonsai-Setup.exe as the GitHub release desktop-v<version>. The app inside updates on its own, as
+# the website does; this installer only changes when the desktop shell does. The web app's releases (v0.x.y)
+# stay "latest"; desktop ones never take that.
+on:
+  push:
+    branches: [main, beta]
+    paths: [desktop/**]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: desktop
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v5
+      - id: v
+        run: |
+          v=$(node -p "require('./package.json').version")
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          if gh release view "desktop-v$v" >/dev/null 2>&1; then echo "needed=false" >> "$GITHUB_OUTPUT"; else echo "needed=true" >> "$GITHUB_OUTPUT"; fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - uses: actions/setup-node@v5
+        if: steps.v.outputs.needed == 'true'
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - if: steps.v.outputs.needed == 'true'
+        run: npm ci
+      - name: Build the installer
+        if: steps.v.outputs.needed == 'true'
+        run: npx electron-builder --win --x64 --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      - name: Release
+        if: steps.v.outputs.needed == 'true'
+        run: |
+          V=${{ steps.v.outputs.version }}
+          cp "dist/Bonsai-Setup-$V.exe" Bonsai-Setup.exe
+          SUM=$(sha256sum Bonsai-Setup.exe | cut -d' ' -f1)
+          {
+            echo "Bonsai for Windows. Download **Bonsai-Setup.exe** and run it. If Windows says *Windows protected your PC*, click **More info**, then **Run anyway** (the installer isn't signed with a paid certificate)."
+            echo
+            echo "It opens the live Bonsai, which keeps itself up to date as the website does; a second shortcut, **Bonsai Beta**, opens the beta. Grow and Flesh out ask Claude Code on this computer, on the plan it's signed in with: install Claude Code (claude.com/code) and sign in once."
+            echo
+            echo "Your data in the desktop app starts empty: in the browser use Menu → Export backup, then Menu → Restore backup in the desktop app."
+            echo
+            echo "SHA-256 of Bonsai-Setup.exe: \`$SUM\`"
+          } > notes.md
+          gh release create "desktop-v$V" Bonsai-Setup.exe --title "Bonsai Desktop $V" --notes-file notes.md --target "$GITHUB_SHA" --latest=false
+        env:
+          GH_TOKEN: ${{ github.token }}
