@@ -76,6 +76,6 @@ await sel("Coulombs");
 await page.reload(); await page.waitForSelector("body[data-ready]"); await page.waitForSelector('.lbl.node:text-is("Coulombs")');
 await key("Escape"); await page.waitForSelector("#gpanel:not([hidden])");   // opened directly, so Back goes home to the garden
 await page.evaluate(() => { location.hash = "#/forest"; });
-await page.click('.lbl.tree:text-is("Basic electronics")');
+await page.dblclick('.lbl.tree:text-is("Basic electronics")');   // a click picks, a double-click opens
 await page.waitForSelector(".lbl.trunk");
 await t.end();

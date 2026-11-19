@@ -7,11 +7,12 @@
 // and what hangs from it; dropping it on another idea grafts it there (onDrop); the + knob on the picked idea, or an
 // Alt-drag, pulls out a string: let go on empty paper for a new idea there (onNew), on an idea to link them (onLink).
 // Right-click asks for a menu (onMenu); a graph dragged in from the Library and dropped on an idea is onDropTree.
-export function createMiniWeb({ host, onPick, onOpen, num = () => null, ring = () => null, edit = false, onMove, onDrop, onNew, onLink, onMenu, onDropTree }) {
+// Links can be picked too (onPickLink): hovered and picked ones are drawn bolder; right-click on one gives onMenu(null, …, linkId).
+export function createMiniWeb({ host, onPick, onOpen, num = () => null, ring = () => null, edit = false, onMove, onDrop, onNew, onLink, onMenu, onDropTree, onPickLink }) {
   const canvas = document.createElement("canvas"), ctx = canvas.getContext("2d");
   canvas.className = "miniweb"; canvas.setAttribute("aria-label", "Graph"); host.append(canvas);
   let W = 1, H = 1, dpr = 1, P = new Map(), kids = new Map(), links = [], sel = null, hov = null, colour = () => "#888", sig = "";
-  let view = { x: 0, y: 0, k: 1 }, drag = null, pull = null, over = null, root = null, fresh = true;
+  let view = { x: 0, y: 0, k: 1 }, drag = null, pull = null, over = null, root = null, fresh = true, selLink = null, hovLink = null;
   const css = () => { const s = getComputedStyle(document.body), v = (k, d) => s.getPropertyValue(k).trim() || d; return { bg: v("--bg", "#fff"), ink: v("--ink", "#111"), muted: v("--muted", "#777"), accent: v("--accent", "#3d6a37") }; };
   let C = css();
   const SX = (x) => W / 2 + (x - view.x) * view.k, SY = (y) => H / 2 + (y - view.y) * view.k;
@@ -76,7 +77,8 @@ export function createMiniWeb({ host, onPick, onOpen, num = () => null, ring = (
     ctx.setLineDash([4, 4]);
     for (const l of links) {
       const a = P.get(l.a), b = P.get(l.b); if (!a || !b) continue;
-      const on = f0 && (l.a === f0.n.id || l.b === f0.n.id); ctx.globalAlpha = f0 && !on ? 0.08 : on ? 0.9 : 0.35; ctx.strokeStyle = C.muted; ctx.lineWidth = 1.1;
+      const lit = l.id && (l.id === selLink || l.id === hovLink), on = lit || (f0 && (l.a === f0.n.id || l.b === f0.n.id));
+      ctx.globalAlpha = lit ? 1 : f0 && !on ? 0.08 : on ? 0.9 : 0.35; ctx.strokeStyle = lit ? C.accent : C.muted; ctx.lineWidth = lit ? 2.4 : 1.1;
       const x0 = SX(a.x), y0 = SY(a.y), x1 = SX(b.x), y1 = SY(b.y); ctx.beginPath(); ctx.moveTo(x0, y0); ctx.quadraticCurveTo((x0 + x1) / 2 - (y1 - y0) * 0.14, (y0 + y1) / 2 + (x1 - x0) * 0.14, x1, y1); ctx.stroke();
     }
     ctx.setLineDash([]);
@@ -111,6 +113,14 @@ export function createMiniWeb({ host, onPick, onOpen, num = () => null, ring = (
       ctx.beginPath(); ctx.moveTo(kb.x - 4, kb.y); ctx.lineTo(kb.x + 4, kb.y); ctx.moveTo(kb.x, kb.y - 4); ctx.lineTo(kb.x, kb.y + 4); ctx.stroke();
     }
   }
+  // the link under the pointer: within a few pixels of its curve
+  const curve = (l) => { const a = P.get(l.a), b = P.get(l.b); if (!a || !b) return null; const x0 = SX(a.x), y0 = SY(a.y), x1 = SX(b.x), y1 = SY(b.y); return [x0, y0, (x0 + x1) / 2 - (y1 - y0) * 0.14, (y0 + y1) / 2 + (x1 - x0) * 0.14, x1, y1]; };
+  const hitLink = (mx, my) => {
+    let best = null, bd = 6 * 6;
+    for (const l of links) { if (!l.id) continue; const c = curve(l); if (!c) continue;
+      for (let i = 2; i <= 18; i++) { const t = i / 20, u = 1 - t, x = u * u * c[0] + 2 * u * t * c[2] + t * t * c[4], y = u * u * c[1] + 2 * u * t * c[3] + t * t * c[5], d = (x - mx) ** 2 + (y - my) ** 2; if (d < bd) { bd = d; best = l.id; } } }
+    return best;
+  };
   const hit = (mx, my) => { let best = null, bd = 14 * 14; for (const p of P.values()) { const d = (SX(p.x) - mx) ** 2 + (SY(p.y) - my) ** 2; if (d < bd) { bd = d; best = p.n.id; } } return best; };
   const at = (e) => { const r = canvas.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
   canvas.addEventListener("pointerdown", (e) => {
@@ -132,8 +142,9 @@ export function createMiniWeb({ host, onPick, onOpen, num = () => null, ring = (
     }
     if (drag) { if (Math.hypot(x - drag.x, y - drag.y) > 4) drag.moved = true; if (drag.moved) { view.x = drag.vx - (x - drag.x) / view.k; view.y = drag.vy - (y - drag.y) / view.k; draw(); } return; }
     const h = hit(x, y), kb = knob(), onKnob = kb && Math.abs(x - kb.x) < 10 && Math.abs(y - kb.y) < 10;
-    canvas.style.cursor = onKnob ? "crosshair" : h ? (edit ? "grab" : "pointer") : "grab";
-    if (h !== hov) { hov = h; draw(); }
+    const hl = !h && edit && onPickLink ? hitLink(x, y) : null;
+    canvas.style.cursor = onKnob ? "crosshair" : h ? (edit ? "grab" : "pointer") : hl ? "pointer" : "grab";
+    if (h !== hov || hl !== hovLink) { hov = h; hovLink = hl; draw(); }
   });
   canvas.addEventListener("pointerup", (e) => {
     const [x, y] = at(e);
@@ -150,9 +161,9 @@ export function createMiniWeb({ host, onPick, onOpen, num = () => null, ring = (
       if (o) onDrop?.(d.id, o);
       return;
     }
-    if (d && !d.moved) { const h = hit(x, y); if (h) onPick?.(h); else if (edit) onPick?.(null); }
+    if (d && !d.moved) { const h = hit(x, y), hl = !h && edit && onPickLink ? hitLink(x, y) : null; if (h) onPick?.(h); else if (hl) onPickLink(hl); else if (edit) onPick?.(null); }
   });
-  canvas.addEventListener("contextmenu", (e) => { if (!edit) return; e.preventDefault(); const [x, y] = at(e), h = hit(x, y), w = toWorld(x, y); onMenu?.(h, e.clientX, e.clientY, Math.round(w.x), Math.round(w.y)); });
+  canvas.addEventListener("contextmenu", (e) => { if (!edit) return; e.preventDefault(); const [x, y] = at(e), h = hit(x, y), hl = !h && onPickLink ? hitLink(x, y) : null, w = toWorld(x, y); onMenu?.(h, e.clientX, e.clientY, Math.round(w.x), Math.round(w.y), hl); });
   // a graph dragged in from the Library
   canvas.addEventListener("dragover", (e) => { if (!edit || !e.dataTransfer.types.includes("application/x-bonsai-tree")) return; e.preventDefault(); const [x, y] = at(e), h = hit(x, y); if (h !== over) { over = h; draw(); } });
   canvas.addEventListener("dragleave", () => { if (over) { over = null; draw(); } });
@@ -204,6 +215,8 @@ export function createMiniWeb({ host, onPick, onOpen, num = () => null, ring = (
         if ([...P.values()].every((p) => Math.hypot(p.x - x, p.y - y) > 40)) return { x, y }; }
       return { x: par.x + Math.cos(base) * 75, y: par.y + Math.sin(base) * 75 };
     },
+    selectLink(id) { selLink = id || null; draw(); },
+    linkAt(id) { const l = links.find((x) => x.id === id), c = l && curve(l), r = canvas.getBoundingClientRect(); if (!c) return null; const t = 0.5, u = 0.5; return { x: r.left + u * u * c[0] + 2 * u * t * c[2] + t * t * c[4], y: r.top + u * u * c[1] + 2 * u * t * c[3] + t * t * c[5] }; },   // for tests
     select(id) { sel = id; const p = P.get(id); if (p && (SX(p.x) < 30 || SX(p.x) > W - 30 || SY(p.y) < 20 || SY(p.y) > H - 20)) { view.x = p.x; view.y = p.y; } draw(); },
     attach(newHost) { if (canvas.parentElement !== newHost) { ro.unobserve(host); host = newHost; newHost.append(canvas); ro.observe(newHost); } resize(); },
     resize, fit() { fit(); draw(); },

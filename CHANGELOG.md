@@ -2,6 +2,15 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.27.0 — 2026-11-19
+
+- **One set of controls.** The same few rules on every screen: click picks, double-click goes in or opens, right-click gives that thing's menu, drag moves what you hold (or turns the view), wheel zooms. Esc lets go then steps back out, 0 fits, numbers and arrows pick. ? shows the rules, grouped.
+- **V is the other view, everywhere:** board and 3D, separate and joined, tree and web. In a graph, V opens the same graph on the board with the same idea picked.
+- **In a graph:** drag an idea to move it, no Move mode needed; Put back is in its menu. Right-click an idea for everything you can do to it. Double-click flies to it. The WASD fly keys are gone.
+- **In the knowledge rings:** a click picks a graph, a double-click opens it, a right-click gives its menu.
+- **Links are easy to delete:** on the board, hover and click a link to pick it, then Del (or right-click it: Label, Delete link). The idea's card and panel list its links with a × each. Undo brings a link back.
+- **Fewer meanings per key:** G only grafts. Shift+Tab from the garden opens Knowledge on what's picked there. In the tech tree, Enter (or double-click) on what's already in the middle opens it. Vocab is Shift+V. In watering, W waters everything and Shift+Enter opens the picked graph.
+
 ## 0.26.0 — 2026-11-19
 
 - **The other view in a little window.** On a graph's board, ] now shows the other view (the 3D on the board, the board in 3D) in a small window in the corner, like a video kept playing on a phone. Hover it for Swap (B) and Close (]); drag it by its top to the other side and it stays there.

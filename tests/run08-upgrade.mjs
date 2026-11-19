@@ -26,7 +26,7 @@ await page.evaluate(() => new Promise((res, rej) => {
 }));
 await page.goto(t.url + "#/forest"); await page.waitForSelector("body[data-ready]");
 await page.waitForSelector('.lbl.tree:text-is("Basic electronics")');
-await page.click('.lbl.tree:text-is("Basic electronics")');
+await page.dblclick('.lbl.tree:text-is("Basic electronics")');
 await page.waitForSelector('.lbl.node:text-is("Resistors")');
 t.eq(await state(page, async () => { await bonsai.store.addPatch({ treeId: "t1", text: "works" }); await bonsai.store.reviewNode("n2", "good"); return [(await bonsai.store.listPatches("t1")).length, bonsai.S.nodes.length]; }), [1, 2], "old forest after upgrade");
 await t.end();

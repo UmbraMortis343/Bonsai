@@ -5,7 +5,7 @@ export { THREE };
 
 const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
-const FLY = { KeyW: [0, 0, 1], KeyS: [0, 0, -1], KeyA: [-1, 0, 0], KeyD: [1, 0, 0], KeyQ: [0, -1, 0], KeyE: [0, 1, 0] };
+const FLY = {};   // flying with WASD went in the controls revamp (0.27.0): the mouse turns, pans and zooms
 
 export class Stage {
   constructor(container) {
@@ -24,7 +24,7 @@ export class Stage {
 
     this.target = new THREE.Vector3(0, 2, 0); this.radius = 12; this.theta = 0.6; this.phi = 1.2;
     this.labels = []; this.pickables = []; this.tickers = new Set(); this.keys = new Set();
-    this.labelOpacity = () => 1; this.labelRank = () => 1; this.onTap = () => {}; this.onHover = () => {};
+    this.labelOpacity = () => 1; this.labelRank = () => 1; this.onTap = () => {}; this.onHover = () => {}; this.onDouble = () => {}; this.onMenu = null;
     this.ray = new THREE.Raycaster(); this._v = new THREE.Vector3(); this._ndc = new THREE.Vector2();
     this.reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
     this.frame = this.frame.bind(this); this.last = 0; this.raf = 0;
@@ -239,14 +239,16 @@ export class Stage {
       const p = ptr.get(e.pointerId); if (!p) return;
       ptr.delete(e.pointerId);
       if (grabbed) { const g = grabbed; grabbed = null; if (moved >= 6) return g.end(e.type !== "pointerup"); g.end(true); }
-      if (e.type === "pointerup" && ptr.size === 0 && moved < 6 && p.button === 0) {
+      if (e.type === "pointerup" && ptr.size === 0 && moved < 6 && (p.button === 0 || (p.button === 2 && this.onMenu))) {
         const lbl = downTarget?.closest?.(".lbl");
         const hit = lbl ? { kind: lbl.dataset.kind, id: lbl.dataset.id } : this.pick(e.clientX, e.clientY);
-        this.onTap(hit, e);
+        if (p.button === 2) this.onMenu(hit, e); else this.onTap(hit, e);   // a right-click that didn't drag asks for the thing's menu
       }
     };
     c.addEventListener("pointerup", up); c.addEventListener("pointercancel", up);
     c.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") this.onHover(null); });
+    c.addEventListener("dblclick", (e) => { if (e.target.closest("input,textarea,button,a")) return; const lbl = document.elementFromPoint(e.clientX, e.clientY)?.closest?.(".lbl");   // the drag's pointer capture makes the container the target, so look under the pointer
+      this.onDouble(lbl ? { kind: lbl.dataset.kind, id: lbl.dataset.id } : this.pick(e.clientX, e.clientY), e); });
     c.addEventListener("wheel", (e) => {
       e.preventDefault();
       if (this.anim) { this.anim.done(); this.anim = null; }

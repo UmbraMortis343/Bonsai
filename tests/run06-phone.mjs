@@ -26,7 +26,7 @@ if (card.x < 0 || card.x + card.width > 390) t.fail("plant card wider than the s
 await page.waitForTimeout(500); await page.screenshot({ path: "tests/shots/garden-phone.png" });
 await page.tap("#winKnowledge"); await page.waitForSelector("#addBtn");
 await page.waitForSelector('.lbl.tree:text-is("Basic electronics")');
-await page.tap('.lbl.tree:text-is("Basic electronics")');
+await page.tap('.lbl.tree:text-is("Basic electronics")'); await page.waitForTimeout(250); await page.tap('.lbl.tree:text-is("Basic electronics")');   // a tap picks, a second opens
 await page.waitForSelector(".lbl.trunk");
 
 await page.waitForTimeout(700); await tapIdea("Resistors");

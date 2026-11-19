@@ -88,23 +88,27 @@ t.eq(await page.locator(".menu .mi kbd").count(), await page.locator(".menu .mi"
 await page.click("#moreBtn"); await page.waitForSelector(".menu"); await words(".menu", "the graph's menu"); await key("Escape");
 await key("?"); await page.waitForSelector(".dialog .keys");   // (the tech tree's own Tree mode keeps its name)
 if (/\b(zone|trunk|branch|sibling|plant)\b|new tree/i.test(await page.textContent(".dialog .keys"))) t.fail("the shortcuts list still uses the old words"); await key("Escape");
-// ---- move mode: drag an idea where you want it; it stays there, what hangs from it comes along, the view doesn't turn
-await key("Escape"); await key("v"); await page.waitForSelector('[data-act="moveDone"]');
-const where = (title) => page.evaluate((x) => { const S = bonsai.S, n = S.nodes.find((q) => q.title === x && q.treeId === S.tree.id), p = S.flora.pos.get(n.id), q = bonsai.stage.screenOf(p), r = bonsai.stage.container.getBoundingClientRect(); return { x: r.left + q.x, y: r.top + q.y, p: [p.x, p.y, p.z], id: n.id, pin: n.pin || null, theta: bonsai.stage.theta }; }, title);
+// ---- dragging an idea moves it, no mode needed: it stays there, what hangs from it comes along, the view doesn't turn
+await key("Escape"); await page.waitForTimeout(900);   // let the panel close and the view settle before aiming
+const where = (title) => page.evaluate((x) => { const S = bonsai.S, n = S.nodes.find((q) => q.title === x && q.treeId === S.tree.id), p = S.flora.pos.get(n.id), q = bonsai.stage.screenOf(p), r = bonsai.stage.container.getBoundingClientRect(); return { x: r.left + q.x, y: r.top + q.y, p: [p.x, p.y, p.z], id: n.id, pin: n.pin, theta: bonsai.stage.theta }; }, title);
 const far = (a, b) => Math.hypot(a.p[0] - b.p[0], a.p[1] - b.p[1], a.p[2] - b.p[2]);
 const c0 = await where("Capacitors"), k0 = await where("Charge");
 await page.mouse.move(c0.x, c0.y); await page.mouse.down(); await page.mouse.move(c0.x + 50, c0.y - 30, { steps: 5 }); await page.mouse.move(c0.x + 130, c0.y - 80, { steps: 8 }); await page.mouse.up();
 await page.waitForFunction((id) => bonsai.S.byId.get(id)?.pin, c0.id); await page.waitForTimeout(800);
 const c1 = await where("Capacitors"), k1 = await where("Charge");
 if (Math.hypot(c1.x - (c0.x + 130), c1.y - (c0.y - 80)) > 14) t.fail(`the idea isn't where it was dropped: ${[c1.x - c0.x, c1.y - c0.y].map(Math.round)}`);
-t.eq([c1.theta === c0.theta, far(c1, { p: c1.pin }) < 0.01, far(k1, k0) > 0.4, await picked() === await state(page, (id) => bonsai.S.num.get(id), c0.id)], [true, true, true, true], "dragging moves the idea, pins it, brings along what hangs from it, picks it and leaves the view alone");
-await key("Tab"); t.eq(await page.locator("#quickInput").count(), 0, "nothing but moving happens in move mode");
-await key("ArrowRight"); await page.waitForFunction((x) => bonsai.S.byId.get(x.id).pin[0] !== x.pin[0] || bonsai.S.byId.get(x.id).pin[2] !== x.pin[2], c1); await page.waitForTimeout(700);
-if (!((await where("Capacitors")).x > c1.x + 4)) t.fail("the right arrow didn't nudge the idea to the right");
+t.eq([c1.theta === c0.theta, far(c1, { p: c1.pin }) < 0.01, far(k1, k0) > 0.4], [true, true, true], "dragging moves the idea, pins it, brings along what hangs from it");
 await page.waitForTimeout(300); await page.screenshot({ path: "tests/shots/kview-move.png" });
-await key("u"); await page.waitForFunction((id) => !bonsai.S.byId.get(id).pin, c0.id); await page.waitForTimeout(700);
+// right-click: the idea's menu, with Put back
+await page.mouse.click(c1.x, c1.y, { button: "right" }); await page.waitForSelector(".menu");
+await page.click('.menu .mi:has-text("Put back where it was")');
+await page.waitForFunction((id) => !bonsai.S.byId.get(id).pin, c0.id); await page.waitForTimeout(700);
 if (far(await where("Capacitors"), c0) > 0.05) t.fail("Put back didn't return the idea to where the layout had it");
-await key("v"); await page.waitForSelector('[data-act="add"]');
+// double-click an idea flies to it
+const k2 = await where("Charge"); const r0 = await state(page, () => bonsai.stage.radius);
+await page.mouse.dblclick(k2.x, k2.y); await page.waitForTimeout(900);
+t.eq(await state(page, (id) => bonsai.S.sel === id, k2.id), true, "double-click picks the idea and flies to it");
+await key("Escape");   // the click opened its notes; put them away
 
 // X makes the picked idea its own graph
 await key("3"); await page.waitForTimeout(950); const before = await state(page, () => bonsai.S.trees.length);
@@ -128,8 +132,8 @@ await page.click('.lbl.tree:has-text("Synthesis")'); await page.waitForSelector(
 t.eq(await state(page, () => [...document.querySelectorAll("#actions .btn")].every((b) => b.querySelector("kbd"))), true, "the watering bar shows its keys");
 await words("#actions", "the watering bar");
 await page.waitForTimeout(700); await page.screenshot({ path: "tests/shots/kview-water.png" });
-await key("g"); await page.waitForSelector(".lbl.trunk");
-t.eq(await state(page, () => bonsai.S.tree.name), "Synthesis", "G opens the graph picked");
+await key("Shift+Enter"); await page.waitForSelector(".lbl.trunk");
+t.eq(await state(page, () => bonsai.S.tree.name), "Synthesis", "Shift+Enter opens the graph picked");
 
 // ---- night follows the garden, as in the tech tree
 const lum = () => state(page, () => { const c = bonsai.stage.scene.background; return [document.body.classList.contains("night-ui"), c.r + c.g + c.b < 0.6]; });

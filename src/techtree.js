@@ -459,7 +459,8 @@ export function createTechTree({ host, saved = {}, onSelect = () => {}, onOpen =
   }
   // put a thing in the middle with what's under it round it; Esc comes back out
   function centre(key) {
-    const x = H2.get(key); if (!x || key === root) return;
+    const x = H2.get(key); if (!x) return;
+    if (key === root) { const i = info(key); if (i && !(i.kind === "island" && i.start)) onOpen(i); return; }   // in the middle already: go into it
     if (mode !== "tree") return;
     roots.push(root); root = key; pick = key;
     if (x.kind === "isle") shut.delete(key); else if (x.kind !== "start") open.add(key);

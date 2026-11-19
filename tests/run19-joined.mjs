@@ -1,4 +1,4 @@
-// The joined view (J in the knowledge view): what's in scope read as one structure, the way the tech tree joins it.
+// The joined view (V in the knowledge view): what's in scope read as one structure, the way the tech tree joins it.
 // An island leads to its topics and they to the ideas their graphs start from; an island that grows from another
 // hangs from the idea it grows from, a tier further out and higher. A view only: nothing is saved.
 import { start, state } from "./lib.mjs";
@@ -11,7 +11,7 @@ const count = () => state(page, async () => { const d = await bonsai.store.expor
 const before = await count();
 t.eq(await state(page, () => [bonsai.S.joined, !!bonsai.S.forest.joined, document.querySelector("#viewApart").getAttribute("aria-pressed")]), [false, false, "true"], "the rings come first");
 
-await key("j"); await page.waitForFunction(() => bonsai.S.forest?.joined);
+await key("v"); await page.waitForFunction(() => bonsai.S.forest?.joined);
 const J = await state(page, () => {
   const S = bonsai.S, j = S.forest.joined, f = S.flora, title = (id) => S.byId.get(id)?.title || id, tier = (id) => j.tiers.get(id);
   const parts = j.parts.map((p) => ({ id: p.id, parent: p.parent, hang: p.hang && title(p.hang), tier: tier(p.id).tier, lift: tier(p.id).lift, n: p.ideas.length, r: Math.max(...p.ideas.map((n) => Math.hypot(f.home.get(n.id).x - tier(p.id).x, f.home.get(n.id).z - tier(p.id).z))), x: tier(p.id).x, z: tier(p.id).z }));
@@ -54,6 +54,6 @@ await page.waitForTimeout(1200); await page.screenshot({ path: "tests/shots/join
 t.eq(await count(), before, "the joined view saves nothing");
 await page.reload(); await page.waitForSelector("body[data-ready]"); await page.waitForFunction(() => bonsai.S.forest);
 t.eq(await state(page, () => [bonsai.S.joined, !!bonsai.S.forest.joined]), [true, true], "joined is remembered");
-await key("j"); await page.waitForFunction(() => !bonsai.S.forest.joined);
+await key("v"); await page.waitForFunction(() => !bonsai.S.forest.joined);
 t.eq(await state(page, () => [bonsai.S.joined, bonsai.S.forest.fl.zones.size > 5]), [false, true], "J goes back to the rings");
 await t.end();

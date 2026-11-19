@@ -233,11 +233,11 @@ await k("0"); await page.waitForFunction(() => document.querySelector("#gpanel h
 await k("1"); await k("4"); await page.waitForFunction(() => document.querySelector("#gpanel h2")?.textContent === "Physics");
 await page.click("#isleTech"); await page.waitForFunction(() => bonsai.S.view === "tech" && bonsai.tech); await page.waitForTimeout(300);
 t.eq(await state(page, () => bonsai.tech.snapshot().pick), "i:phys", "an island's Tech tree opens with that island picked");
-// G in the garden: the knowledge graphs of the island (or topic, or hub) picked, and only those.
+// Shift+Tab from the garden: the knowledge graphs of the island (or topic, or hub) picked, and only those.
 await page.evaluate(() => { location.hash = "#/"; }); await page.waitForSelector("#gpanel h2");
 await k("0"); await page.waitForFunction(() => document.querySelector("#gpanel h2")?.textContent === "Garden");
 await k("1"); await k("2"); await page.waitForFunction(() => document.querySelector("#gpanel h2")?.textContent === "General science");
-await k("g"); await page.waitForFunction(() => bonsai.S.view === "forest" && bonsai.S.forest);
+await k("Shift+Tab"); await page.waitForFunction(() => bonsai.S.view === "forest" && bonsai.S.forest);   // Knowledge shows what's picked in the garden
 t.eq(await state(page, () => [document.querySelector("#top h1").textContent, bonsai.S.forest.fl.zones.size]), ["General science", 4], "an island's graphs, its four topics");
 await page.screenshot({ path: "tests/shots/scope-island.png" });
 await page.evaluate((z) => { location.hash = "#/forest/" + z; }, ids.mech); await page.waitForFunction(() => document.querySelector("#top h1")?.textContent === "Mechanics");

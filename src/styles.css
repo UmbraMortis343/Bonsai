@@ -674,3 +674,5 @@ body[data-nbar="off"] .notes .nside-bar{display:none}
 @media (pointer:coarse){.pipbar{opacity:1}.pipbar kbd{display:none}}
 .pbar .seg.keys{display:inline-flex;align-items:center;gap:2px}
 .pbar .seg.keys kbd{margin-left:4px}
+.keygroups{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:4px 22px;max-height:70vh;overflow:auto}
+.keygroups h3{margin:10px 0 4px;font-size:12px;color:var(--muted)}

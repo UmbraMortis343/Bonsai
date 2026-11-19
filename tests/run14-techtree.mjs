@@ -88,14 +88,14 @@ t.eq([music.after, music.from], ["found", I.Patterns], "Music now grows from Fou
 await state(page, (id) => bonsai.tech.focus(id), I.Acceleration);
 s = await snap(page);
 t.eq([s.root, s.pick, s.shown.includes(I.Acceleration)], ["i:start", I.Acceleration, true], "opening on an idea shows it, picked, in the whole tree");
-await key(page, "g");
+await key(page, "Enter"); await key(page, "Enter");   // Enter puts it in the middle, and again goes into its graph
 await page.waitForFunction((id) => bonsai.S.view === "tree" && bonsai.S.sel === id, I.Acceleration);
 await key(page, "Escape");
 await page.waitForFunction(() => bonsai.S.view === "tech" && bonsai.tech);
 t.eq((await snap(page)).shown.includes(I.Acceleration), true, "back from the graph returns to the same tree");
 
 // ----- A: everything open -----
-await key(page, "a");
+await key(page, "h"); await key(page, "a");
 s = await snap(page);
 t.eq(s.shown.includes(I.Inertia) && s.shown.includes(I["Coulomb's law"]), true, "All open opens every idea");
 await key(page, "a");
@@ -109,9 +109,9 @@ await settle(page);
 await page.screenshot({ path: "tests/shots/tech-night.png" });
 await state(page, () => localStorage.removeItem("bonsai-beta.night"));
 
-// ----- L: the web -----
-await key(page, "l");
-t.eq((await snap(page)).mode, "web", "L switches to the web");
+// ----- V: the web -----
+await key(page, "v");
+t.eq((await snap(page)).mode, "web", "V switches to the web");
 await page.waitForFunction(() => bonsai.tech.snapshot().settled, null, { timeout: 90000 });
 await page.screenshot({ path: "tests/shots/tech-web.png" });
 const p0 = await state(page, (id) => { const p = bonsai.tech.screenOf(id), r = document.querySelector('#tech').getBoundingClientRect(); return p && { x: p.x + r.left, y: p.y + r.top }; }, I.Harmonics);
@@ -127,7 +127,7 @@ const p1 = await state(page, (id) => { const p = bonsai.tech.screenOf(id), r = d
 t.eq([Math.round(p1.x - p0.x), Math.round(p1.y - p0.y)], [60, 50], "it goes where it is dragged");
 t.eq(await others(), o0, "and nothing else moves");
 await key(page, "j");
-await key(page, "l");
+await key(page, "v");
 
 // ----- Esc at the start, with nothing picked, leaves -----
 await key(page, "h"); await key(page, "Escape"); await key(page, "Escape");

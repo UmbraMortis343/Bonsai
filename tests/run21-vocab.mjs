@@ -51,9 +51,9 @@ if (!(await state(page, (id) => JSON.stringify(bonsai.S.pages.find((p) => p.id =
 if (blocksBefore.includes("check the impulse again")) t.fail("bad test");
 await page.evaluate(() => document.activeElement.blur());
 
-// ---- the vocab page: V, or the row at the foot of the sidebar
-await key("v"); await page.waitForSelector(".page.vocab");
-t.eq([await page.evaluate(() => location.hash), await page.locator(".vcard").count(), await page.getAttribute("#vocabBtn", "class")], ["#/notes/vocab", 6, "nvocab on"], "V opens the vocab page with every term");
+// ---- the vocab page: Shift+V, or the row at the foot of the sidebar
+await key("Shift+V"); await page.waitForSelector(".page.vocab");
+t.eq([await page.evaluate(() => location.hash), await page.locator(".vcard").count(), await page.getAttribute("#vocabBtn", "class")], ["#/notes/vocab", 6, "nvocab on"], "Shift+V opens the vocab page with every term");
 t.eq(await page.locator(".vcard").first().locator("b").textContent(), "GROW", "A–Z first");
 await page.click('.vsort [data-sort="page"]');
 t.eq(await state(page, () => [...document.querySelectorAll(".vgroup h3")].map((h) => h.textContent)), ["Lecture 6: Momentum", "Workshop: GROW model"], "By page groups terms under the page they're first met in");
