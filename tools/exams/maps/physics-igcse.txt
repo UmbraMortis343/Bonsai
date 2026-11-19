@@ -6,8 +6,8 @@ source: Cambridge IGCSE Physics (0625)
 
 graph: Measurement
 Measurement | Putting numbers and units on physical quantities
-  Length and volume | Measured with rulers, measuring cylinders and micrometers
-    Micrometer | A screw gauge for lengths to about 0.01 mm
+  Length and volume | Measured with rulers and measuring cylinders
+    Measuring multiples | Measure many small lengths together, such as a stack of sheets, and divide
     Volume by displacement | An object's volume is the water it pushes aside
   Time intervals | Measured with clocks and timers
     ! Timing many swings | Time several oscillations and divide to cut the error in one
@@ -35,6 +35,7 @@ Forces | Pushes and pulls that change motion or shape
     Gravitational field strength | Force per unit mass, about 9.8 N/kg on Earth
     ! Using W = mg | Weight is mass times gravitational field strength
   Resultant force | The single force equal to all the forces acting together
+    Motion in a circle | A force at right angles to the motion keeps it on a circle; more speed or mass needs more force, more force tightens the circle
     Balanced forces | Zero resultant: at rest or at constant velocity
     Force and acceleration | A resultant force makes a mass accelerate: F = ma
     ! Using F = ma | Relate resultant force, mass and acceleration
@@ -45,8 +46,11 @@ Forces | Pushes and pulls that change motion or shape
   Moments | The turning effect of a force: force times perpendicular distance from the pivot
     Principle of moments | In equilibrium, clockwise moments equal anticlockwise moments
     Centre of gravity | The point where all the weight seems to act
+      Stability | A low centre of gravity and a wide base make an object harder to tip over
+      ! Finding the centre of gravity | Hang a lamina from two points and mark where the plumb lines cross
     ! Balancing a beam | Use the principle of moments to find an unknown force or distance
   Momentum | Mass times velocity
+    ! Using F = Δp / Δt | Resultant force is the change in momentum per unit time
     Impulse | Force times time, equal to the change in momentum
     Conservation of momentum | Total momentum is unchanged when no external force acts
     ! Solving a collision | Equate total momentum before and after
@@ -54,9 +58,11 @@ Forces | Pushes and pulls that change motion or shape
 graph: Energy
 Energy | The capacity to do work, moved between stores
   Energy stores | Kinetic, gravitational, chemical, elastic, nuclear, internal, electrostatic
+    Energy transfers | Moved between stores by forces, electric currents, heating and waves
     Kinetic energy | Energy of motion: ½mv²
     Gravitational potential energy | Energy of height: mgh
   Conservation of energy | Energy is never made or destroyed, only transferred
+    Sankey diagrams | Arrow widths show where the energy goes
     ! Falling object energy | Set the loss in mgh equal to the gain in ½mv²
   Work | Force times distance moved in the direction of the force
     ! Using W = Fd | Work done equals energy transferred
@@ -64,14 +70,22 @@ Energy | The capacity to do work, moved between stores
   Efficiency | Useful output over total input
     ! Calculating efficiency | Useful energy or power out divided by total in, as a percentage
   Energy resources | Sources we draw energy from
+    Power stations | A boiler, turbine and generator turn a fuel's energy into electricity
+    Comparing energy resources | Renewability, availability, reliability, scale and environmental impact
+    The Sun as the source | Its radiation is behind every resource except geothermal, nuclear and tidal
+    Fusion power research | Work to make electricity from fusion on a large scale
     Renewable resources | Replaced as they are used: solar, wind, hydro, tidal, geothermal
+      Solar cells and solar panels | Cells turn light into electricity; panels use infrared to heat water
+      Biofuels | Fuels from plants, a renewable store of chemical energy
     Fossil fuels | Coal, oil and gas: a store of chemical energy that runs out and emits CO₂
     Nuclear fuel | Energy released by fission in a reactor
 
 graph: Density and pressure
 Density | Mass per unit volume
+  ! Measuring density | Mass on a balance; volume by measuring, or by displacement for an irregular solid
   ! Using ρ = m / V | Find density from measured mass and volume
   Floating and sinking | An object floats in a liquid of greater density
+    Liquids that float on each other | The less dense liquid floats on top, if they do not mix
   Pressure | Force per unit area
     ! Using p = F / A | The same force on a smaller area gives a larger pressure
     Pressure in liquids | Increases with depth and with the liquid's density
@@ -80,21 +94,38 @@ Density | Mass per unit volume
 graph: Thermal physics
 Thermal physics | Heat, temperature and the particles behind them
   Kinetic particle model | Matter is made of moving particles
+    Kelvin scale | T (in K) = θ (in °C) + 273
+    Gas pressure and temperature | At fixed volume a hotter gas's particles hit harder and more often, so pressure rises
+    Gas pressure and volume | At fixed temperature a smaller volume means more collisions per second, so pressure rises
+    Particles in each state | Close and fixed in solids, close but moving in liquids, far apart and fast in gases
     States of matter | Solids hold shape, liquids flow, gases fill their container
     Brownian motion | Random jiggling of visible specks, evidence for moving molecules
     Gas pressure | Caused by particles colliding with the walls
     Absolute zero | The lowest temperature, −273 °C, where particles have least energy
     ! Boyle's law at constant temperature | pV stays constant for a fixed mass of gas
   Thermal expansion | Most materials expand when heated
+    Expansion of solids, liquids and gases | Gases expand most and solids least, because of how tightly the particles are held
+    Uses of thermal expansion | Liquid thermometers, bimetallic strips, gaps in rails and bridges
   Specific heat capacity | Energy needed to raise 1 kg by 1 °C
+    Temperature and particle energy | A temperature rise is a rise in the particles' average kinetic energy, and so in internal energy
+    ! Measuring specific heat capacity | Heat a known mass with a known energy and record the temperature rise
     ! Using ΔE = mcΔθ | Energy to change the temperature of a mass
   Changes of state | Melting, boiling, condensing, freezing at fixed temperatures
+    Melting and boiling points of water | 0 °C and 100 °C at standard atmospheric pressure
+    Condensation and solidification | Particles lose energy and come closer together
     Evaporation | Faster particles escape from a liquid's surface, cooling it
+      Factors affecting evaporation | Faster with a higher temperature, a larger surface area and moving air
+      Boiling and evaporation compared | Boiling happens at one temperature throughout the liquid; evaporation at any temperature, from the surface
     Boiling | Bubbles form throughout the liquid at one temperature
   Thermal energy transfer | Energy moves from hot to cold
+    Thermal transfer in everyday life | Pans, heating a room by convection, a wood fire, a car radiator
     Conduction | Transfer through a material by particle vibration and free electrons
+      Poor conduction in fluids | Particles in gases and most liquids are too far apart to pass vibrations on well
     Convection | Transfer by a fluid moving as density changes
     Thermal radiation | Transfer by infrared waves; needs no medium
+      Radiation balance | A body stays at a constant temperature when it gives out energy as fast as it takes it in
+      Earth's temperature | Set by the balance between incoming radiation and radiation from the surface
+      Rate of emission | Rises with surface temperature and surface area
     Good absorbers and emitters | Dull black surfaces absorb and emit best, shiny ones worst
 
 graph: Waves
@@ -105,10 +136,17 @@ Waves | Transfers of energy without transfer of matter
     ! Using v = fλ | Wave speed is frequency times wavelength
   Transverse waves | Vibration at right angles to the direction of travel
   Longitudinal waves | Vibration along the direction of travel
+    Seismic waves | S-waves are transverse, P-waves longitudinal
   Reflection of waves | Bouncing off a surface
   Refraction of waves | Change of speed, and often direction, in a new medium
   Diffraction | Spreading through a gap or round an edge
+    Gap size and wavelength | Most spreading when the gap is about the size of the wavelength
+    Ripple tank | Shows water waves reflecting, refracting and diffracting
   Sound | A longitudinal wave made by vibrating sources
+    Compressions and rarefactions | Regions of higher and lower pressure in a sound wave
+    Range of human hearing | About 20 Hz to 20 000 Hz
+    Speed of sound | About 330–350 m/s in air; faster in liquids and faster still in solids
+    Sound needs a medium | It cannot travel through a vacuum
     Pitch and loudness | Higher frequency is higher pitch, larger amplitude is louder
     Echoes | Reflected sound
     Ultrasound | Sound above 20 kHz, used for scans and sonar
@@ -119,17 +157,26 @@ Light | A transverse wave we can see
   Law of reflection | Angle of incidence equals angle of reflection
     Plane mirror image | Virtual, upright, same size, as far behind as the object is in front
   Refraction of light | Light bends when it changes speed between materials
-    Refractive index | The ratio sin i / sin r for light entering from air
+    Refractive index | The ratio of the speeds of light in two materials; from air, n = sin i / sin r
     ! Using n = sin i / sin r | Find the refractive index or an angle
     Critical angle | The angle of incidence beyond which light cannot leave the denser medium
+      ! Using n = 1 / sin c | Critical angle from the refractive index
     Total internal reflection | All the light reflects inside the denser medium
     Optical fibres | Carry light by repeated total internal reflection
   Thin lenses | Shaped glass that converges or diverges light
+    Principal focus | Where rays parallel to the principal axis meet after a converging lens
+    Magnifying glass | An object inside the focal length of a converging lens gives an enlarged, upright, virtual image
+    Correcting sight | Converging lenses for long sight, diverging lenses for short sight
     Focal length | Distance from the lens to the principal focus
     Real and virtual images | A real image forms on a screen, a virtual one cannot
     ! Drawing a ray diagram | Two rays from the top of the object locate the image
   Dispersion | A prism splits white light into colours
+    Colours of the spectrum | Red, orange, yellow, green, blue, indigo, violet, in order of rising frequency
+    Monochromatic light | Light of a single frequency
   Electromagnetic spectrum | Radio, microwave, infrared, visible, ultraviolet, X-ray, gamma
+    Communication with EM waves | Microwaves for mobiles, Wi-Fi and satellites; radio waves for Bluetooth; light and infrared in optical fibres
+    Digital and analogue signals | Digital takes only set values, analogue varies continuously; sound can be sent either way
+    Benefits of digital signals | Faster data, and longer range because the signal can be regenerated exactly
     Speed of electromagnetic waves | All travel at 3.0 × 10⁸ m/s in a vacuum
     Uses and dangers of EM waves | From radio links to medical imaging; higher frequencies damage cells
 
@@ -138,8 +185,11 @@ Electricity | Charge and its flow round circuits
   Electric charge | Positive and negative; like charges repel, unlike attract
     Charging by friction | Electrons move from one insulator to another
     Electric field | A region where a charge feels a force
+      Electric field patterns | Radial round a point charge or charged sphere, uniform between parallel plates; the direction is the force on a positive charge
     Conductors and insulators | Conductors have free electrons, insulators do not
   Current | Rate of flow of charge
+    Direct and alternating current | d.c. flows one way, a.c. keeps reversing
+    Ammeters and voltmeters | Ammeters go in series, voltmeters in parallel
     ! Using I = Q / t | Current is charge passing per unit time
     Conventional current | Flows from positive to negative, opposite to the electrons
   Potential difference | Work done per unit charge between two points
@@ -149,65 +199,112 @@ Electricity | Charge and its flow round circuits
     Resistance of a wire | Grows with length, falls with cross-sectional area
     Current–voltage graphs | A straight line for a resistor, a curve for a lamp, one-way for a diode
   Electrical power | Energy transferred per second: P = IV
+    Electrical energy | E = IVt
+    Kilowatt-hour | The energy used by 1 kW for one hour
     ! Cost of electricity | Energy in kWh times the price per unit
   Series circuits | One path: the same current everywhere, voltages add
+    Cells in series | Their e.m.f.s add
   Parallel circuits | Several paths: the same voltage across each, currents add
+    Lamps in parallel | Each gets the full voltage and can be switched on its own
     ! Combined resistance | Add resistors in series; in parallel the total is less than the smallest
   Potential divider | Two resistors share a voltage in proportion to their resistance
+    ! Using R₁ / R₂ = V₁ / V₂ | Each resistor's share of the voltage
+    Diodes and LEDs | Let current through one way only; an LED gives out light
     Thermistors and LDRs | Resistance falls with temperature, or with light
   Electrical safety | Protecting people and wiring from too much current
+    Mains wiring | Live, neutral and earth wires; the switch and fuse go in the live wire
+    Double insulation | A non-conducting case needs no earth wire
+    Mains hazards | Damaged insulation, overheating cables, damp, overloaded sockets
+    ! Choosing a fuse | Pick the rating just above the normal current
     Fuses and circuit breakers | Break the circuit when the current is too large
     Earthing | A low-resistance path to ground for metal cases
 
 graph: Magnetism and electromagnetism
 Magnetism | Forces between magnets and magnetic materials
   Magnetic poles | North and south; like poles repel, unlike attract
+    Magnetic and non-magnetic materials | Iron, steel, nickel and cobalt are magnetic; most other materials are not
     Induced magnetism | A magnetic material becomes a magnet while near one
     Hard and soft magnetic materials | Steel keeps its magnetism, soft iron loses it quickly
   Magnetic field lines | Show the direction a north pole would move; closer lines mean a stronger field
+    ! Plotting a magnetic field | With a plotting compass or iron filings
   Field of a current | A current in a wire or solenoid has a magnetic field round it
+    Strength of the field of a current | Stronger close to the wire and with more current; reversing the current reverses the field
+    Relays and loudspeakers | Use the magnetic effect of a current
     Electromagnets | A coil on a soft iron core, switched on and off with the current
   Force on a current | A current-carrying wire in a magnetic field feels a force
+    Beams of charged particles | A magnetic field pushes a moving charge sideways
     Left-hand rule | Gives the force direction from field and current
     d.c. motor | A coil turns in a field; a split-ring commutator keeps it turning
+      Turning effect on a coil | Bigger with more turns, more current or a stronger field
   Electromagnetic induction | A changing magnetic field through a conductor induces an e.m.f.
+    Factors affecting induced e.m.f. | Faster movement, a stronger field, more turns
     a.c. generator | A coil rotating in a field gives an alternating e.m.f.
+      Slip rings and brushes | Connect the turning coil to the circuit
+      Generator output graph | The e.m.f. peaks when the coil cuts the field fastest, zero when the coil is face-on to it
     Direction of induced current | It opposes the change that causes it
   Transformers | Change an alternating voltage using two coils on an iron core
+    ! Using IpVp = IsVs | Power in equals power out for a 100% efficient transformer
+    ! Power lost in cables | P = I²R, so a smaller current loses less
     ! Using the turns ratio | Vp / Vs = Np / Ns
     High-voltage transmission | Less current for the same power, so less energy lost in the cables
 
 graph: Atoms and radioactivity
 Atoms | A tiny positive nucleus with electrons round it
+  Ions | Atoms that have lost or gained electrons
   Nuclear model | Alpha scattering showed a small, dense, positive nucleus
     Protons and neutrons | The particles of the nucleus
+      Relative charges | Proton +1, neutron 0, electron −1
     Nuclide notation | Proton number and nucleon number written with the symbol
     Isotopes | Atoms of one element with different numbers of neutrons
   Radioactive decay | Unstable nuclei emit radiation at random
+    Why nuclei decay | Too many neutrons, or too heavy; decay makes the nucleus more stable
+    Change in beta decay | A neutron becomes a proton and an electron
+    Deflection of radiation | Alpha and beta bend opposite ways in electric and magnetic fields; gamma goes straight
+    Why alpha ionises most | Its large charge and kinetic energy
     Alpha particles | Two protons and two neutrons: strongly ionising, stopped by paper
     Beta particles | Fast electrons from the nucleus: stopped by a few millimetres of aluminium
     Gamma rays | Electromagnetic waves from the nucleus: weakly ionising, very penetrating
     ! Balancing a decay equation | Proton and nucleon numbers are the same on both sides
     Background radiation | The radiation always around us, from rocks, radon, cosmic rays
+      Detecting radiation | A detector, such as a Geiger–Müller tube, connected to a counter
+      ! Corrected count rate | Subtract the background count rate
   Half-life | Time for half the nuclei in a sample to decay
+    Uses of radioactive isotopes | Smoke alarms, food irradiation, sterilising, thickness gauges, cancer treatment; chosen by radiation type and half-life
     ! Half-life from a decay curve | Read off the time for the count rate to halve
   Fission and fusion | Splitting a heavy nucleus, or joining light ones, releases energy
   Radiation safety | Limit time, keep distance, use shielding
+    Effects of radiation on living things | Cell death, mutations and cancer
 
 graph: Space
 Space | The Earth, the Solar System and beyond
   Earth and Moon | Rotation gives day and night, the tilt gives seasons, the Moon's orbit its phases
   Solar System | The Sun, eight planets, dwarf planets, moons, asteroids and comets
+    ! Light travel time | Time = distance / speed of light
+    ! Reading planetary data | Compare orbital distance, period, density, surface temperature and field strength
     Orbits | Gravity keeps planets and moons in orbit
+      Elliptical orbits | Planets and comets move fastest when nearest the Sun
+      Gravitational field of a planet | Stronger for a more massive planet, weaker further away
+      Sun's share of the mass | The Sun holds most of the Solar System's mass, so the planets orbit it
     ! Orbital speed | v = 2πr / T for a circular orbit
     Formation of the Solar System | Gravity pulled a cloud of gas and dust into a spinning disc
+      Rocky and gas planets | The four inner planets are small and rocky, the four outer ones large and gaseous
   The Sun | A medium-sized star powered by fusing hydrogen into helium
+    The Sun's radiation | Mostly infrared, visible and ultraviolet
   Life cycle of stars | From nebula and protostar to a stable star, then giant and dense remnant
+    Protostar | A collapsing cloud that heats up; it becomes stable when gravity balances the outward pressure
+    Red giants and supergiants | Stars swell when the hydrogen in the core runs low
+    White dwarf | What a less massive star leaves after a planetary nebula
+    Neutron star | A very dense remnant of a supernova
     Supernova | The explosion of a massive star, making heavy elements
     Black hole | A remnant so dense that light cannot escape
   Galaxies | Collections of billions of stars; ours is the Milky Way
-    Light-year | The distance light travels in a year
+    Milky Way | Our galaxy, about 100 000 light-years across
+    Light-year | The distance light travels in a year, 9.5 × 10¹⁵ m
   Expanding Universe | Distant galaxies are moving away from us
+    Hubble constant | H₀ = v / d, about 2.2 × 10⁻¹⁸ per second
+    ! Estimating the age of the Universe | d / v = 1 / H₀
+    Speed from redshift | The change in wavelength gives a galaxy's speed
+    Distance from a supernova | Its brightness gives the distance of its galaxy
     Redshift | Light from receding galaxies is stretched to longer wavelengths
     Big Bang | The Universe began hot and dense about 13.8 billion years ago
     Cosmic microwave background | Leftover radiation from the early Universe

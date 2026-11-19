@@ -25,7 +25,7 @@ const some = { ideas: { [ideaKey("Acceleration")]: 1, [ideaKey("Force and accele
 t.eq(connectPairs(ig, (k) => !!some.ideas[k], some).map((p) => p.a), ["Acceleration"], "a connection opens once both its ideas are shown");
 const exam0 = readExam(JSON.stringify(exportExam([ig], { [ig.id]: some })));
 const plan0 = planExam(exam0);
-t.eq([plan0.counts.shown, plan0.counts.greyed, plan0.counts.graphs, progress(ig).of], [2, 182, 12, 184], "an export carries every idea of the tier, shown or not");
+t.eq([plan0.counts.shown, plan0.counts.greyed, plan0.counts.graphs, progress(ig).of], [2, 279, 12, 281], "an export carries every idea of the tier, shown or not");
 t.eq((() => { try { readExam("{}"); } catch (e) { return e.message; } })(), "That isn't a Bonsai exam.", "anything else is refused");
 
 // ----- the exams page -----
@@ -51,7 +51,7 @@ const stub = ({ maps, marks }) => {
   const sample = Object.assign(async () => ({ text: "" }), { json, limits: async () => ({ maxPromptBytes: 262144, images: { maxCount: 4, maxInputBytes: 2e7, mediaTypes: ["image/png"] } }) });
   const on = { final: [], partial: [], state: [] }; let live = false;
   const dictation = { active: () => live, onFinal: (h) => on.final.push(h), onPartial: (h) => on.partial.push(h), onState: (h) => on.state.push(h),
-    start: async () => { live = true; on.state.forEach((h) => h({ state: "listening" })); on.final.forEach((h) => h({ text: " Micrometer and volume by displacement." })); },
+    start: async () => { live = true; on.state.forEach((h) => h({ state: "listening" })); on.final.forEach((h) => h({ text: " Measuring multiples and volume by displacement." })); },
     stop: async () => { live = false; on.state.forEach((h) => h({ state: "idle", reason: "stopped" })); } };
   const saved = [], downloads = { save: async (f) => { saved.push(f); return { status: "saved" }; } };
   window.claude = { use: async (name) => ({ db, sample, dictation, downloads })[name] ?? null };
@@ -63,7 +63,7 @@ page.on("pageerror", (e) => t.fail("exams page error: " + e.message));
 await page.addInitScript(stub, { maps: [], marks: seeded });   // the maps are built into the page
 await page.goto(t.url + "exams.html#physics");
 await page.waitForSelector(".tier");
-t.eq(await page.$$eval(".tier", (x) => x.map((s) => [s.querySelector("h2").textContent, s.querySelectorAll(".row").length, s.querySelector(".n").textContent])), [["IGCSE", 12, "0 / 184"], ["AS Level", 11, "0 / 108"], ["A Level", 12, "0 / 127"]], "a topic opens on its tiers, a row per graph");
+t.eq(await page.$$eval(".tier", (x) => x.map((s) => [s.querySelector("h2").textContent, s.querySelectorAll(".row").length, s.querySelector(".n").textContent])), [["IGCSE", 12, "0 / 281"], ["AS Level", 11, "0 / 121"], ["A Level", 12, "0 / 144"]], "a topic opens on its tiers, a row per graph");
 t.eq(await page.$$eval(".row.on .cell", (c) => c.map((x) => x.textContent)), ["0/5", "0/7", "0/2"], "each row shows how far its three papers have got");
 t.eq(await page.isDisabled("#connect-physics-igcse"), true, "Connect waits until both ideas of a pair are shown");
 await page.screenshot({ path: "tests/shots/exams-home.png" });
@@ -81,13 +81,13 @@ t.eq(await page.$$eval(".row.on .cell", (c) => c.map((x) => x.textContent)), ["4
 // Explain: spoken (dictation) and typed, a follow-up, then the marks, one of which he overrules
 await page.keyboard.press("2"); await page.waitForSelector("#answer");
 t.eq([await page.textContent("#ask"), await page.$$eval(".cues li", (l) => l.length)], ["Talk through Measurement.", 4], "the oral paper asks him to talk the graph through, with its key ideas as cues");
-await page.keyboard.press("s"); await page.waitForFunction(() => document.querySelector("#answer").value.includes("Micrometer"));
+await page.keyboard.press("s"); await page.waitForFunction(() => document.querySelector("#answer").value.includes("Measuring multiples"));
 t.eq(await page.textContent("#speak"), "StopS", "speaking fills the answer and the button offers Stop");
 await page.focus("#answer"); await page.keyboard.type(" Averaging readings cuts random error."); await page.keyboard.press("Control+Enter");
 await page.waitForFunction(() => document.querySelector("#ask")?.textContent === "What about the rest?");
 t.eq(await page.$$eval(".turn", (x) => x.length), 1, "a follow-up question comes back, under what he said");
 await page.keyboard.press("f"); await page.waitForSelector("#marks");
-t.eq([await page.textContent("#score"), await page.$$eval(".mark.shown .t", (x) => x.map((e) => e.firstChild.textContent))], ["3 / 7", ["Micrometer", "Volume by displacement", "Averaging readings"]], "the ideas he covered are shown");
+t.eq([await page.textContent("#score"), await page.$$eval(".mark.shown .t", (x) => x.map((e) => e.firstChild.textContent))], ["3 / 7", ["Measuring multiples", "Volume by displacement", "Averaging readings"]], "the ideas he covered are shown");
 await page.keyboard.press("1");
 t.eq([await page.textContent("#score"), await page.$$eval(".mark.changed", (x) => x.length)], ["4 / 7", 1], "he can overrule a mark before saving");
 await page.screenshot({ path: "tests/shots/exams-results.png" });
@@ -101,7 +101,7 @@ await page.setInputFiles("#photo", { name: "working.png", mimeType: "image/png",
 await page.waitForSelector(".shots img"); await page.fill("#answer", "The period is 42 s."); await page.click("#mark"); await page.waitForSelector("#marks");
 t.eq([await page.textContent("#score"), await page.evaluate(() => __t.asked.at(-1).images)], ["2 / 2", 1], "the photo of his working goes to the marker");
 await page.keyboard.press("Enter"); await page.waitForSelector(".tier");
-t.eq(await page.textContent(".tier .n"), "9 / 184", "the tier's total follows");
+t.eq(await page.textContent(".tier .n"), "9 / 281", "the tier's total follows");
 
 // Connect, on the other topic, where two linked ideas are already shown
 await page.keyboard.press("t"); await page.waitForFunction(() => document.querySelector(".tier h2")?.textContent === "Leading yourself");
@@ -116,7 +116,7 @@ t.eq(await page.evaluate(() => [...__t.store].filter(([k]) => k.startsWith("sitt
 // Export for the app
 await page.keyboard.press("t"); await page.waitForFunction(() => document.querySelector(".tier h2")?.textContent === "IGCSE");
 await page.keyboard.press("e"); await page.waitForSelector("#copy");
-t.eq(await page.$$eval(".plain li", (l) => l.map((x) => x.textContent)), ["IGCSE9 shown · 175 greyed · 0 links"], "the export covers the tiers he has sat");
+t.eq(await page.$$eval(".plain li", (l) => l.map((x) => x.textContent)), ["IGCSE9 shown · 272 greyed · 0 links"], "the export covers the tiers he has sat");
 await page.click("#copy"); await page.waitForFunction(() => document.querySelector("#said").textContent === "Copied");
 const exported = await page.evaluate(() => navigator.clipboard.readText());
 await page.click("#file");
@@ -141,11 +141,11 @@ const importExam = async (text) => {
   await app.waitForSelector("#examSum"); const sum = await app.textContent("#examSum"), pick = await app.$eval("#f-zone", (s) => s.selectedOptions[0].textContent);
   await app.click(".dialog .btn.primary"); await app.waitForSelector("#toast:not([hidden])"); return [sum, pick];
 };
-t.eq(await importExam(exported), ["IGCSE · 9 shown · 175 greyed", "New: Physics"], "Import exam says what it holds and offers a new topic of that name");
+t.eq(await importExam(exported), ["IGCSE · 9 shown · 272 greyed", "New: Physics"], "Import exam says what it holds and offers a new topic of that name");
 const got = await state(app, () => { const S = bonsai.S, z = S.zones.find((x) => x.name === "Physics"), trees = S.trees.filter((x) => x.zoneId === z.id), ns = trees.flatMap((x) => S.byTree.get(x.id));
   const real = ns.filter((n) => !n.ghost), soon = Math.min(...real.map((n) => Date.parse(n.srs.due) - Date.now())) / 86400000;
-  return { trees: trees.length, tier: trees[0].exam.tier, real: real.map((n) => n.title).sort(), ghosts: ns.filter((n) => n.ghost).length, notes: ns.every((n) => n.note), level: real.find((n) => n.title === "Micrometer").exam.level, soon: soon > 3.9, toast: document.querySelector("#toast span").textContent }; });
-t.eq(got, { trees: 12, tier: "IGCSE", real: ["Averaging readings", "Length and volume", "Measurement", "Micrometer", "Scalars and vectors", "Time intervals", "Timing many swings", "Adding two vectors at right angles", "Volume by displacement"].sort(), ghosts: 175, notes: true, level: 2, soon: true, toast: "9 ideas shown, 175 greyed" },
+  return { trees: trees.length, tier: trees[0].exam.tier, real: real.map((n) => n.title).sort(), ghosts: ns.filter((n) => n.ghost).length, notes: ns.every((n) => n.note), level: real.find((n) => n.title === "Measuring multiples").exam.level, soon: soon > 3.9, toast: document.querySelector("#toast span").textContent }; });
+t.eq(got, { trees: 12, tier: "IGCSE", real: ["Averaging readings", "Length and volume", "Measurement", "Measuring multiples", "Scalars and vectors", "Time intervals", "Timing many swings", "Adding two vectors at right angles", "Volume by displacement"].sort(), ghosts: 272, notes: true, level: 2, soon: true, toast: "9 ideas shown, 272 greyed" },
   "shown ideas arrive as real ideas with their notes and a first review days away; the rest arrive greyed");
 await app.evaluate(() => { location.hash = "#/"; }); await app.waitForSelector("body[data-ready]"); await app.waitForFunction(() => bonsai.S.model?.some((i) => i.topics.some((q) => q.name === "Physics")));
 t.eq(await state(app, () => { const q = bonsai.S.model.flatMap((i) => i.topics).find((x) => x.name === "Physics"); return [q.ideas, q.due.length, q.growth < 0.25]; }), [9, 0, true], "greyed ideas don't count toward growth and are never due");
@@ -161,11 +161,11 @@ t.eq(await app.$$eval(".lbl.node.ghost", (l) => l.length), 0, "a graph shown in 
 
 // a re-sit shows two more ideas and a link between ideas already there; undo takes it back
 const resit = JSON.parse(exported); const motion = resit.tiers[0].graphs.find((g) => g.name === "Motion").ideas;
-motion.find((i) => i.t === "Motion").l = 1; motion.find((i) => i.t === "Speed").l = 2; resit.tiers[0].links.push({ a: "Speed", b: "Micrometer", label: "measured with", l: 4 });
+motion.find((i) => i.t === "Motion").l = 1; motion.find((i) => i.t === "Speed").l = 2; resit.tiers[0].links.push({ a: "Speed", b: "Measuring multiples", label: "measured with", l: 4 });
 await app.evaluate(() => { location.hash = "#/forest"; }); await app.waitForSelector(".lbl.zone");
-t.eq(await importExam(JSON.stringify(resit)), ["IGCSE · 11 shown · 173 greyed", "Physics"], "a re-sit goes into the same topic");
+t.eq(await importExam(JSON.stringify(resit)), ["IGCSE · 11 shown · 270 greyed", "Physics"], "a re-sit goes into the same topic");
 const after = () => state(app, () => { const S = bonsai.S; return [S.nodes.length, S.nodes.filter((n) => n.ghost).length, S.nodes.find((n) => n.title === "Speed").exam.level, S.links.length]; });
-t.eq([await after(), await app.textContent("#toast span")], [[184, 173, 2, 1], "2 ideas shown, 1 link"], "it wakes the greyed ideas it showed, makes nothing twice, and adds the link");
-await app.click("#toast .link"); await app.waitForFunction(() => bonsai.S.nodes.filter((n) => n.ghost).length === 175);
-t.eq(await after(), [184, 175, 0, 0], "undo greys them again");
+t.eq([await after(), await app.textContent("#toast span")], [[281, 270, 2, 1], "2 ideas shown, 1 link"], "it wakes the greyed ideas it showed, makes nothing twice, and adds the link");
+await app.click("#toast .link"); await app.waitForFunction(() => bonsai.S.nodes.filter((n) => n.ghost).length === 272);
+t.eq(await after(), [281, 272, 0, 0], "undo greys them again");
 await t.end();

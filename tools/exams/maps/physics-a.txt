@@ -15,8 +15,10 @@ Circular motion | Moving in a circle at steady speed while always accelerating
 
 graph: Gravitational fields
 Gravitational field | A region where a mass feels a force
+  Gravitational field lines | Point towards the mass; outside a uniform sphere its mass acts as if at the centre
   Newton's law of gravitation | F = GMm / r² between point masses
   Field strength of a point mass | g = GM / r²
+    Why g is nearly constant | Near the surface the distance from the centre hardly changes
     ! g at a planet's surface | Use the planet's mass and radius in g = GM / r²
   Gravitational potential | Work done per unit mass bringing a small mass from infinity: φ = −GM / r
     Gravitational potential energy of two masses | Eₚ = −GMm / r
@@ -27,18 +29,22 @@ Gravitational field | A region where a mass feels a force
 graph: Thermal physics and gases
 Thermal equilibrium | No net energy flows between bodies at the same temperature
   Thermodynamic temperature | The kelvin scale, which does not depend on any substance
-  Specific latent heat | Energy to change the state of 1 kg at constant temperature
+    Thermometric properties | Density of a liquid, volume of a gas, resistance of a metal, e.m.f. of a thermocouple
+    ! Converting to kelvin | T / K = θ / °C + 273.15
+    Absolute zero on the kelvin scale | Zero kelvin, the lowest possible temperature
+  Specific latent heat | Energy to change the state of 1 kg without a change of temperature: of fusion for melting, of vaporisation for boiling
     ! Using E = mL | Energy for melting or boiling
   Ideal gas | A gas that obeys pV ∝ T exactly
     Mole and Avogadro constant | 6.02 × 10²³ particles in one mole
     Equation of state | pV = nRT = NkT
     ! Solving a gas problem | Use pV = nRT with temperature in kelvin
   Kinetic theory of gases | Pressure explained by molecules colliding elastically with the walls
+    ! Deriving pV = ⅓Nm<c²> | From one molecule's collisions with a wall, then extended to three dimensions
     Kinetic theory assumptions | Negligible volume, no forces between molecules, random motion, elastic collisions
     Root-mean-square speed | The square root of the mean of the squared speeds
     Mean kinetic energy of a molecule | 3/2 kT, proportional to temperature
     Boltzmann constant | The gas constant per molecule, k = R / Nₐ
-  Internal energy | The sum of the random kinetic and potential energies of the molecules
+  Internal energy | Set by the state of a system: the sum of the random kinetic and potential energies of its molecules
   First law of thermodynamics | ΔU = q + W: energy supplied by heating plus work done on the system
     Work done by a gas | W = pΔV at constant pressure
     ! Applying the first law | Track signs of q, W and ΔU through a change
@@ -46,11 +52,13 @@ Thermal equilibrium | No net energy flows between bodies at the same temperature
 graph: Oscillations
 Oscillations | Repeated motion about an equilibrium position
   Simple harmonic motion | Acceleration is proportional to displacement and directed to the centre
+    ! Graphs of SHM | Displacement, velocity and acceleration against time, each a quarter cycle apart
     Angular frequency | ω = 2πf
     Defining equation of SHM | a = −ω²x
     ! Displacement, velocity, acceleration | x = x₀ sin ωt and v = ±ω√(x₀² − x²)
   Energy in SHM | Swaps between kinetic and potential; the total is ½mω²x₀²
   Damping | Resistive forces remove energy, so the amplitude decays
+    Light and heavy damping | Light: swings slowly shrink; heavy: a slow return with no swing
     Critical damping | Returns to rest in the shortest time without oscillating
   Forced oscillations | Driven by a periodic force at the driver's frequency
     Resonance | Amplitude peaks when the driving frequency matches the natural frequency
@@ -78,12 +86,14 @@ Capacitance | Charge stored per unit potential difference
 
 graph: Magnetic fields
 Magnetic fields | Regions where moving charges and currents feel a force
+  Fields of currents | Round a straight wire, a flat coil and a solenoid; an iron core makes a solenoid's field stronger
   Magnetic flux density | Force per unit current per unit length on a wire at right angles to the field
     ! Using F = BIL sin θ | Force on a current-carrying conductor
   Force on a moving charge | F = BQv sin θ, at right angles to the velocity
     Circular path in a field | The magnetic force acts as the centripetal force
     Velocity selector | Crossed electric and magnetic fields pass only one speed
   Hall effect | A voltage across a conductor carrying current in a magnetic field
+    ! Using V_H = BI / (ntq) | Hall voltage from flux density, current, thickness and carrier density
     Hall probe | Uses the Hall voltage to measure flux density
   Forces between parallel currents | Like currents attract, opposite currents repel
   Magnetic flux | Flux density times the area it passes through at right angles
@@ -99,7 +109,7 @@ Alternating current | A current that varies sinusoidally and reverses direction
   Rectification | Turning alternating current into direct current
     Half-wave rectification | One diode passes only one half of each cycle
     Full-wave rectification | A four-diode bridge passes both halves in the same direction
-  Smoothing | A capacitor across the load fills in the gaps between peaks
+  Smoothing | A capacitor across the load fills in the gaps between peaks; a larger capacitance or load resistance leaves less ripple
 
 graph: Quantum physics
 Quantum physics | Energy and matter in discrete packets
@@ -125,6 +135,7 @@ Nuclear energy | Energy bound up in the mass of nuclei
     Binding energy per nucleon | Peaks near iron, which is why fission and fusion both release energy
     ! Energy released in a reaction | Mass difference times c²
   Random and spontaneous decay | Unpredictable for one nucleus and unaffected by conditions
+    Evidence for randomness | The count rate fluctuates
   Decay constant | The probability per unit time that a nucleus decays
     Activity | Decays per second: A = λN
     Exponential decay law | N = N₀ e^(−λt)
@@ -133,14 +144,20 @@ Nuclear energy | Energy bound up in the mass of nuclei
 graph: Medical physics
 Medical physics | Physics used to look inside the body
   Ultrasound scanning | Pulses reflect at tissue boundaries and the echoes build an image
+    Ultrasound attenuation | Intensity falls exponentially in matter: I = I₀ e^(−μx)
     Piezoelectric transducer | A crystal that turns voltage into vibration and back
     Acoustic impedance | Density times speed of sound; the mismatch sets how much reflects
     ! Reflected intensity fraction | (Z₁ − Z₂)² / (Z₁ + Z₂)²
   X-ray production | Fast electrons stopped by a metal target emit X-rays
+    ! Shortest X-ray wavelength | eV = hc / λmin from the accelerating voltage
+    Contrast | How clearly tissues differ in the image; bone absorbs far more than soft tissue
     X-ray attenuation | Intensity falls exponentially with thickness: I = I₀ e^(−μx)
     CT scanning | Many X-ray views combined by computer into slices
   PET scanning | A tracer emits positrons; annihilation gamma pairs locate it
+    Tracer | A radioactive substance taken up by the tissue; PET tracers decay by β⁺
+    PET image | The arrival times of each photon pair locate the tracer
     Annihilation | A particle and its antiparticle convert to two gamma photons
+      ! Energy of annihilation photons | Each photon carries mₑc², about 0.511 MeV
 
 graph: Astronomy and cosmology
 Astronomy | Measuring stars and the Universe from their light

@@ -6,7 +6,8 @@ source: Cambridge International AS & A Level Physics (9702), AS content
 
 graph: Quantities and units
 Physical quantities | A numerical size with a unit
-  SI base units | kg, m, s, A, K and mol, from which other units are built
+  Estimating quantities | Sensible orders of magnitude for the quantities in the course
+  SI base units | kg, m, s, A and K, from which other units are built
     Derived units | Products and quotients of base units, such as N = kg m s⁻²
     ! Checking homogeneity | Both sides of an equation must have the same base units
     Prefixes | Powers of ten from pico to tera
@@ -15,6 +16,7 @@ Physical quantities | A numerical size with a unit
     Accuracy and precision | Closeness to the true value, and closeness of repeats to each other
     ! Combining uncertainties | Add absolute uncertainties for sums, percentage ones for products
   Resolving vectors | Splitting a vector into two perpendicular components
+    ! Adding coplanar vectors | Head to tail by scale drawing, or add the components
     ! Finding components | F cos θ along and F sin θ across
 
 graph: Kinematics
@@ -22,6 +24,7 @@ Kinematics | Describing motion without asking what causes it
   Displacement | Distance in a stated direction from a starting point
   Motion graphs | Gradient of displacement–time is velocity; area under velocity–time is displacement
   Equations of uniform acceleration | The suvat equations for constant acceleration in a straight line
+    Deriving the equations of motion | From the definitions of velocity and acceleration
     ! Solving with suvat | Pick the equation that has the three knowns and the one unknown
     ! Measuring g by free fall | Time a fall over a known height and use s = ½gt²
   Projectile motion | Constant horizontal velocity with uniform vertical acceleration
@@ -38,6 +41,7 @@ Dynamics | Why things move as they do
   Newton's third law | Forces come in equal and opposite pairs acting on different bodies
   Motion with resistance | Drag grows with speed until it balances the driving force
   Elastic and inelastic collisions | Kinetic energy is conserved only in elastic ones
+    ! Collision in two dimensions | Conserve momentum separately in two perpendicular directions
     Relative speed of approach | Equals the relative speed of separation in an elastic collision
     ! Two-body collision in one dimension | Conserve momentum, then check kinetic energy
 
@@ -48,6 +52,7 @@ Equilibrium | No resultant force and no resultant torque
   Triangle of forces | Three forces in equilibrium form a closed triangle
     ! Resolving for equilibrium | Components in each direction sum to zero
   Upthrust | The upward force on a body in a fluid, from the pressure difference across it
+    ! Using F = ρgV | Upthrust from the fluid's density and the volume displaced
     Archimedes' principle | Upthrust equals the weight of fluid displaced
     Hydrostatic pressure | The derivation of Δp = ρgΔh from the weight of a column
 
@@ -70,10 +75,12 @@ Deformation | Change of shape under tensile or compressive forces
   Elastic and plastic deformation | Elastic recovers fully, plastic leaves a permanent change
     Elastic limit | The point beyond which deformation is permanent
   Elastic potential energy | The area under a force–extension graph
-    ! Using E = ½Fx | Energy stored in a spring that obeys Hooke's law
+    ! Using E = ½Fx | Energy stored within the limit of proportionality: ½Fx = ½kx²
 
 graph: Progressive waves
 Progressive waves | Waves that carry energy from place to place
+  Wave graphs | Displacement against distance or against time, for transverse and longitudinal waves
+  Wavelengths of the EM spectrum | All EM waves are transverse and travel at c; radio over 0.1 m, microwaves 1 mm–0.1 m, infrared 700 nm–1 mm, visible 400–700 nm, ultraviolet 10–400 nm, X-rays and gamma shorter
   Phase difference | How far out of step two points or two waves are, as an angle
   Intensity | Power per unit area, proportional to amplitude squared
     ! Intensity and amplitude | Doubling the amplitude quadruples the intensity
@@ -86,9 +93,12 @@ Progressive waves | Waves that carry energy from place to place
 graph: Superposition
 Superposition | Where waves meet, their displacements add
   Stationary waves | Formed by two identical waves travelling in opposite directions
+    Stationary wave experiments | Microwaves with a reflector, stretched strings and air columns
+    ! Wavelength from nodes | Neighbouring nodes are half a wavelength apart
     Nodes and antinodes | Points of zero and of maximum amplitude
     ! Harmonics on a string | A whole number of half-wavelengths fits the length
   Interference | The pattern made by superposing coherent waves
+    Seeing fringes | Needs coherent sources of similar amplitude whose waves overlap
     Coherence | A constant phase difference between sources
     Path difference | Whole wavelengths give maxima, half wavelengths give minima
   Double-slit experiment | Two slits give evenly spaced bright and dark fringes
@@ -110,6 +120,8 @@ Charge carriers | The moving charges that make up a current
 
 graph: D.C. circuits
 D.C. circuits | Steady currents round networks of components
+  E.m.f. and p.d. | E.m.f. is energy given to each coulomb by a source; p.d. is energy each coulomb gives up in a component
+  ! Sensor circuits | A thermistor or LDR in a potential divider gives a voltage that follows temperature or light
   Internal resistance | Resistance inside a source that lowers its terminal voltage
     Terminal potential difference | E.m.f. minus the lost volts, V = E − Ir
     ! Finding internal resistance | Plot V against I: gradient −r, intercept E
@@ -126,6 +138,7 @@ Particle physics | What matter is made of at the smallest scale
   Nuclear equations | Nucleon number and charge are conserved in every reaction
   Antiparticles | Same mass, opposite charge; the positron is the electron's
   Beta decay | A neutron becomes a proton (β⁻) or a proton a neutron (β⁺), with a neutrino
+    ! Quark change in beta decay | β⁻: a down quark becomes up; β⁺: up becomes down
     Neutrinos | Almost massless neutral particles that explain beta decay's spread of energies
   Fundamental particles | Quarks and leptons have no known structure
     Quarks | Six flavours: up, down, strange, charm, top, bottom, with charges of ⅔e or −⅓e
