@@ -126,8 +126,24 @@ textarea{resize:vertical;line-height:1.45;display:block}
 .quick{display:flex;gap:6px;align-items:center}
 .quick input{width:min(60vw,320px)}
 .timeline{position:absolute;left:var(--dl,0px);right:var(--dr,0px);bottom:0;display:flex;align-items:center;gap:8px;z-index:5;min-height:52px;
-  background:var(--card);border-top:1px solid var(--line);padding:6px max(10px,calc(50% - 330px))}
-.timeline input{flex:1;accent-color:var(--accent);min-width:0}
+  background:var(--card);border-top:1px solid var(--line);padding:6px max(10px,calc(50% - 480px))}
+/* the timelapse: one slider in the bottom bar, a rectangle to drag, marks under it for Sundays and big days */
+.timeline .tlrail{position:relative;flex:1;min-width:0;height:34px}
+#timeRange{-webkit-appearance:none;appearance:none;position:absolute;left:0;right:0;top:3px;width:100%;height:20px;margin:0;padding:0;background:transparent;cursor:pointer;--p:100%}
+#timeRange:focus{outline:none}
+#timeRange::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:linear-gradient(to right,var(--accent) var(--p),var(--line) var(--p))}
+#timeRange::-moz-range-track{height:4px;border-radius:2px;background:var(--line)}
+#timeRange::-moz-range-progress{height:4px;border-radius:2px;background:var(--accent)}
+#timeRange::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:8px;height:20px;margin-top:-8px;border:0;border-radius:3px;background:var(--ink)}
+#timeRange::-moz-range-thumb{width:8px;height:20px;border:0;border-radius:3px;background:var(--ink)}
+.tticks{position:absolute;left:4px;right:4px;top:24px;height:9px}
+.tick{position:absolute;top:0;width:9px;height:10px;margin-left:-4.5px;padding:0;border:0;background:none;cursor:pointer}
+.tick::before{content:"";position:absolute;left:4px;top:0;width:1px;height:5px;background:var(--muted)}
+.tick.big::before,.tick.grow::before,.tick.exam::before{left:3px;width:3px;height:9px;border-radius:1px;background:var(--accent)}
+.tick:hover::before{background:var(--ink)}
+.timeline .tstep{flex:none}
+.timeline .ib.on{background:var(--accent);color:var(--accent-ink)}
+.timeline .ib.on kbd{background:transparent;color:inherit;border-color:currentColor}
 .when{font-size:12px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
 
 #empty{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);width:min(380px,calc(100% - 32px));z-index:4;
@@ -714,3 +730,4 @@ input.bask::placeholder{color:var(--muted)}
 /* the little 3D window shows the shape only, no names (0.29.2, his ask) */
 .pipwin .lbl{display:none!important}
 #newPageBtn .caret{font-size:10px;color:var(--muted);margin-left:2px}
+@media (max-width:700px){ .timeline kbd{display:none} .timeline{gap:4px} }
