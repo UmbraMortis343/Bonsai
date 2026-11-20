@@ -4,7 +4,10 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { serve } from "../scripts/serve.mjs";
 
+// PORT_OFFSET lets several copies of the repo run their tests at once without their servers colliding.
+export const OFFSET = Number(process.env.PORT_OFFSET || 0);
 export async function start(name, port, { channel = "" } = {}) {
+  port += OFFSET;
   const dir = `tests/.out/${name}`;
   execFileSync("node", ["scripts/build.mjs", dir, "", channel], { stdio: "ignore" });
   mkdirSync("tests/shots", { recursive: true });

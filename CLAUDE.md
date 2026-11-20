@@ -68,6 +68,7 @@ The garden panel (docked right, hidden and shown from the top bar) starts with t
 - Release: bump `version` in `package.json`, add `## x.y.z — YYYY-MM-DD` at the top of `CHANGELOG.md`, push to `main`. GitHub Actions builds, deploys to Pages, tags and creates the release.
 - Commits are authored as Claude and end with the attribution lines the session gives.
 - The workspace can't open the live site; check the Actions run with `gh run list -R UmbraMortis343/Bonsai`.
+- `PORT_OFFSET=<n>` shifts every test server's port (`tests/lib.mjs` `OFFSET`), so several worktrees can test at once; a worktree needs `ln -s /home/claude/bonsai/node_modules node_modules`.
 - In the cloud workspace: `export PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers` and `mkdir -p tests/.out` first. Drawing is in software there and very slow, so a test that makes hundreds of writes should pause the garden (`bonsai.isles.setActive(false)`) around them. `run07` sometimes times out for that reason; run it again on its own. Several tests time out when all run at once here and pass alone; run the failures alone before calling them broken.
 - Pictures for him: `bonsai.isles.look(yaw, pitch)` sets the camera angle; `look(0, 2)` looks straight down, which is the view to use when checking whether anything overlaps (the mountain is then at the top).
 

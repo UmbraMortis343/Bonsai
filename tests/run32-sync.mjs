@@ -2,14 +2,14 @@
 // profiles are two devices. Sign in with an emailed code from the menu; what one adds, edits and deletes reaches
 // the other; the newer of two edits wins; a record the server refuses doesn't hold up the rest; the meaning
 // model's switch stays on its own device; everything goes on the app's channel, not the beta's.
-import { start, state } from "./lib.mjs";
+import { start, state, OFFSET } from "./lib.mjs";
 import { fakeSupabase } from "./fake-supabase.mjs";
 
 const t = await start("run32-sync", 4332);
-const fake = await fakeSupabase(4333);
+const FAKE = 4333 + OFFSET, fake = await fakeSupabase(FAKE);
 const device = async () => {
   const ctx = await t.browser.newContext({ viewport: { width: 1280, height: 800 } });
-  await ctx.addInitScript(() => { localStorage.setItem("bonsai.sync.url", "http://localhost:4333"); localStorage.setItem("bonsai.sync.key", "test-key"); });
+  await ctx.addInitScript((port) => { localStorage.setItem("bonsai.sync.url", "http://localhost:" + port); localStorage.setItem("bonsai.sync.key", "test-key"); }, FAKE);
   const page = await ctx.newPage(); page.on("pageerror", (e) => t.fail("page error: " + e.message));
   await page.goto(t.url); await page.waitForSelector("body[data-ready]"); await page.evaluate(() => bonsai.isles?.setActive(false));
   return page;
