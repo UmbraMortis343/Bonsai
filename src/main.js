@@ -21,6 +21,7 @@ import { MARK_LIST, assignMarks } from "./marks.js";
 import { readExam, planExam, LEVELS } from "./exams.js";
 import { createVocab, createQuick, fleshPrompt, readFlesh } from "./vocab.js";
 import { desktop, liveStatus, liveProblem, askClaude, desktopUpdate } from "./live.js";
+import { oralOpen, oralPrompt, readOral, oralMarkPrompt, readMarks } from "./paper.js";
 import { createInk } from "./ink.js";
 
 const PALETTE = [["Blue", "#3b82f6"], ["Violet", "#8b5cf6"], ["Pink", "#ec4899"], ["Red", "#ef4444"], ["Orange", "#f97316"], ["Amber", "#f59e0b"], ["Green", "#22c55e"], ["Teal", "#14b8a6"], ["Cyan", "#06b6d4"]];
@@ -113,6 +114,7 @@ function numberGraph(tree) {
   for (let i = 0; i < q.length; i++) { const n = q[i]; if (!n) continue; S.byNum.push(n.id); S.num.set(n.id, S.byNum.length); for (const c of kidsOf(n.id)) q.push(c); }
 }
 const numTag = (id) => (S.view === "tree" && S.num.has(id) ? el("i", { class: "num", text: String(S.num.get(id)) }) : null);
+const ghostly = (n) => n.ghost && !S.oral?.lit?.has(n.id);   // a greyed idea, unless the oral running has heard it
 function dueList(treeId) {
   const live = new Set(S.trees.map((t) => t.id)), now = Date.now();
   return S.nodes.filter((n) => (treeId ? n.treeId === treeId : live.has(n.treeId)) && srs.reviewable(n, kidsOf(n.id).length) && srs.isDue(n, now)).sort((a, b) => srs.dueAt(a).localeCompare(srs.dueAt(b)));
@@ -138,7 +140,7 @@ function looksFor(tree, nodes, garden) {
   const m = new Map(), now = Date.now(), memo = new Map(), hue = tree.color || S.hues.get(tree.zoneId) || T.root;
   // Watering: the topic's colour while an idea is kept, ochre once it needs water, grey when it has dried out.
   if (garden) {
-    for (const n of nodes) { const t = thirst(n, now); m.set(n.id, { color: n.ghost ? T.ring : t === "dry" ? T.limb : t === "thirsty" ? T.link : hue, status: "ok" }); }
+    for (const n of nodes) { const t = thirst(n, now); m.set(n.id, { color: ghostly(n) ? T.ring : t === "dry" ? T.limb : t === "thirsty" ? T.link : hue, status: "ok" }); }
     return m;
   }
   // An idea takes its own colour, else the colour of the idea above it. With none set, a graph is its topic's
@@ -155,7 +157,7 @@ function looksFor(tree, nodes, garden) {
   };
   // beta: H marks what needs water in ochre in the knowledge views, so we can judge it against the watering screen
   const dryOn = S.thirsty;
-  for (const n of nodes) m.set(n.id, { color: n.ghost ? T.ring : dryOn && thirst(n, now) !== "ok" ? T.link : colorOf(n), status: "ok" });
+  for (const n of nodes) m.set(n.id, { color: ghostly(n) ? T.ring : dryOn && thirst(n, now) !== "ok" ? T.link : colorOf(n), status: "ok" });
   return m;
 }
 const passesOf = (treeId) => (S.byTree.get(treeId) || []).reduce((a, n) => a + (n.srs?.passes || 0), 0);
@@ -179,7 +181,7 @@ function buildTree(animate) {
   stage.world.add(flora.group); stage.pickables = [flora.nodeMesh];
   for (const m of ground({ glows: [{ x: 0, z: 0, r: Math.max(7, lay.footprint * 1.8), color: hue, k: 0.11 }], discs: [{ x: 0, z: 0, r: discR(lay), color: hue }] }, T.sky)) addDecor(m);
   const labels = nodes.map((n) => {
-    const e = el("div", { class: "lbl node" + (n.id === tree.rootId ? " trunk" : "") + (n.ghost ? " ghost" : ""), dataset: { kind: "node", id: n.id, n: S.num.get(n.id) }, text: n.title });
+    const e = el("div", { class: "lbl node" + (n.id === tree.rootId ? " trunk" : "") + (ghostly(n) ? " ghost" : ""), dataset: { kind: "node", id: n.id, n: S.num.get(n.id) }, text: n.title });
     labelEls.set(n.id, e);
     return { el: e, pos: flora.pos.get(n.id), kind: "node", id: n.id, depth: lay.depth.get(n.id), r: flora.radii.get(n.id), tidy: true };
   });
@@ -1149,6 +1151,7 @@ function nodePanel(n) {
   const under = S.view === "tree" ? kidsOf(n.id) : [], go = (id) => { select(id); ensureVisible(id); };
   return [
     S.view === "tree" && trail.length ? el("div", { class: "trail" }, trail.map((q) => el("button", { class: "chip", type: "button", title: q.title, onclick: () => go(q.id) }, numTag(q.id), q.title))) : null,
+    n.oral ? el("div", { class: "examrow", id: "oralTag" }, el("span", { class: "chip" + (n.oral.shown ? "" : " ghost"), text: n.oral.shown ? "Oral: shown" : "Oral: missed" }), el("span", { class: "muted", text: n.oral.why })) : null,
     n.ghost || n.exam ? el("div", { class: "examrow" }, el("span", { class: "chip" + (n.ghost ? " ghost" : ""), id: "examTag", text: n.ghost ? "Not shown yet" : LEVELS[(n.exam.level || 1) - 1] }), el("span", { class: "muted", text: n.exam?.tier || "" })) : null,
     el("div", { class: "ph" }, numTag(n.id), el("input", { id: "nodeTitle", class: "title", value: n.title, maxLength: 140, "aria-label": "Title",
       onchange: (e) => (e.target.value.trim() ? save({ title: e.target.value }) : (e.target.value = n.title)) }), panelClose()),
@@ -1235,12 +1238,14 @@ async function passAll(ids) {
   toast(`Watered ${before.length}`, { label: "Undo", run: async () => { await safely(() => store.restoreRows({ nodes: before })); refresh(); } });
 }
 function renderReview() {
+  if (S.oral) return renderOral();
   const box = $("#review"), r = S.review, n = r && S.byId.get(r.ids[r.i]);
+  box.classList.remove("oral");
   if (!n) { box.hidden = true; box.replaceChildren(); return; }
   const parent = S.byId.get(n.parentId), kids = kidsOf(n.id);
   box.hidden = false;
   put(box, 
-    el("div", { class: "row" }, el("span", { class: "muted grow", text: [pathOf(n), parent?.title].filter(Boolean).join(" › ") }), el("span", { class: "muted", text: `${r.i + 1}/${r.ids.length}` }), el("button", { class: "link", id: "reviewAllGood", text: "All good", onclick: () => passAll(r.ids.slice(r.i)) }), ib("reviewClose", "Stop", ICON.close, endReview)),
+    el("div", { class: "row" }, el("span", { class: "muted grow", text: [pathOf(n), parent?.title].filter(Boolean).join(" › ") }), el("span", { class: "muted", text: `${r.i + 1}/${r.ids.length}` }), el("button", { class: "link", id: "reviewAllGood", text: "All good", onclick: () => passAll(r.ids.slice(r.i)) }), desktop ? el("button", { class: "link", id: "reviewOral", onclick: () => startOral(n.treeId, r.ids.slice(r.i)) }, "Oral", el("kbd", { text: "E" })) : null, ib("reviewClose", "Stop", ICON.close, endReview)),
     el("h2", { text: n.title }),
     ...(r.shown ? [
       n.note && el("p", { class: "rv-note", text: n.note }), n.body && el("div", { class: "md", html: md(n.body) }),
@@ -1259,6 +1264,112 @@ async function endReview() {
   const n = S.review?.n; S.review = null;
   await refresh({ animate: true }); renderReview();
   if (n) toast(`Watered ${n}`);
+}
+
+// ---------- oral ----------
+// Watering by talking (Bonsai Desktop, card t-examport): Claude asks about the ideas waiting in a graph, one
+// question at a time, shown and read aloud, and probes until it has heard enough; marks come only at the end.
+// The same oral sits an exam: greyed ideas (not shown yet) are asked about too, and light up as Claude hears
+// them. Saving: shown wakes a greyed idea or waters it (good), missed brings it back sooner (again). The prompts
+// are the Bonsai Exams page's own (paper.js). Speak with the computer's dictation (Win+H on Windows).
+const ORAL_IDEAS = 20;
+const tts = () => (window.speechSynthesis && window.SpeechSynthesisUtterance ? window.speechSynthesis : null);
+const voiceOn = () => pref("voice", "1") !== "0";
+function sayAloud(text) {
+  const sp = tts(); if (!sp || !text) return;
+  try {
+    sp.cancel(); if (!voiceOn()) return;
+    const vs = sp.getVoices?.() || [], en = vs.filter((v) => /^en[-_]/i.test(v.lang)), v = en.find((x) => /^en[-_](NZ|AU|GB)/i.test(x.lang)) || en.find((x) => x.default) || en[0];
+    const u = new SpeechSynthesisUtterance(text); if (v) { u.voice = v; u.lang = v.lang; } sp.speak(u);
+  } catch {}
+}
+const hush = () => { try { tts()?.cancel(); } catch {} };
+const depthOf = (n) => { let d = 0, p = n; while (p?.parentId && d < 8) { p = S.byId.get(p.parentId); d++; } return d; };
+// The JSON in a reply, wherever Claude put it.
+function jsonIn(text) {
+  const t = String(text || "").replace(/```(?:json)?/g, ""), a = t.indexOf("{"), b = t.lastIndexOf("}");
+  if (a < 0 || b <= a) throw new Error("Claude's reply had nothing Bonsai could read");
+  return JSON.parse(t.slice(a, b + 1));
+}
+async function startOral(treeId, ids) {
+  const tree = treeOf(treeId); if (!tree) return toast("Pick a graph first");
+  if (!desktop) return toast("Orals run in Bonsai Desktop");
+  const bad = liveProblem(await liveStatus()); if (bad) return toast(bad);
+  const all = S.byTree.get(tree.id) || [], due = new Set(dueList(tree.id).map((n) => n.id));
+  let pick = ids?.length ? ids.map((id) => S.byId.get(id)).filter(Boolean) : all.filter((n) => n.ghost || due.has(n.id));
+  if (!pick.length) pick = all;   // nothing waiting: practise the whole graph
+  pick = pick.slice(0, ORAL_IDEAS);
+  const zone = S.zones.find((z) => z.id === tree.zoneId);
+  const g = { name: tree.name, ideas: pick.map((n) => ({ key: n.id, title: n.title, note: (n.note || "").slice(0, 200), depth: depthOf(n), kind: "key" })) };
+  S.review = null; S.panel = null;
+  S.oral = { treeId: tree.id, g, m: { topic: zone?.name || tree.name, tier: tree.exam?.tier || "" }, turns: [], shown: [], lit: new Set(), q: oralOpen(g), max: Math.max(3, Math.min(12, pick.length + 1)), busy: "", marks: null };
+  renderChrome(); sayAloud(S.oral.q); setTimeout(() => $("#oralAnswer")?.focus(), 50);
+}
+function stopOral() { const o = S.oral; if (!o) return; o.job?.cancel(); hush(); S.oral = null; refresh(); renderChrome(); }
+function oralKey(k, stop) {
+  const o = S.oral;
+  if (k === "Enter") { stop(); return o.marks ? saveOralMarks() : sendOral(); }
+  if (k === "f" && !o.marks && o.turns.length) { stop(); return finishOral(); }
+  if (k === "r" && !o.marks) { stop(); return sayAloud(o.q); }
+}
+function oralAsk(prompt, label) {
+  const o = S.oral; o.busy = label; renderOral();
+  o.job = askClaude(prompt);
+  return o.job.done.then((r) => {
+    o.job = null; o.busy = ""; if (S.oral !== o) return null;
+    if (!r.ok) { if (r.code !== "cancelled") toast(r.message || "Claude didn't answer"); renderOral(); return null; }
+    return r.text;
+  });
+}
+const ORAL_WHY = "I'm keeping what I've learnt fresh: these are ideas of mine due for review, or not shown yet. Find out which of them I still really understand.";
+async function sendOral() {
+  const o = S.oral, a = ($("#oralAnswer")?.value || "").trim();
+  if (!o || o.busy) return; if (!a) return toast("Say or type an answer first");
+  hush();
+  const turns = [...o.turns, { q: o.q, a }];
+  const back = () => { renderOral(); const t = $("#oralAnswer"); if (t) t.value = a; };
+  const text = await oralAsk(oralPrompt(o.m, o.g, turns, { shown: o.shown, max: o.max, why: ORAL_WHY }), "Thinking");
+  if (text == null) { if (S.oral === o) back(); return; }
+  let r; try { r = readOral(jsonIn(text), o.g); } catch (e) { toast(e.message); return back(); }
+  o.turns = turns; o.shown = r.shown; o.lit = new Set(r.shown); refresh();
+  if (r.done || turns.length >= o.max) return finishOral();
+  o.q = r.next; renderOral(); sayAloud(o.q); $("#oralAnswer")?.focus();
+}
+async function finishOral() {
+  const o = S.oral; if (!o || o.busy) return; hush();
+  const a = ($("#oralAnswer")?.value || "").trim(); if (a && !o.marks) o.turns.push({ q: o.q, a });
+  if (!o.turns.length) return stopOral();
+  const text = await oralAsk(oralMarkPrompt(o.m, o.g, o.turns), "Marking"); if (text == null) return;
+  let r; try { r = readMarks(jsonIn(text), o.g.ideas.map((i) => i.key)); } catch (e) { return toast(e.message); }
+  o.marks = o.g.ideas.map((i, k) => ({ id: i.key, title: i.title, shown: !!r.marks[k]?.shown, why: r.marks[k]?.why || "" })); o.feedback = r.feedback || "";
+  o.lit = new Set(o.marks.filter((m) => m.shown).map((m) => m.id)); refresh(); renderOral();
+}
+async function saveOralMarks() {
+  const o = S.oral; if (!o?.marks) return;
+  const before = await safely(() => store.saveOral(o.marks)); if (!before) return;
+  const ok = o.marks.filter((m) => m.shown).length, n = o.marks.length;
+  S.oral = null; hush(); await refresh({ animate: true }); renderChrome();
+  toast(`Oral: ${ok} of ${n} shown`, { label: "Undo", run: async () => { await safely(() => store.restoreRows({ nodes: before })); refresh(); } });
+}
+function renderOral() {
+  const box = $("#review"), o = S.oral; if (!o) return;
+  const tree = treeOf(o.treeId), b = (id, text, k, run, cls = "btn") => el("button", { class: cls, id, onclick: run }, text, k ? el("kbd", { text: k }) : null);
+  box.hidden = false; box.classList.add("oral");
+  const head = el("div", { class: "row" }, el("span", { class: "muted grow", text: [tree?.name, o.marks ? "Marks" : `Question ${o.turns.length + 1}`].filter(Boolean).join(" › ") }), ib("oralClose", "Stop", ICON.close, stopOral));
+  if (o.busy) return put(box, head, el("p", { class: "muted", id: "oralBusy", text: o.busy }), el("div", { class: "row" }, b("oralStop", "Stop", "Esc", () => (o.job ? o.job.cancel() : stopOral()))));
+  if (o.marks) {
+    const ok = o.marks.filter((m) => m.shown).length;
+    return put(box, head, el("h2", { id: "oralScore", text: `${ok} / ${o.marks.length}` }), o.feedback ? el("p", { class: "muted", text: o.feedback }) : null,
+      el("ul", { class: "oralmarks" }, o.marks.map((m) => el("li", { class: "mark" + (m.shown ? " shown" : "") + (m.changed ? " changed" : ""), title: "Click to change", onclick: () => { m.shown = !m.shown; m.changed = !m.changed; o.lit = new Set(o.marks.filter((x) => x.shown).map((x) => x.id)); refresh(); renderOral(); } },
+        el("b", { text: (m.shown ? "✓ " : "✗ ") + m.title }), m.why ? el("span", { class: "muted", text: " " + m.why }) : null))),
+      el("div", { class: "row" }, b("oralSave", "Save", "↵", saveOralMarks, "btn primary"), b("oralDiscard", "Discard", "Esc", stopOral)));
+  }
+  const ta = el("textarea", { id: "oralAnswer", rows: 3, placeholder: "Answer here. Win+H to speak. ↵ sends, ⇧↵ new line" });
+  ta.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); e.stopPropagation(); sendOral(); } });
+  put(box, head, el("h2", { id: "oralQ", text: o.q }), ta,
+    el("div", { class: "row" }, b("oralSend", "Send", "↵", sendOral, "btn primary"), tts() ? b("oralRepeat", "Repeat", "R", () => sayAloud(o.q)) : null,
+      tts() ? el("button", { class: "btn", id: "oralVoice", onclick: () => { setPref("voice", voiceOn() ? "0" : "1"); voiceOn() ? sayAloud(o.q) : hush(); renderOral(); } }, voiceOn() ? "Voice on" : "Voice off") : null,
+      o.turns.length ? b("oralFinish", "Finish", "F", finishOral) : null, el("span", { class: "grow" }), el("span", { class: "muted", id: "oralHeard", text: `${o.shown.length} of ${o.g.ideas.length} heard` })));
 }
 
 // ---------- timeline ----------
@@ -1774,6 +1885,7 @@ function graphItems(t) {
   return [
     { label: "Open", key: "↵", run: () => openTree(t.id) }, { label: "On the board", run: () => { location.hash = notesHash(GP + t.id); } },
     ...(() => { const d = dueList(t.id); return d.length ? [{ label: `Water ${d.length}`, key: "W", run: () => water(null, t.id) }, { label: "All good", run: () => passAll(d.map((n) => n.id)) }] : []; })(),
+    desktop && { label: "Oral", key: "E", run: () => startOral(t.id) },
     "-", { label: "Rename", run: () => renameThing(t, store.updateTree, "Knowledge graph") }, { label: "Colour", run: () => colourThing(t, store.updateTree) },
     S.zones.length > 1 && { label: "Move to topic", run: async () => {
       const v = await dialog({ title: `Move ${t.name}`, fields: [{ name: "zoneId", label: "Topic", type: "select", value: t.zoneId, options: S.zones.map((z) => [z.id, z.name]) }], ok: "Move" });
@@ -1807,6 +1919,7 @@ function back() {
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || document.activeElement?.isContentEditable) return document.activeElement.blur();
   if (S.move) return toggleMove(false);
   if (S.view === "notes" && (S.gsel || S.glink) && graphPage(S.npage)) return S.boardPick?.(null);
+  if (S.oral) return stopOral();
   if (S.review) return endReview();
   if (S.cutoff != null) return toggleTimeline();
   if (S.panel) { S.panel = null; return renderPanel(); }
@@ -1822,8 +1935,10 @@ function onKey(e) {
   if (e.key === "Escape") { e.preventDefault(); if (e.shiftKey && S.backTo && $("#backBtn") && !overlayOpen()) { location.hash = S.backTo; return; } return back(); }
   if (e.ctrlKey || e.metaKey || e.altKey || overlayOpen() || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName) || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || e.target?.isContentEditable || document.activeElement?.isContentEditable) return;
   const k = e.key.length === 1 ? e.key.toLowerCase() : e.key, stop = () => e.preventDefault();
+  if (S.oral) return oralKey(k, stop);
   if (S.review) {
     const r = S.review;
+    if (k === "e" && desktop) { stop(); return startOral(S.byId.get(r.ids[r.i])?.treeId, r.ids.slice(r.i)); }
     if (k === " " || k === "Enter") { stop(); if (!r.shown) { r.shown = true; renderReview(); } }
     else if (r.shown && "1234".includes(k)) rateNow(srs.RATINGS[+k - 1]);
     return;
@@ -2178,7 +2293,7 @@ function graph3D(tr) {
     st.world.add(flora.group); st.pickables = [flora.nodeMesh];
     decor3 = ground({ glows: [{ x: 0, z: 0, r: Math.max(7, lay.footprint * 1.8), color: hue, k: 0.11 }], discs: [{ x: 0, z: 0, r: discR(lay), color: hue }] }, T.sky); for (const d of decor3) st.world.add(d);
     els = new Map();
-    st.setLabels(nodes.map((n) => { const e = el("div", { class: "lbl node" + (n.id === t.rootId ? " trunk" : "") + (n.ghost ? " ghost" : "") + (n.id === S.gsel ? " sel" : ""), dataset: { kind: "node", id: n.id, n: S.num.get(n.id) }, text: n.title }); els.set(n.id, e);
+    st.setLabels(nodes.map((n) => { const e = el("div", { class: "lbl node" + (n.id === t.rootId ? " trunk" : "") + (ghostly(n) ? " ghost" : "") + (n.id === S.gsel ? " sel" : ""), dataset: { kind: "node", id: n.id, n: S.num.get(n.id) }, text: n.title }); els.set(n.id, e);
       return { el: e, pos: flora.pos.get(n.id), kind: "node", id: n.id, depth: lay.depth.get(n.id), r: flora.radii.get(n.id), tidy: true }; }));
     if (!framed) { framed = true; st.setView({ target: vec(lay.center), radius: st.fitDistance(lay.radius) * 0.95, theta: 0.6, phi: 1.05 }); }
     st.invalidate();

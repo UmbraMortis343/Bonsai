@@ -1,8 +1,9 @@
 // The papers: what Claude is asked when it sets and marks one, and how its replies are read.
-// Pure logic; the exams page is built from this file and src/exams.js (tools/exams/build.mjs).
-import { ideaKey, linkKey } from "../../src/exams.js";
+// Pure logic, shared: the Bonsai Exams page is built from this file and exams.js (tools/exams/build.mjs), and the
+// app uses the oral to water a graph in Bonsai Desktop (main.js, `startOral`).
+import { ideaKey, linkKey } from "./exams.js";
 
-const about = (map, g) => `The subject is ${map.topic}, pitched at ${map.source || map.tier} (${map.tier}).${g ? ` The section is "${g.name}".` : ""}`;
+const about = (map, g) => `The subject is ${map.topic}${map.tier ? `, pitched at ${map.source || map.tier} (${map.tier})` : ""}.${g ? ` The section is "${g.name}".` : ""}`;
 const sheet = (ideas) => ideas.map((i) => `${i.key} | ${"  ".repeat(i.depth)}${i.title} | ${i.note}`).join("\n");
 const STRICT = [
   "Mark as a fair, strict examiner.",
@@ -54,25 +55,25 @@ const transcript = (turns, photos = 0) => turns.map((t, k) => {
   const a = hand ? answerText(t.a, hand) : t.read ? `My answer was handwritten; it read: "${t.read}"${t.a ? "\n" + answerText(t.a) : ""}` : t.a ? answerText(t.a) : "My answer: (nothing)";
   return `Question ${k + 1}: ${t.q}\n${a}`;
 }).join("\n\n");
-export function oralPrompt(map, g, turns, { photos = 0, shown = [] } = {}) {
-  const n = turns.length, last = n >= ORAL_MAX;
+export function oralPrompt(map, g, turns, { photos = 0, shown = [], max = ORAL_MAX, why = "" } = {}) {
+  const n = turns.length, last = n >= max;
   return [
     "Interview me: an adaptive oral exam. " + about(map, g),
-    "I'm a graduate mapping what I already know, not sitting a real exam. The ideas below are what the section covers. Find out which of them I really understand.",
+    why || "I'm a graduate mapping what I already know, not sitting a real exam. The ideas below are what the section covers. Find out which of them I really understand.",
     "",
     "How to interview:",
     "- One question at a time, under 30 words, in plain spoken English. It is read aloud, so no symbols, formulas, lists or markdown.",
     "- Start broad, then narrow onto ideas I haven't shown. When an answer is vague, shaky or only names something, ask why or how, or for an example.",
     "- Never give an answer away, hint at what an idea says, or tell me whether I was right. No praise, marks or feedback.",
     "- If I say I don't know, or stay stuck, move on to another part of the section.",
-    `- Cover the whole section in about 6 to ${ORAL_MAX} questions. Stop when every idea is shown or has been probed and missed.`,
+    `- Cover the whole section in about ${Math.min(6, max)} to ${max} questions. Stop when every idea is shown or has been probed and missed.`,
     "- A spoken answer comes through dictation: ignore mis-heard words, filler and loose grammar when the meaning is clear. A handwritten one comes as photos.",
     "",
     "Reply with only JSON in this shape:",
     `{"read": "", "shown": ["k1abc"], "next": "...", "done": false}`,
     `- "read": if my latest answer is handwritten in the attached photo${photos === 1 ? "" : "s"}, what it says in under 600 characters; else "".`,
     `- "shown": the keys of every idea I've shown so far in the whole interview: stated or used correctly, not merely named.${shown.length ? " Last time you had: " + shown.join(", ") + "." : ""}`,
-    last ? `- This was question ${n}, the last: "done": true, "next": "".` : `- "next": the next question; "done": true and "next": "" when you have enough. This was question ${n} of at most ${ORAL_MAX}.`,
+    last ? `- This was question ${n}, the last: "done": true, "next": "".` : `- "next": the next question; "done": true and "next": "" when you have enough. This was question ${n} of at most ${max}.`,
     "",
     "The ideas (key | idea | what it is):",
     sheet(explainIdeas(g)),

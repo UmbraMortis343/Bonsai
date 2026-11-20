@@ -2,6 +2,10 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.31.0 — 2026-11-20
+- Orals in Bonsai Desktop: water a graph by talking. While watering, **Oral (E)** turns the round into an oral on the ideas waiting; a graph's menu has **Oral** too, which also asks about greyed (not shown yet) ideas, so an exam can be sat in the app. Claude asks one question at a time, shown and read aloud (Repeat R, Voice on/off), probes until it has heard enough, and greyed ideas light up as it hears them. ↵ sends (Win+H to speak), F finishes early. Marks come at the end; click any to change it, then Save (↵): shown ideas wake or are watered, missed ones come back sooner, and each idea's panel says what the oral found. Undo puts it all back.
+- The paper prompts now live in the app (src/paper.js), shared with the Bonsai Exams page.
+
 ## 0.30.0 — 2026-11-20
 - Bonsai Desktop for Windows (Bonsai-Setup.exe, release desktop-v0.1.0): the live Bonsai in its own window, plus a Bonsai Beta shortcut. In it, Grow and Flesh out have **Ask Claude**, which asks Claude Code on the computer (on the plan it's signed in with) and writes the reply into the same box you'd paste into; you check it and keep it as before. Flesh out asks straight away. Copy and paste stays everywhere else.
 - Menu: Bonsai for Windows (in a browser on Windows) and a note when a newer Bonsai Desktop is out (in the desktop app).

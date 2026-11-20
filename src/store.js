@@ -303,6 +303,23 @@ export async function reviewNode(id, rating) {
     return next;
   });
 }
+// What an oral found, saved in one go: [{ id, shown, why }]. A greyed idea shown wakes (one pass, as an exam
+// would), an idea shown counts as watered (good), one missed comes back sooner (again). Each keeps `oral`
+// ({ at, shown, why }) for its panel. Returns the rows as they were, for Undo.
+export async function saveOral(results) {
+  return tx(["nodes", "events"], "readwrite", async (s) => {
+    const before = []; let k = 0;
+    for (const r of results) {
+      const n = await reqP(s.nodes.get(r.id)); if (!n) continue;
+      before.push(n);
+      const next = { ...n, oral: { at: now(), shown: !!r.shown, why: clean(r.why, 160) }, updatedAt: now() };
+      if (n.ghost) { if (r.shown) { delete next.ghost; Object.assign(next, passed(2, k++)); logEvent(s, "node.create", n.id, { treeId: n.treeId, parentId: n.parentId }); } }
+      else { next.srs = rate(n, r.shown ? "good" : "again"); next.reviewedAt = now(); logEvent(s, "node.review", n.id, { rating: r.shown ? "good" : "again", by: "oral" }); }
+      s.nodes.put(next);
+    }
+    return before;
+  });
+}
 // Moves an idea (and its branch) under a new parent, possibly in another tree.
 // This is what grafting builds on.
 export async function moveNode(id, newParentId) {
