@@ -9,6 +9,10 @@
 //     > fuller note          lines kept as the idea's notes
 //   = Existing idea          an idea already in the topic; what's indented under it strings to it
 //   link: Idea -> Idea | label    any other connection
+//     ? why: Question | answer      a question for watering the idea above (recall when no kind; why, apply);
+//                                   older replies have none and read as before
+
+import { makeQuestion } from "./questions.js";
 
 export const GROW_TAG = "bonsai grow";
 const MAX_IDEAS_SHOWN = 600;   // the topic's ideas listed in the prompt, so Claude can reuse them
@@ -42,6 +46,7 @@ export function growPrompt({ topic, page, trees = [], nodes = [], grownTitles = 
     "- Don't repeat ideas I already have. To hang new ideas off one of mine, write \"= \" and its exact title, then indent the new ideas under it.",
     "- Add to one of my graphs when the notes fit it; start a new graph (a new name after \"graph:\") only for a new area. The first idea of a new graph is where it starts.",
     "- Add \"link:\" lines for connections that cross the strings, including to my existing ideas.",
+    "- Under each new idea, add one \"? \" line: a question I answer from memory when I review it, then \"|\" and a short answer (leave the answer out when the idea's title and note answer it). Plain is recall; start with \"why:\" to ask why a foundation holds, or \"apply:\" for a quick problem with numbers, only where the topic suits it (physics, circuits, maths). Don't put the idea's title in the question.",
     "- Reply with only one code block, starting with the line \"" + GROW_TAG + "\", in exactly this format (the content here is only an example):",
     "",
     "```",
@@ -50,10 +55,13 @@ export function growPrompt({ topic, page, trees = [], nodes = [], grownTitles = 
     "= Cell",
     "  Mitochondria | Organelles that release energy from food by respiration",
     "    > Has its own DNA; inner membrane folded into cristae",
+    "    ? Which organelles release energy from food?",
     "    ATP | The molecule cells use to carry energy",
+    "      ? why: Why do cells store energy in one molecule rather than using glucose directly? | Small, quick packets of energy, released where they're needed",
     "graph: Respiration",
     "Respiration | Releasing energy from glucose inside cells",
     "  Anaerobic respiration | Respiration without oxygen; makes lactic acid in muscles",
+    "    ? What does a sprinting muscle make when it runs short of oxygen?",
     "link: ATP -> Respiration | made by",
     "```",
     "",
@@ -68,7 +76,7 @@ export function growPrompt({ topic, page, trees = [], nodes = [], grownTitles = 
   ].join("\n");
 }
 
-// Reads Claude's reply. Returns { graphs: [{ name, items: [{ depth, title, note, body, ref }] }], links: [{ a, b, label }], bad }.
+// Reads Claude's reply. Returns { graphs: [{ name, items: [{ depth, title, note, body, ref, qs? }] }], links: [{ a, b, label }], bad }.
 export function readGrow(text) {
   let src = String(text || "").replace(/\r/g, "");
   const fence = src.match(/```[^\n]*\n([\s\S]*?)```/g);
@@ -82,6 +90,11 @@ export function readGrow(text) {
     let m;
     if ((m = body.match(/^(?:graph\s*:|#+)\s*(.+)$/i))) { g = { name: m[1].trim().slice(0, 80), items: [] }; graphs.push(g); indents.length = 0; last = null; continue; }
     if ((m = body.match(/^link\s*:\s*(.+?)\s*(?:->|→|—>|<->)\s*(.+?)(?:\s*\|\s*(.*))?$/i))) { links.push({ a: m[1].trim(), b: m[2].trim(), label: (m[3] || "").trim().slice(0, 60) }); continue; }
+    if ((m = body.match(/^\?\s*(?:(recall|why|apply)\s*:\s*)?(.+?)(?:\s*\|\s*(.*))?$/i)) && body.length > 2) {
+      const q = makeQuestion({ kind: (m[1] || "recall").toLowerCase(), q: m[2], a: m[3] || "" }, "claude");
+      if (last && !last.ref && q) { if ((last.qs ||= []).length < 3) last.qs.push(q); } else bad++;
+      continue;
+    }
     if (body.startsWith(">")) { if (last && !last.ref) last.body += (last.body ? "\n" : "") + body.replace(/^>\s?/, ""); else bad++; continue; }
     if (!g) { g = { name: "", items: [] }; graphs.push(g); }
     const width = line.match(/^ */)[0].length;
@@ -99,7 +112,7 @@ export function readGrow(text) {
 }
 
 // Works out what a reply adds to a topic. ctx: { trees (this topic's), nodes (this topic's), allNodes, links }.
-// Returns { trees: [{ key, name, root }], nodes: [{ key, parent, title, note, body }], links: [{ from, to, label }], added, graphs }
+// Returns { trees: [{ key, name, root }], nodes: [{ key, parent, title, note, body, qs? }], links: [{ from, to, label }], added, graphs }
 // where parent / from / to are an existing idea's id or a new idea's key ("k1", ...), and a new tree's root is the key of its first idea.
 export function planGrow(read, { trees = [], nodes = [], allNodes = nodes, links = [] }) {
   let k = 0; const key = () => "k" + ++k;
@@ -130,8 +143,8 @@ export function planGrow(read, { trees = [], nodes = [], allNodes = nodes, links
         continue;
       }
       const nk = key();
-      if (!tree && !root) { root = nk; out.trees.push({ key: treeKey, name: g.name || it.title, root: nk, title: it.title, note: it.note, body: it.body }); if (startLink) addLink(nk, startLink); }
-      else { out.nodes.push({ key: nk, parent: up || root, title: it.title, note: it.note, body: it.body }); linked.add(pair(up || root, nk)); }
+      if (!tree && !root) { root = nk; out.trees.push({ key: treeKey, name: g.name || it.title, root: nk, title: it.title, note: it.note, body: it.body, ...(it.qs ? { qs: it.qs } : {}) }); if (startLink) addLink(nk, startLink); }
+      else { out.nodes.push({ key: nk, parent: up || root, title: it.title, note: it.note, body: it.body, ...(it.qs ? { qs: it.qs } : {}) }); linked.add(pair(up || root, nk)); }
       made.push({ key: nk, title: it.title, treeKey }); count++;
       stack.push({ depth: it.depth, at: nk });
     }

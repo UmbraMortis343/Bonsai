@@ -214,6 +214,36 @@ time{font-size:12px;color:var(--muted)}
 .rate{flex-wrap:wrap}
 .rate .btn{flex:1;justify-content:center}
 .review .md{padding:0;cursor:auto}
+/* questions (questions.js): the kind as a small tag, the answer under the question, Rebuild's blanks */
+.qkind{font-size:11px;font-weight:600;letter-spacing:.04em;color:var(--accent);border:1px solid var(--accent);border-radius:3px;padding:1px 5px;flex:none;align-self:center}
+.rv-ans{display:grid;gap:3px;border-left:3px solid var(--accent);padding:2px 0 2px 10px}
+.rv-ans p{white-space:pre-wrap;overflow-wrap:anywhere}
+.rv-kids.rebuild{color:var(--ink);display:grid;gap:4px}
+.rv-kids li.blank::before{content:"";display:inline-block;width:9em;height:1em;vertical-align:-3px;border-bottom:2px solid var(--muted)}
+.rv-kids li.hid{color:var(--accent);font-weight:600}
+.qsec{display:grid;gap:4px}
+.qsec h3{font-size:12px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:0}
+.qsec .btn{padding:2px 8px;font-size:13px}
+.qrow{display:flex;gap:6px;align-items:center}
+.qrow .qtext{flex:1;min-width:0;text-align:left;border:0;background:none;padding:3px 0;color:var(--ink);font:inherit;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
+.qrow .qtext:hover{text-decoration:underline}
+.qrow.off{opacity:.5}
+.qrow .ib{width:24px;height:24px}
+.qform{display:grid;gap:8px}
+.qform textarea{width:100%;font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--ink);resize:vertical}
+.qform [hidden]{display:none}
+.qhide{display:grid;gap:4px}
+.qticks{display:grid;gap:2px;max-height:180px;overflow:auto}
+.dialog .qtick{display:flex;gap:6px;align-items:center;color:var(--ink)}
+.wq{display:grid;gap:6px}
+.wqlist{display:grid;gap:4px;max-height:50vh;overflow:auto}
+.dialog .wqrow{display:flex;gap:8px;align-items:flex-start;padding:5px 6px;border:1px solid var(--line);border-radius:4px;color:var(--ink)}
+.wqrow .qkind{align-self:flex-start;margin-top:2px}
+.wqbody{display:grid;gap:2px;min-width:0}
+.wqbody b{font-weight:600}
+.dialog .qtick>span,.dialog .wqrow>.wqbody{color:var(--ink)}
+.dialog .wqrow>.qkind{color:var(--accent)}
+.dialog .qtick input,.dialog .wqrow input{width:auto;flex:none;accent-color:var(--accent)}
 
 .hover{position:fixed;z-index:8;max-width:280px;pointer-events:none;display:grid;gap:2px;background:var(--card);border:1px solid var(--line);border-radius:6px;padding:8px 10px;box-shadow:var(--shadow);font-size:13px}
 .hover span{color:var(--muted)}
