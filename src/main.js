@@ -15,13 +15,14 @@ import { CHANNEL } from "./channel.js";
 import { demoBackup } from "./demo.js";
 import { growPrompt, readGrow, planGrow, growSummary } from "./notes.js";
 import { createEditor, textToBlocks, blocksToText } from "./blocks.js";
-import { datePicker, longDate } from "./datepick.js";
+import { datePicker, longDate, relDate } from "./datepick.js";
 import { createMiniWeb } from "./miniweb.js";
 import { MARK_LIST, assignMarks } from "./marks.js";
 import { readExam, planExam, LEVELS } from "./exams.js";
 import { createVocab, createQuick, fleshPrompt, readFlesh } from "./vocab.js";
 import { desktop, canSee, liveStatus, liveProblem, askClaude, desktopUpdate } from "./live.js";
 import { oralOpen, oralPrompt, readOral, oralMarkPrompt, readMarks } from "./paper.js";
+import * as sync from "./sync.js";
 import { createInk } from "./ink.js";
 
 const PALETTE = [["Blue", "#3b82f6"], ["Violet", "#8b5cf6"], ["Pink", "#ec4899"], ["Red", "#ef4444"], ["Orange", "#f97316"], ["Amber", "#f59e0b"], ["Green", "#22c55e"], ["Teal", "#14b8a6"], ["Cyan", "#06b6d4"]];
@@ -719,6 +720,30 @@ async function resetDemo() {
   if (!(await dialog({ title: "Put the beta back to the demo islands?", ok: "Reset", danger: true }))) return;
   await safely(() => store.importAll(demoBackup())); await load(); location.hash = "#/"; refresh();
 }
+// ---------- sync between devices (sync.js) ----------
+function syncAgo() { const t = sync.lastSync(); if (!t) return "not yet"; const m = Math.round((Date.now() - t) / 60000); return m < 1 ? "just now" : m < 60 ? m + " min ago" : relDate(new Date(t).toISOString().slice(0, 10)); }
+const syncDone = (r) => toast(r && (r.sent || r.got) ? `Synced: ${r.sent} sent, ${r.got} in` : "Synced");
+async function syncDialog() {
+  if (sync.signedIn()) {
+    const waiting = await store.pendingCount().catch(() => 0);
+    const out = el("button", { type: "button", class: "btn", id: "syncOut", text: "Sign out", onclick: () => { sync.signOut(); out.closest(".scrim")?.querySelector(".row.end .btn")?.click(); toast("Signed out. Everything stays on this device"); } });
+    const body = el("div", { class: "growd" }, el("p", { class: "muted", id: "syncWho", text: `${sync.email()} · ${syncAgo()}${waiting ? ` · ${waiting} waiting` : ""}` }), el("div", { class: "row" }, out));
+    if (await dialog({ title: "Sync", ok: "Sync now", cancel: "Close", body })) syncNowUI();
+    return;
+  }
+  const a = await dialog({ title: "Sync devices", fields: [{ name: "email", label: "Email", placeholder: "you@example.com" }], ok: "Send code" }); if (!a?.email?.includes("@")) return;
+  try { await sync.sendCode(a.email); } catch (e) { return toast(e.message || "The code couldn't be sent"); }
+  for (let tries = 0; tries < 3; tries++) {
+    const b = await dialog({ title: `Code sent to ${a.email.trim()}`, fields: [{ name: "code", label: "Code", placeholder: "From the email", max: 10 }], ok: "Sign in" }); if (!b?.code) return;
+    try { syncDone(await sync.signIn(a.email, b.code)); await refresh(); renderChrome(); return; } catch (e) { toast(e.message || "That code didn't work"); }
+  }
+}
+function syncNowUI() { sync.syncNow().then((r) => { syncDone(r); }).catch((e) => toast(e.message || "Sync failed")); }
+let syncErr = "";
+const syncStart = () => sync.start({
+  onChange: async () => { await refresh(); renderChrome(); },
+  onError: (e) => { if (e instanceof TypeError || !navigator.onLine) return; const m = e.message || "Sync failed"; if (m !== syncErr) { syncErr = m; toast(m.startsWith("Sync") ? m : "Sync: " + m); } },
+});
 const DESKTOP_URL = "https://github.com/UmbraMortis343/Bonsai/releases?q=desktop&expanded=true";
 function appMenu(anchor) {
   const archived = [...S.allZones.filter((z) => z.archived), ...S.allTrees.filter((t) => t.archived)];
@@ -734,6 +759,7 @@ function appMenu(anchor) {
     { label: "Check for updates", run: async () => { const r = await shell.check(); if (r !== "update") toast(r === "latest" ? "Up to date" : "Offline"); } },
     { label: "What's new", run: () => window.open("https://github.com/UmbraMortis343/Bonsai/releases", "_blank", "noopener") },
     shell.canInstall() && { label: "Install app", run: () => shell.install() },
+    { label: sync.signedIn() ? `Sync · ${syncAgo()}` : "Sync devices", run: syncDialog },
     S.desk && { label: `Bonsai Desktop ${S.desk.latest}`, run: () => window.open(S.desk.url, "_blank", "noopener") },
     !desktop && /Windows/.test(navigator.userAgent) && { label: "Bonsai for Windows", run: () => window.open(DESKTOP_URL, "_blank", "noopener") },
     { label: `Bonsai ${CHANNEL ? CHANNEL + " " : ""}${shell.version}`, disabled: true },
@@ -3042,8 +3068,9 @@ async function init() {
     const c = await store.counts().catch(() => null);
     if (c && !c.zones && !(await store.getMeta("demo").catch(() => null))) await store.importAll(demoBackup());
   }
-  window.bonsai = { S, store, refresh, get stage() { return stage; }, get isles() { return isles; }, get tech() { return tech; }, get vocab() { return vocab; }, thirst, water, openTree, graphItems };
+  window.bonsai = { S, store, sync, refresh, get stage() { return stage; }, get isles() { return isles; }, get tech() { return tech; }, get vocab() { return vocab; }, thirst, water, openTree, graphItems };
   await go();
   document.body.dataset.ready = "1";
+  syncStart();
 }
 init();

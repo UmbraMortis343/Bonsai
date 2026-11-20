@@ -213,7 +213,7 @@ await page.waitForFunction(() => !bonsai.S.pages.some((p) => p.title === "Proble
 await page.click("#toast .link");
 await page.waitForFunction(() => bonsai.S.pages.some((p) => p.title === "Problem sheet 6"));
 const b = await state(page, async () => { const x = await bonsai.store.exportAll(); return [x.schema, x.pages.length]; });
-t.eq(b, [4, 9], "backup has schema 4 and the pages");
+t.eq(b, [5, 9], "backup has schema 5 and the pages");
 
 // The garden panel: the name comes first and renames in place; Tech tree opens at the island's tier.
 await page.click("#winGarden"); await page.waitForSelector("body[data-isles=ready]");

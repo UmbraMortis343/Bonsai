@@ -18,11 +18,13 @@
 //        Early beta pages had zoneId, treeIds and plain text; they're read as top-level pages.
 //        Growing a page with Claude adds ideas to a topic; grown records what each grow made.
 // vector {id, model, hash, v}  An idea's embedding. Recomputable, so not in backups.
+// outbox {k, store, id, at}  What changed here and hasn't reached the cloud yet (sync.js); k is "store|id".
+//        Every readwrite transaction notes each put and delete on a synced store, in the same transaction.
 
 import { CHANNEL } from "./channel.js";
 import { rate } from "./srs.js";
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 const DB_NAME = CHANNEL ? "bonsai-" + CHANNEL : "bonsai";   // the beta never sees the real garden
 const STORES = ["zones", "trees", "nodes", "links", "events", "meta", "patches", "inbox", "pages"];   // what a backup holds
 
@@ -52,7 +54,8 @@ function open() {
       }
       if (e.oldVersion < 3) db.createObjectStore("vectors", { keyPath: "id" });
       if (e.oldVersion < 4) db.createObjectStore("pages", { keyPath: "id" }).createIndex("zoneId", "zoneId");
-      // Future schema changes go here as `if (e.oldVersion < 5) { ... }`.
+      if (e.oldVersion < 5) db.createObjectStore("outbox", { keyPath: "k" });
+      // Future schema changes go here as `if (e.oldVersion < 6) { ... }`.
     };
     req.onsuccess = () => {
       const db = req.result;
@@ -68,15 +71,35 @@ function open() {
 const reqP = (r) => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
 
 // Runs fn(stores) inside one transaction. Everything in it saves together or not at all.
-async function tx(names, mode, fn) {
+// In a readwrite one, every put and delete on a synced store is noted in the outbox too, so sync knows what to send
+// (quiet: changes that came from the cloud, which mustn't be sent back).
+export const SYNCED = STORES;
+const keyOf = (name, v) => (name === "meta" ? v?.key : v?.id);
+const LOCAL_META = new Set(["ai", "demo"]);   // about this device only (the meaning model's download, the beta's demo flag): never synced
+const local = (name, id) => name === "meta" && LOCAL_META.has(id);
+const listeners = new Set();
+export const onWrite = (fn) => { listeners.add(fn); return () => listeners.delete(fn); };
+function noting(name, st, ob, wrote) {
+  const note = (id) => { if (id == null || local(name, id)) return; wrote.n++; ob.put({ k: name + "|" + id, store: name, id: String(id), at: Date.now() }); };
+  return new Proxy(st, { get(t, p) {
+    if (p === "put" || p === "add") return (v, k) => { const r = t[p](v, k); note(k ?? keyOf(name, v)); return r; };
+    if (p === "delete") return (k) => { const r = t.delete(k); if (typeof k === "string" || typeof k === "number") note(k); return r; };
+    const v = t[p]; return typeof v === "function" ? v.bind(t) : v;
+  } });
+}
+async function tx(names, mode, fn, { quiet = false } = {}) {
   const db = await open();
-  const t = db.transaction(names, mode);
-  const s = Object.fromEntries(names.map((n) => [n, t.objectStore(n)]));
+  const track = mode === "readwrite" && !quiet && names.some((n) => SYNCED.includes(n));
+  const all = track && !names.includes("outbox") ? [...names, "outbox"] : names;
+  const t = db.transaction(all, mode), wrote = { n: 0 };
+  const ob = track ? t.objectStore("outbox") : null;
+  const s = Object.fromEntries(names.map((n) => [n, track && SYNCED.includes(n) ? noting(n, t.objectStore(n), ob, wrote) : t.objectStore(n)]));
   const done = new Promise((res, rej) => { t.oncomplete = res; t.onerror = () => rej(t.error); t.onabort = () => rej(t.error || new Error("Save cancelled")); });
   done.catch(() => {}); // a refused save is reported by the throw below, not as a stray error
   let out;
   try { out = await fn(s, t); } catch (e) { try { t.abort(); } catch {} throw e; }
   await done;
+  if (wrote.n) for (const f of listeners) try { f(); } catch {}
   return out;
 }
 
@@ -599,3 +622,45 @@ export async function requestPersistence() {
 }
 
 function pick(o, keys) { const r = {}; for (const k of keys) if (o && k in o) r[k] = o[k]; return r; }
+
+// ---------- sync (sync.js does the talking) ----------
+const atOf = (r) => Date.parse(r?.updatedAt || r?.createdAt || r?.at || "") || 1;
+// Everything here, noted as changed when it was last changed: for a device's first sync, so older records lose to newer ones.
+export async function noteAll() {
+  return tx([...STORES, "outbox"], "readwrite", async (s) => {
+    let n = 0;
+    for (const name of STORES) for (const r of await reqP(s[name].getAll())) { const id = keyOf(name, r); if (id == null || local(name, id)) continue; s.outbox.put({ k: name + "|" + id, store: name, id: String(id), at: atOf(r) }); n++; }
+    return n;
+  }, { quiet: true });
+}
+// Up to `limit` waiting changes, each with the record as it is now (null when it's gone).
+export async function pending(limit = 300) {
+  return tx([...STORES, "outbox"], "readonly", async (s) => {
+    const list = (await reqP(s.outbox.getAll())).slice(0, limit);
+    for (const o of list) o.data = (await reqP(s[o.store].get(o.store === "meta" ? o.id : o.id))) ?? null;
+    return list;
+  });
+}
+export const pendingCount = () => tx(["outbox"], "readonly", (s) => reqP(s.outbox.count()));
+// Sent: forget those changes, unless the record changed again since.
+export async function sent(list) {
+  return tx(["outbox"], "readwrite", async (s) => {
+    for (const o of list) { const cur = await reqP(s.outbox.get(o.k)); if (cur && cur.at === o.at) s.outbox.delete(o.k); }
+  });
+}
+// Changes from the cloud: [{ store, id, data, deleted, client_at }]. A change made here later, not yet sent, wins.
+// Returns how many records changed.
+export async function applyRemote(rows) {
+  return tx([...STORES, "outbox"], "readwrite", async (s) => {
+    let n = 0;
+    for (const r of rows) {
+      if (!STORES.includes(r.store) || local(r.store, r.id)) continue;
+      const mine = await reqP(s.outbox.get(r.store + "|" + r.id));
+      if (mine && mine.at > r.client_at) continue;
+      if (r.deleted || !r.data) { if (await reqP(s[r.store].get(r.id))) { s[r.store].delete(r.id); n++; } }
+      else { s[r.store].put(r.data); n++; }
+      if (mine) s.outbox.delete(mine.k);
+    }
+    return n;
+  }, { quiet: true });
+}

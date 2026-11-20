@@ -2,6 +2,9 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.33.0 — 2026-11-21
+- Sync between devices: Menu → Sync devices, type your email, then the code it sends. Do it once on each device (laptop browser, Bonsai Desktop, phone) and they share the same garden, graphs, notes and log. Changes go up a few seconds after you make them and come down every minute, when you open Bonsai, and when you're back online; it works offline and catches up. If the same thing changed on two devices, the newer change wins. Bonsai Beta syncs separately, so the demo never mixes with your real garden. Sign out any time; everything stays on the device.
+
 ## 0.32.1 — 2026-11-20
 - The mountain keeps off a large centrepiece: on a small island it is set back so 5 units of clear ground lie between the centrepiece and its foot, and is made smaller only when there's no room to set it back. The arches island is unchanged.
 
