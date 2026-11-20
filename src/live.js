@@ -3,6 +3,7 @@
 // browser) there's no bridge and the copy-and-paste round trip stays.
 const D = typeof window !== "undefined" ? window.bonsaiDesktop : null;
 export const desktop = !!D?.claude;
+export const canSee = () => !!D?.features?.includes?.("images");   // Bonsai Desktop 0.2.0 and later can send pictures
 
 const SYSTEM = "You are working inside Bonsai, a knowledge-retention app. The message says exactly what to reply with and in what format: reply with that and nothing else, no preamble or closing remarks.";
 
@@ -22,10 +23,10 @@ export function liveProblem(st) {
 
 let seq = 0;
 // Ask Claude. onText gets the reply so far as it streams. Resolves { ok, text } or { ok: false, code, message }.
-export function askClaude(prompt, { onText, system = SYSTEM } = {}) {
+export function askClaude(prompt, { onText, system = SYSTEM, images } = {}) {
   const id = "q" + Date.now().toString(36) + (++seq);
   const off = D.claude.onEvent((e) => { if (e?.reqId === id && e.type === "text") onText?.(e.text); });
-  const done = Promise.resolve(D.claude.ask({ reqId: id, system, prompt })).catch((e) => ({ ok: false, code: "failed", message: e?.message || "That didn't go through." })).finally(() => off?.());
+  const done = Promise.resolve(D.claude.ask({ reqId: id, system, prompt, ...(images?.length ? { images } : {}) })).catch((e) => ({ ok: false, code: "failed", message: e?.message || "That didn't go through." })).finally(() => off?.());
   return { done, cancel: () => D.claude.cancel(id) };
 }
 

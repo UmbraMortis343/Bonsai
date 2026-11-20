@@ -1,7 +1,7 @@
 {
   "name": "bonsai-desktop",
   "productName": "Bonsai",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Bonsai on Windows: the live app in its own window, with Claude Code on this computer for Grow and Flesh out.",
   "author": "UmbraMortis343",
   "license": "AGPL-3.0-or-later",

@@ -76,13 +76,16 @@ function systemFile(system) {
   if (!fs.existsSync(file)) fs.writeFileSync(file, system, "utf8");
   return file;
 }
-// req: { reqId, system, prompt }. emit({ reqId, type: "text", text }) as the reply streams.
+// req: { reqId, system, prompt, images? }. Pictures go in as one stream-json user message (content blocks).
+// emit({ reqId, type: "text", text }) as the reply streams.
 async function ask(req, emit) {
   const bin = await findCli();
   if (!bin) return { ok: false, code: "no_cli", message: "Claude Code isn't on this computer. Install it from claude.com/code, then sign in." };
   return new Promise((resolve) => {
     const args = ["-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages", "--system-prompt-file", systemFile(String(req.system || "")),
       "--tools", "", "--strict-mcp-config", "--max-turns", "2", "--no-session-persistence"];
+    const pics = Array.isArray(req.images) ? req.images : [];
+    if (pics.length) args.push("--input-format", "stream-json");
     let child;
     try { child = spawnCli(bin, args, { cwd: workDir(), env: cliEnv(), stdio: ["pipe", "pipe", "pipe"] }); }
     catch (e) { return resolve({ ok: false, code: "cli_failed", message: "Couldn't start Claude Code: " + e.message }); }
@@ -110,7 +113,11 @@ async function ask(req, emit) {
       resolve({ ok: false, code: auth ? "not_signed_in" : "cli_error", message: auth ? "Claude Code isn't signed in. Open a terminal, run claude, and sign in with your Claude account." : detail.slice(0, 600) });
     });
     child.stdin.on("error", () => {});
-    child.stdin.end(String(req.prompt || ""));
+    if (!pics.length) child.stdin.end(String(req.prompt || ""));
+    else child.stdin.end(JSON.stringify({ type: "user", message: { role: "user", content: [
+      ...pics.map((i) => ({ type: "image", source: { type: "base64", media_type: i.media_type, data: i.data } })),
+      { type: "text", text: String(req.prompt || "") },
+    ] } }) + "\n");
   });
 }
 function cancel(reqId) { const c = running.get(reqId); if (c) { try { c.kill(); } catch {} } }

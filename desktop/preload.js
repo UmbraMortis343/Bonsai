@@ -5,7 +5,7 @@ const invoke = (ch, ...a) => ipcRenderer.invoke(ch, ...a);
 const beta = process.argv?.includes?.("--beta") || false;
 
 contextBridge.exposeInMainWorld("bonsaiDesktop", {
-  version: "", channel: beta ? "beta" : "",
+  version: "", channel: beta ? "beta" : "", features: ["images"],
   info: () => invoke("desktop:info"),
   update: () => invoke("desktop:update"),
   claude: {

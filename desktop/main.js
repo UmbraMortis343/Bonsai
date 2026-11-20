@@ -66,7 +66,8 @@ ipcMain.handle("claude:status", (e, force) => (fromUs(e) ? claude.status(!!force
 ipcMain.handle("claude:ask", (e, req) => {
   if (!fromUs(e)) return { ok: false, code: "refused", message: "Not from Bonsai." };
   const to = e.sender;
-  return claude.ask({ reqId: String(req?.reqId || ""), system: String(req?.system || ""), prompt: String(req?.prompt || "") }, (ev) => { if (!to.isDestroyed()) to.send("claude:event", ev); });
+  const images = (Array.isArray(req?.images) ? req.images : []).slice(0, 4).filter((i) => /^image\/(png|jpeg|webp)$/.test(i?.media_type) && typeof i.data === "string" && i.data.length < 14e6).map((i) => ({ media_type: i.media_type, data: i.data }));
+  return claude.ask({ reqId: String(req?.reqId || ""), system: String(req?.system || ""), prompt: String(req?.prompt || ""), images }, (ev) => { if (!to.isDestroyed()) to.send("claude:event", ev); });
 });
 ipcMain.handle("claude:cancel", (e, id) => { if (fromUs(e)) claude.cancel(String(id)); });
 // A newer Bonsai Desktop on GitHub (releases tagged desktop-v1.2.3).

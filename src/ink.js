@@ -302,6 +302,7 @@ export function createInk(opts) {
         btn("ink-fit", "Fit width", "0", "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5", null, () => { st.zoom = 1; st.sx = 0; clampView(); full(); })),
       el("div", { class: "igroup" },
         btn("ink-paper", "Paper: " + doc.paper, "B", { lined: "M4 7h16M4 12h16M4 17h16", grid: "M4 4h16v16H4zM4 12h16M12 4v16", dots: "M7 7h.01M12 7h.01M17 7h.01M7 12h.01M12 12h.01M17 12h.01M7 17h.01M12 17h.01M17 17h.01", blank: "M5 4h14v16H5z" }[doc.paper], null, nextPaper),
+        opts.toText ? btn("ink-text", "To text", "X", "M4 6h16M12 6v13M8 19h8", null, () => opts.toText()) : null,
         btn("ink-touch", st.touchDraws ? "Touch draws" : "Touch pans", "T", "M9 11V5a2 2 0 0 1 4 0v6M13 10a2 2 0 0 1 4 0v2M17 12a2 2 0 0 1 4 0v3a6 6 0 0 1-6 6h-2a6 6 0 0 1-5-3l-2.5-4a2 2 0 0 1 3.4-2L9 14", st.touchDraws, () => { st.touchDraws = !st.touchDraws; keep(); bar(); })));
     rail.querySelector("#ink-undo").disabled = !undo.length; rail.querySelector("#ink-redo").disabled = !redo.length;
   }
@@ -333,6 +334,7 @@ export function createInk(opts) {
     if (k === "s") { done(); return setSize((st.size + 1) % 3); }
     if (k === "b") { done(); return nextPaper(); }
     if (k === "t") { done(); st.touchDraws = !st.touchDraws; keep(); return bar(); }
+    if (k === "x" && opts.toText) { done(); return opts.toText(); }
     if (k === "+" || k === "=") { done(); return zoomBy(1.25); }
     if (k === "-") { done(); return zoomBy(0.8); }
     if (k === "0") { done(); st.zoom = 1; st.sx = 0; clampView(); return full(); }
@@ -353,6 +355,17 @@ export function createInk(opts) {
     wrap, rail, canvas,
     get doc() { return doc; }, get tool() { return st.tool; }, get colour() { return st.c; }, get size() { return st.size; }, get zoom() { return st.zoom; }, get selected() { return picked().map((s) => s.id); },
     get view() { return { zoom: st.zoom, sx: st.sx, sy: st.sy, scale: scale(), ox: ox() }; },
+    // A picture of some strokes (all when none are named) in day ink on white, for Claude to read: PNG as base64.
+    picture(ids, maxW = 1600) {
+      const want = ids?.length ? new Set(ids) : null, list = doc.strokes.filter((s) => !want || want.has(s.id)); if (!list.length) return null;
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const s of list) for (let i = 0; i < s.p.length; i += 3) { const w = s.p[i + 2]; x0 = Math.min(x0, s.p[i] - w); y0 = Math.min(y0, s.p[i + 1] - w); x1 = Math.max(x1, s.p[i] + w); y1 = Math.max(y1, s.p[i + 1] + w); }
+      const pad = 24, k = Math.min(2, maxW / (x1 - x0 + 2 * pad)), W = Math.ceil((x1 - x0 + 2 * pad) * k), H = Math.min(8000, Math.ceil((y1 - y0 + 2 * pad) * k));
+      const c = document.createElement("canvas"); c.width = W; c.height = H; const g = c.getContext("2d");
+      g.fillStyle = "#fff"; g.fillRect(0, 0, W, H); g.lineCap = g.lineJoin = "round"; g.scale(k, k); g.translate(pad - x0, pad - y0);
+      for (const s of list) { g.strokeStyle = g.fillStyle = inkColour(s, false); g.globalAlpha = s.t === "hl" ? 0.5 : 1; g.globalCompositeOperation = s.t === "hl" ? "multiply" : "source-over"; trace(g, s); }
+      return { media_type: "image/png", data: c.toDataURL("image/png").split(",")[1], width: W, height: H };
+    },
     toScreen: (x, y) => { const r = canvas.getBoundingClientRect(), s = scale(); return [r.left + ox() + x * s, r.top + 16 + (y - st.sy) * s]; },
     setTool, setColour, setSize, undo: () => step(undo, redo), redo: () => step(redo, undo), redraw: () => { full(); bar(); },
     flush: () => { if (dirty) { clearTimeout(dirty); dirty = 0; opts.onChange?.(out()); } },

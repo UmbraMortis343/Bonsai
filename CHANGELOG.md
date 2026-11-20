@@ -2,6 +2,9 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.32.0 — 2026-11-20
+- Handwriting to text (Bonsai Desktop 0.2.0): on a pen page, **To text (X)** sends a picture of the page, or of what the lasso holds, to Claude, which writes it out as an outline (headings, bullets, maths typed as text, a line saying what each diagram shows). Check it, then **Make a typed page**: it opens beside the pen page, which stays as it is. Undo takes it away. An older Bonsai Desktop says to update.
+
 ## 0.31.0 — 2026-11-20
 - Orals in Bonsai Desktop: water a graph by talking. While watering, **Oral (E)** turns the round into an oral on the ideas waiting; a graph's menu has **Oral** too, which also asks about greyed (not shown yet) ideas, so an exam can be sat in the app. Claude asks one question at a time, shown and read aloud (Repeat R, Voice on/off), probes until it has heard enough, and greyed ideas light up as it hears them. ↵ sends (Win+H to speak), F finishes early. Marks come at the end; click any to change it, then Save (↵): shown ideas wake or are watered, missed ones come back sooner, and each idea's panel says what the oral found. Undo puts it all back.
 - The paper prompts now live in the app (src/paper.js), shared with the Bonsai Exams page.

@@ -36,6 +36,10 @@ const calls = readFileSync(log, "utf8").trim().split("\n").map((l) => JSON.parse
 const a = calls[0].args;
 eq([a[a.indexOf("--tools") + 1], a.includes("--no-session-persistence"), calls[0].key, calls[0].cwd.includes("claude-workspace")], ["", true, false, true], "no tools, no saved session, no API key, a quiet folder");
 
+// A picture goes through too (handwriting to text), as one stream-json message with the image first.
+const pic = await page.evaluate(() => bonsaiDesktop.claude.ask({ reqId: "t2", system: "s", prompt: "Transcribe", images: [{ media_type: "image/png", data: "iVBORw0KGgo=" }, { media_type: "text/html", data: "x" }] }));
+eq([pic.ok, pic.text, await page.evaluate(() => bonsaiDesktop.features)], [true, "ECHO: IMAGES 1 image/png", ["images"]], "a picture reaches Claude Code; anything not an image is dropped");
+
 // In the app: Flesh out asks Claude by itself, and the reply goes to the term's editor as before.
 const lect = await page.evaluate(() => bonsai.S.pages.find((p) => p.title.startsWith("Lecture 6")).id);
 await page.evaluate((id) => { location.hash = "#/notes/" + id; }, lect); await page.waitForSelector(".blocks"); await page.waitForTimeout(500);

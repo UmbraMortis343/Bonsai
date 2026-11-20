@@ -20,7 +20,7 @@ import { createMiniWeb } from "./miniweb.js";
 import { MARK_LIST, assignMarks } from "./marks.js";
 import { readExam, planExam, LEVELS } from "./exams.js";
 import { createVocab, createQuick, fleshPrompt, readFlesh } from "./vocab.js";
-import { desktop, liveStatus, liveProblem, askClaude, desktopUpdate } from "./live.js";
+import { desktop, canSee, liveStatus, liveProblem, askClaude, desktopUpdate } from "./live.js";
 import { oralOpen, oralPrompt, readOral, oralMarkPrompt, readMarks } from "./paper.js";
 import { createInk } from "./ink.js";
 
@@ -2510,10 +2510,36 @@ function foldInkProps() {
 }
 function inkView(p, side) {
   const area = el("div", { class: "inkarea" });
-  const ink = createInk({ host: area, el, store: PREF + "ink", global: !side, icon: (d) => icon(d), doc: p.ink, night: darkPage, onChange: (doc) => queuePage(p.id, { ink: doc }) });
+  const ink = createInk({ host: area, el, store: PREF + "ink", global: !side, icon: (d) => icon(d), doc: p.ink, night: darkPage, onChange: (doc) => queuePage(p.id, { ink: doc }), toText: desktop ? () => inkToText(p, ink) : null });
   S.ed = { destroy: ink.destroy, flush: ink.flush, focus: ink.focus, redraw: ink.redraw, ink };
   const fold = el("button", { class: "inkfold", type: "button", "aria-expanded": String(inkPropsOpen()), title: "Properties (D)", onclick: foldInkProps }, icon(ICON.fold), el("span", { text: "Properties" }), el("kbd", { text: "D" }));
   return el("div", { class: "inkview" + (side ? " side" : "") + (inkPropsOpen() ? " propsopen" : "") }, el("article", { class: "page inkhead" + (side ? " side" : "") }, titleInput(p, side), fold, propsView(p)), area);
+}
+// Handwriting to text (Bonsai Desktop 0.2.0+, card n-ink2): Claude reads the page, or what the lasso holds, as a
+// picture and writes it out as an outline; kept, it becomes a typed page beside the pen page, which stays as it is.
+const INK_PROMPT = [
+  "Transcribe my handwritten notes in the attached picture into a plain-text outline.",
+  "- Keep my words and order. Fix only obvious slips of the pen; mark a word you can't read as [?].",
+  "- Headings as \"# \", \"## \"; bullet points as \"- \", nested with two spaces; numbered lists as \"1. \"; a ticked or empty box as \"[x] \" or \"[] \".",
+  "- Maths: write it inline in plain text, the way it would be typed (F = ma, v^2 = u^2 + 2as, ∫ f(x) dx).",
+  "- A diagram: one line \"> Diagram: \" saying what it shows (boxes, arrows and labels), then carry on.",
+  "- Reply with the outline only.",
+].join("\n");
+async function inkToText(p, ink) {
+  if (!desktop) return toast("Handwriting to text runs in Bonsai Desktop");
+  if (!canSee()) return toast("Update Bonsai Desktop to read handwriting");
+  await flushPage();
+  const sel = ink.selected, pic = ink.picture(sel); if (!pic) return toast("Nothing written yet");
+  const reply = el("textarea", { id: "inkReply", rows: 10, placeholder: "The typed text", "aria-label": "The typed text",
+    onkeydown: (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); reply.form?.requestSubmit(); } } });
+  const copy = el("button", { type: "button", class: "btn", id: "inkCopy", hidden: true }, "Copy");
+  const shot = el("img", { class: "inkshot", alt: "", src: "data:image/png;base64," + pic.data });
+  const ok = await dialog({ title: sel.length ? "Selection to text" : p.title || "Page to text", ok: "Make a typed page", body: el("div", { class: "growd" }, shot, claudeRow(() => INK_PROMPT, reply, copy, { auto: true, images: [{ media_type: pic.media_type, data: pic.data }] }), reply) });
+  const text = reply.value.trim(); if (!ok || !text) return;
+  const page = await safely(() => store.addPage({ title: `${p.title || "Pen page"} (typed)`, parentId: p.parentId || null, blocks: textToBlocks(text), props: withStd([]) }));
+  if (!page) return;
+  S.pages.push({ ...page, props: withStd(page.props) }); drawPageList(); pickPage(page.id);
+  toast("Typed page made", { label: "Undo", run: async () => { await safely(() => store.deletePage(page.id)); S.pages = S.pages.filter((x) => x.id !== page.id); pickPage(p.id); drawPageList(); } });
 }
 function pageView(p, side) {
   if (p.kind === "ink") return inkView(p, side);
@@ -2706,7 +2732,7 @@ function pageMenu(p, anchor) {
 }
 // Asking Claude from a dialog. In Bonsai Desktop, Ask Claude fills the reply box straight from Claude Code on this
 // computer (his plan, no key); elsewhere it's the copy and paste round trip. Either way he checks the reply before it's kept.
-function claudeRow(getPrompt, reply, copy, { auto = false } = {}) {
+function claudeRow(getPrompt, reply, copy, { auto = false, images = null } = {}) {
   const open = el("a", { class: "btn", href: "https://claude.ai/new", target: "_blank", rel: "noopener", text: "Open Claude" });
   if (!desktop) return el("div", { class: "row" }, copy, open);
   copy.classList.remove("primary");
@@ -2716,7 +2742,7 @@ function claudeRow(getPrompt, reply, copy, { auto = false } = {}) {
     if (job) return job.cancel();
     const bad = liveProblem(await liveStatus()); if (bad) return toast(bad);
     ask.textContent = "Stop"; reply.readOnly = true; reply.placeholder = "Claude is writing";
-    job = askClaude(getPrompt(), { onText: fill });
+    job = askClaude(getPrompt(), { onText: fill, images });
     const r = await job.done; job = null;
     ask.textContent = "Ask Claude"; reply.readOnly = false; reply.placeholder = hint;
     if (r.ok) fill(r.text); else if (r.code !== "cancelled" && ask.isConnected) toast(r.message || "Claude didn't answer");
