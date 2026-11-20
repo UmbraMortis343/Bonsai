@@ -24,6 +24,7 @@ import { desktop, canSee, liveStatus, liveProblem, askClaude, desktopUpdate } fr
 import { oralOpen, oralPrompt, readOral, oralMarkPrompt, readMarks } from "./paper.js";
 import * as sync from "./sync.js";
 import { createInk } from "./ink.js";
+import * as focus from "./focus.js";
 
 const PALETTE = [["Blue", "#3b82f6"], ["Violet", "#8b5cf6"], ["Pink", "#ec4899"], ["Red", "#ef4444"], ["Orange", "#f97316"], ["Amber", "#f59e0b"], ["Green", "#22c55e"], ["Teal", "#14b8a6"], ["Cyan", "#06b6d4"]];
 const SWATCHES = [["Auto", ""], ...PALETTE];
@@ -83,7 +84,7 @@ async function load() {
   for (const l of S.kids.values()) l.sort(byOrder);
   S.linksIn = new Map();
   for (const l of links) { const t = S.byId.get(l.fromId)?.treeId; if (t && t === S.byId.get(l.toId)?.treeId) { if (!S.linksIn.has(t)) S.linksIn.set(t, []); S.linksIn.get(t).push({ a: l.fromId, b: l.toId }); } }
-  await loadGarden();
+  await loadGarden(); readLevels();
   // a topic's colour is the tech tree's: its island's, turned a little for each topic on it
   S.hues = new Map(); S.isleHues = new Map();
   S.garden.islands.forEach((q, i) => { const hue = HUES[i % HUES.length]; S.isleHues.set(q.id, hue); q.zoneIds.forEach((id, k) => S.hues.set(id, shade(hue, k))); });
@@ -116,9 +117,15 @@ function numberGraph(tree) {
 }
 const numTag = (id) => (S.view === "tree" && S.num.has(id) ? el("i", { class: "num", text: String(S.num.get(id)) }) : null);
 const ghostly = (n) => n.ghost && !S.oral?.lit?.has(n.id);   // a greyed idea, unless the oral running has heard it
+// What a watering round takes: Focus first, then Keep, oldest first in each; Settled ideas are left out (focus levels).
 function dueList(treeId) {
-  const live = new Set(S.trees.map((t) => t.id)), now = Date.now();
-  return S.nodes.filter((n) => (treeId ? n.treeId === treeId : live.has(n.treeId)) && srs.reviewable(n, kidsOf(n.id).length) && srs.isDue(n, now)).sort((a, b) => srs.dueAt(a).localeCompare(srs.dueAt(b)));
+  const live = new Set(S.trees.map((t) => t.id)), now = Date.now(), at = new Map();
+  for (const n of S.nodes) {
+    if (!(treeId ? n.treeId === treeId : live.has(n.treeId))) continue;
+    const lv = levelOfNode(n); if (lv === "settled" || !srs.reviewable(n, kidsOf(n.id).length)) continue;
+    const due = Date.parse(srs.dueAt(n, focus.multOf(lv))); if (due <= now) at.set(n, [RANK[lv], due]);
+  }
+  return [...at.keys()].sort((a, b) => at.get(a)[0] - at.get(b)[0] || at.get(a)[1] - at.get(b)[1]);
 }
 function shownNodes(tree) {
   const all = S.byTree.get(tree.id) || [];
@@ -131,11 +138,12 @@ function shownNodes(tree) {
   }
   return out;
 }
-// thirsty: due for review. dry: due more than a day ago.
+// thirsty: due for review. dry: due more than a day ago (three on a Keep topic). A Settled topic never thirsts.
 function thirst(n, now = Date.now()) {
-  if (!srs.reviewable(n, kidsOf(n.id).length)) return "ok";
-  const due = Date.parse(srs.dueAt(n));
-  return due + DAY <= now ? "dry" : due <= now ? "thirsty" : "ok";
+  const lv = levelOfNode(n);
+  if (lv === "settled" || !srs.reviewable(n, kidsOf(n.id).length)) return "ok";
+  const due = Date.parse(srs.dueAt(n, focus.multOf(lv)));
+  return due + focus.dryAfter(lv) * DAY <= now ? "dry" : due <= now ? "thirsty" : "ok";
 }
 function looksFor(tree, nodes, garden) {
   const m = new Map(), now = Date.now(), memo = new Map(), hue = tree.color || S.hues.get(tree.zoneId) || T.root;
@@ -826,7 +834,7 @@ function shortcuts() {
       ["⇧Tab", "Garden, Knowledge, Library (Knowledge shows what's picked; Tab alone in the garden)"], ["[  ]", "The panel on the left, on the right"], ["/", "Search"], ["I", "Capture a thought"], ["K", "Tech tree"], ["O", "Notes beside a graph"], ["?", "These keys"]]],
     ["Building a graph", [["Tab", "Add under"], ["↵", "Add beside"], ["R", "Rename"], ["Del", "Delete (a picked link too)"], ["L", "Link"], ["G", "Graft"], ["X", "Make its own graph"], ["C", "Colour"], ["Space", "Notes"], ["⇧↵", "Open the board's graph in 3D"],
       ["Drag", "Move an idea; drop it on another to graft"], ["+ or Alt-drag", "Pull out a new idea, or a link"]]],
-    ["Garden", [["W", "Water"], ["D", "Day or night"], ["N  Z", "New graph, new topic"], ["S", "Split a full topic"]]],
+    ["Garden", [["W", "Water"], ["D", "Day or night"], ["N  Z", "New graph, new topic"], ["S", "Split a full topic"], ["⇧1–3  ⇧0", "Focus, Keep, Settled; a topic back to its island's"]]],
     ["Tech tree", [["Space", "Open or close"], ["↵", "Put in the middle; again to open"], ["H  A", "Whole tree, everything open"], ["B", "What an island grows from"]]],
     ["Library", [["N  F  W", "New page, folder, pen page"], ["⇧V", "Vocab"], ["P H E L", "Pen page: pen, highlighter, eraser, lasso"], ["C  S  B  T", "Pen page: colour, size, paper, touch"]]],
   ];
@@ -1473,8 +1481,9 @@ function gardenModel() {
   const marks = assignMarks(S.garden.islands.flatMap((isl) => isl.zoneIds).map((id) => zone.get(id)).filter(Boolean).map((z) => ({ id: z.id, name: z.name, picked: S.garden.zone[z.id]?.mark })));   // no two topics share a guessed landmark
   const model = S.garden.islands.map((isl, i) => {
     const topics = isl.zoneIds.map((id) => zone.get(id)).filter(Boolean).map((z, k) => {
-      const trees = S.trees.filter((t) => t.zoneId === z.id), nodes = trees.flatMap((t) => S.byTree.get(t.id) || []).filter((n) => !n.ghost), rev = nodes.filter((n) => srs.reviewable(n, kidsOf(n.id).length)), due = rev.filter((n) => srs.isDue(n, now)), o = S.garden.zone[z.id] || {};
-      return { id: z.id, name: z.name, biome: o.biome || BIOMES[k % 6][0], mark: marks.get(z.id), growth: Math.min(2, Math.pow((nodes.length + (CHANNEL ? o.fill || 0 : 0)) / FULL_PLOT, 0.6)), health: rev.length ? 1 - due.length / rev.length : 1, ideas: nodes.length, mist: !nodes.length && charted(), due: due.map((n) => n.id), trees };
+      const trees = S.trees.filter((t) => t.zoneId === z.id), nodes = trees.flatMap((t) => S.byTree.get(t.id) || []).filter((n) => !n.ghost), rev = nodes.filter((n) => srs.reviewable(n, kidsOf(n.id).length)), o = S.garden.zone[z.id] || {};
+      const level = zoneLevel(z.id), due = level === "settled" ? [] : rev.filter((n) => srs.isDue(n, now, focus.multOf(level)));   // Settled never withers; Keep's waiting ideas weigh half
+      return { id: z.id, name: z.name, level, biome: o.biome || BIOMES[k % 6][0], mark: marks.get(z.id), growth: Math.min(2, Math.pow((nodes.length + (CHANNEL ? o.fill || 0 : 0)) / FULL_PLOT, 0.6)), health: rev.length ? 1 - (focus.weightOf(level) * due.length) / rev.length : 1, ideas: nodes.length, mist: !nodes.length && charted(), due: due.map((n) => n.id), trees };
     });
     if (!topics.length) topics.push({ id: null, name: "", biome: "bloom", mark: "kit", growth: 0.04, health: 1, ideas: 0, mist: charted(), due: [], trees: [] });
     return { id: isl.id, name: isl.name, hub: at.get(hubKey(isl)) || 0, landmark: isl.landmark, patron: i === 0 && isl.landmark === "arches" ? S.garden.patron || "none" : undefined, mountain: isl.landmark === "arches" || !!isl.mountain, topics };
@@ -1539,6 +1548,56 @@ const goTopic = (zoneId) => { const i = S.model.findIndex((isl) => isl.topics.so
 // Watering happens where you are (the watering screen went in 0.28.0): the cards come up over the garden, the
 // knowledge view, a graph or its board; in a graph each idea is picked and flown to as it comes up.
 function water(ids, treeId) { const q = ids || (treeId ? dueList(treeId) : dueList(null)).map((n) => n.id); if (treeId) S.fsel = treeId; reviewIds(q); }
+// ---------- focus levels ----------
+// How hard a topic is kept (focus.js): Focus, normal intervals; Keep, about twice as long, and what waits weighs half
+// on the garden; Settled, four times as long, never withers and stays out of watering rounds. An island sets the
+// level of its topics; a topic can take its own and then keeps it. An exam topic starts at Keep.
+const RANK = { focus: 0, keep: 1, settled: 2 };
+const examZones = () => new Set(S.trees.filter((t) => t.exam).map((t) => t.zoneId));
+function readLevels() {
+  S.levels = focus.levelMap(S.garden, S.zones.map((z) => z.id), examZones());
+  S.treeLevel = new Map(S.trees.map((t) => [t.id, S.levels.get(t.zoneId) || "focus"]));
+}
+const zoneLevel = (id) => S.levels?.get(id) || "focus";
+const levelOfNode = (n) => S.treeLevel?.get(n.treeId) || "focus";
+// Every idea due now, by level, oldest first: Settled ones (due on their stretched dates) are the pool a morning
+// recall can draw a rare bonus question from.
+function dueByLevel(now = Date.now()) {
+  const live = new Set(S.trees.map((t) => t.id)), items = [];
+  for (const n of S.nodes) {
+    if (!live.has(n.treeId) || !srs.reviewable(n, kidsOf(n.id).length)) continue;
+    const level = levelOfNode(n), due = Date.parse(srs.dueAt(n, focus.multOf(level)));
+    if (due <= now) items.push({ node: n, level, due });
+  }
+  return focus.byLevel(items);
+}
+// zoneId: the topic's own level (level null: follow its island again); else the island's.
+async function setLevel({ isleId, zoneId, level }) {
+  focus.setLevel(S.garden, { isleId, zoneId, level, exam: !!zoneId && examZones().has(zoneId) });
+  await saveGarden();
+}
+// The row at the foot of the garden panel. A topic shows Island while it follows (its island's level is marked).
+function levelRow(isl, t) {
+  const opts = focus.LEVELS.map((v) => [v, focus.NAMES[v]]);
+  let now, via = null, run;
+  if (t) {
+    const own = focus.ownLevel(t.id, S.garden, examZones().has(t.id));
+    now = own || "isle"; via = own ? null : focus.isleLevel(isl); opts.unshift(["isle", "Island"]);
+    run = (v) => setLevel({ zoneId: t.id, level: v === "isle" ? null : v });
+  } else { now = focus.isleLevel(isl); run = (v) => setLevel({ isleId: isl.id, level: v }); }
+  return el("div", { class: "gsrow", id: "levelRow" }, el("span", {}, "Level ", el("kbd", { text: t ? "⇧0–3" : "⇧1–3" })),
+    el("div", { class: "seg lvseg", role: "group", "aria-label": "Level", id: t ? "topicLevel" : "isleLevel" },
+      opts.map(([v, text]) => el("button", { text, dataset: v === via ? { level: v, via: "1" } : { level: v }, "aria-pressed": String(v === now), onclick: () => run(v) }))));
+}
+// In the garden, ⇧1–3 set what's picked to Focus, Keep, Settled; ⇧0 sends a topic back to its island's level.
+function levelKey(e) {
+  if (S.view !== "isles" || !e.shiftKey || !/^Digit[0-3]$/.test(e.code || "")) return false;
+  const isl = S.garden.islands[S.isle], t = S.model[S.isle]?.topics[S.topic], d = +e.code.slice(5);
+  if (!isl || (!t?.id && d === 0)) return false;
+  e.preventDefault();
+  setLevel(t?.id ? { zoneId: t.id, level: d ? focus.LEVELS[d - 1] : null } : { isleId: isl.id, level: focus.LEVELS[d - 1] });
+  return true;
+}
 const pct = (x) => Math.round(x * 100) + "%";
 let gfold = matchMedia("(max-width:700px)").matches;   // on a phone the panel starts as a strip, so the garden shows
 function renderGarden() {
@@ -1574,14 +1633,14 @@ function renderGarden() {
       el("div", { class: "stats" }, el("span", {}, el("b", { text: String(t.ideas) }), ` idea${t.ideas === 1 ? "" : "s"}`), el("span", {}, el("b", { text: pct(t.growth) }), " grown"), el("span", {}, el("b", { text: pct(t.health) }), " healthy")),
       el("h3", { text: "Knowledge graphs" }),
       t.trees.length ? el("div", { class: "rows" }, t.trees.map((tr, k) => { const n = (S.byTree.get(tr.id) || []).length; return row(k < 9 ? String(k + 1) : "", tr.name, `${n} idea${n === 1 ? "" : "s"}`, dueList(tr.id).length, () => goTree(tr.id)); })) : el("p", { class: "muted", text: "None yet." }),
-      el("div", { class: "gset" }, pickRow("topicBiome", "Biome", BIOMES, t.biome, (v) => { o.biome = v; saveGarden(); }), pickRow("topicMark", "Landmark", MARKS, t.mark, (v) => { o.mark = v; saveGarden(); })));
+      el("div", { class: "gset" }, levelRow(S.garden.islands[S.isle], t), pickRow("topicBiome", "Biome", BIOMES, t.biome, (v) => { o.biome = v; saveGarden(); }), pickRow("topicMark", "Landmark", MARKS, t.mark, (v) => { o.mark = v; saveGarden(); })));
   } else if (isl) {
     const rec = S.garden.islands[S.isle], items = isleItems(S.isle);
     put(box, head(() => pickIsle(-1), name(isl.name, rec.mapId ? null : (v) => { rec.name = v; saveGarden(); }), items.length ? ib("isleMore", "Island menu", ICON.more, (e) => isleMenu(S.isle, e.currentTarget)) : null),
       el("div", { class: "gtop" }, ctl, el("div", { class: "gacts" }, act("newTopic", "New topic", "Z", newZone, true), act("scopeGraphs", "Knowledge graphs", "⇧Tab", () => openScope(isl.id)), act("isleTech", "Tech tree", "K", openTech))),
       el("h3", { text: "Topics" }),
       isl.topics[0].id ? el("div", { class: "rows" }, isl.topics.map((q, k) => row(String(k + 1), q.name, pct(q.growth), q.due.length, () => pickTopic(k)))) : el("p", { class: "muted", text: "No topics here yet." }),
-      el("div", { class: "gset" },
+      el("div", { class: "gset" }, levelRow(rec, null),
         rec.mapId ? null : pickRow("isleCentre", "Centrepiece", CENTRES, rec.landmark, (v) => { rec.landmark = v; saveGarden(); }),
         S.isle === 0 && rec.landmark === "arches" ? pickRow("islePatron", "Figure", [["none", "None"], ["athena", "Athena"], ["saraswati", "Saraswati"]], S.garden.patron || "none", (v) => { S.garden.patron = v; saveGarden(); }) : null,
         rec.landmark !== "arches" ? el("label", { class: "gsrow" }, el("span", { text: "Mountain" }), el("input", { type: "checkbox", id: "isleMountain", checked: !!rec.mountain, onchange: (e) => { rec.mountain = e.target.checked; saveGarden(); } })) : null));
@@ -1653,7 +1712,7 @@ function islesKey(k, stop) {
   if (k === "m") { stop(); return goMeaning(t?.id); }
   if (k === "s" && t && t.growth >= 2) { stop(); return splitTopic(t); }
   if (k === "w") { stop(); return t ? (t.due.length ? water(t.due) : toast("Nothing to water")) : water(null); }
-  if (k === "d") { stop(); $("#gpanel .seg button[aria-pressed=false]")?.click(); }
+  if (k === "d") { stop(); $("#gpanel .seg[aria-label=Time] button[aria-pressed=false]")?.click(); }
 }
 
 // ---------- the map: hubs, islands and topics laid out elsewhere and brought in as text or a file ----------
@@ -1970,6 +2029,7 @@ function onKey(e) {
     return;
   }
   if (S.pick) return;
+  if (levelKey(e)) return;
   if (k === "Tab" && (e.shiftKey || S.view === "isles")) { stop(); return toggleWindow(); }   // in the garden Tab has nothing else to do
   if (k === "/") { stop(); return find(); }
   if (k === "?") { stop(); return shortcuts(); }
@@ -3068,7 +3128,7 @@ async function init() {
     const c = await store.counts().catch(() => null);
     if (c && !c.zones && !(await store.getMeta("demo").catch(() => null))) await store.importAll(demoBackup());
   }
-  window.bonsai = { S, store, sync, refresh, get stage() { return stage; }, get isles() { return isles; }, get tech() { return tech; }, get vocab() { return vocab; }, thirst, water, openTree, graphItems };
+  window.bonsai = { S, store, sync, refresh, get stage() { return stage; }, get isles() { return isles; }, get tech() { return tech; }, get vocab() { return vocab; }, thirst, water, openTree, graphItems, dueByLevel, setLevel, zoneLevel };
   await go();
   document.body.dataset.ready = "1";
   syncStart();

@@ -5,8 +5,14 @@ export const RATINGS = ["again", "hard", "good", "easy"];
 // An idea is worth reviewing if there's something to recall.
 // A greyed idea (one an exam hasn't shown yet) isn't reviewed until it is.
 export const reviewable = (node, childCount) => !node.ghost && !!((node.note || "").trim() || (node.body || "").trim() || childCount > 0);
-export const dueAt = (node) => node.srs?.due || new Date(Date.parse(node.createdAt) + DAY).toISOString();
-export const isDue = (node, now = Date.now()) => Date.parse(dueAt(node)) <= now;
+// mult stretches the interval since the idea was last seen (focus levels: 2 for Keep, 4 for Settled). The stored
+// due date stays the plain one, so a topic moved to another level moves its dates at once.
+export function dueAt(node, mult = 1) {
+  if (!node.srs?.due) return new Date(Date.parse(node.createdAt) + mult * DAY).toISOString();
+  if (mult === 1) return node.srs.due;
+  return new Date(Date.parse(node.srs.due) + (mult - 1) * (node.srs.interval || 0) * DAY).toISOString();
+}
+export const isDue = (node, now = Date.now(), mult = 1) => Date.parse(dueAt(node, mult)) <= now;
 
 export function rate(node, rating, now = Date.now()) {
   const s = { interval: 0, ease: 2.5, reps: 0, lapses: 0, passes: 0, ...(node.srs || {}) };
@@ -30,7 +36,7 @@ export function status(node, childCount, now = Date.now()) {
   if (reviewable(node, childCount) && Date.parse(dueAt(node)) + DAY <= now) return "overdue";
   return "ok";
 }
-export function dueLabel(node, now = Date.now()) {
-  const d = Math.round((Date.parse(dueAt(node)) - now) / DAY);
+export function dueLabel(node, now = Date.now(), mult = 1) {
+  const d = Math.round((Date.parse(dueAt(node, mult)) - now) / DAY);
   return d <= 0 ? "Due" : d === 1 ? "Due tomorrow" : `Due in ${d} days`;
 }
