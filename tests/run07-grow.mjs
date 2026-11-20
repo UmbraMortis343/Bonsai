@@ -46,15 +46,11 @@ await openTree(page, ids.basic);
 t.eq(await state(page, () => [bonsai.S.flora.limbMesh.count, bonsai.S.flora.ids.length]), [8, 9], "a stick between ideas and nothing else: none down to the ground");
 if (await page.$("#reviewBtn")) t.fail("review button in the knowledge window");
 
-// Patches attach to the ideas they mention; a stitch lands in the trunk's notes.
-await key("p"); await page.fill("#patchText", "Resistors drop voltage in proportion"); await page.click('.stack .btn.primary');
-await page.waitForSelector('.patch .chip:text-is("Resistors")');
-await page.fill("#patchText", "Capacitors resist sudden change"); await page.click('.stack .btn.primary');
-await page.waitForFunction(() => document.querySelectorAll(".patch").length === 2);
-await page.click("#stitchBtn"); await page.fill("#stitchText", "Everything is a ratio of voltages"); await page.click('.stack .btn.primary');
-await page.waitForSelector("#nodeBodyView");
-if (!(await state(page, () => bonsai.S.byId.get(bonsai.S.tree.rootId).body)).includes("Everything is a ratio")) t.fail("stitch not saved to the trunk");
-await key("Escape");
+// The old Patches panel went with the Sunday session (run36-sunday): P opens nothing.
+await key("p"); await page.waitForTimeout(150);
+if (await page.$("#patchText")) t.fail("P still opens the old Patches panel");
+// old patches are still kept (and backed up)
+await state(page, async (id) => { for (const text of ["Resistors drop voltage", "Capacitors resist change"]) await bonsai.store.addPatch({ treeId: id, text, nodeIds: [] }); }, ids.basic);
 
 // Timeline: at the start only the trunk exists.
 await key("t"); await page.waitForSelector("#timeRange");

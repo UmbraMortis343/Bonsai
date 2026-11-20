@@ -22,6 +22,7 @@ import { readExam, planExam, LEVELS } from "./exams.js";
 import { createVocab, createQuick, fleshPrompt, readFlesh } from "./vocab.js";
 import { desktop, canSee, liveStatus, liveProblem, askClaude, desktopUpdate } from "./live.js";
 import { oralOpen, oralPrompt, readOral, oralMarkPrompt, readMarks } from "./paper.js";
+import { weekOf, sundayOpen, sundayPrompt, readTurn, stitchPrompt, readStitch, tally, isSunday, dayOf, SUNDAY_MAX } from "./sunday.js";
 import * as sync from "./sync.js";
 import { createInk } from "./ink.js";
 
@@ -41,7 +42,7 @@ const shell = window.bonsaiShell || { version: "dev", check: async () => "latest
 const S = {
   view: "", zones: [], trees: [], nodes: [], links: [], inbox: [], patches: [], pages: [], allZones: [], allTrees: [], nzone: null, npage: null, nside: false,
   byId: new Map(), kids: new Map(), byTree: new Map(), near: new Set(), lastChild: new Map(),
-  tree: null, sel: null, panel: null, pick: null, quick: null, review: null, cutoff: null, stitch: false, editBody: false,
+  tree: null, sel: null, panel: null, pick: null, quick: null, review: null, cutoff: null, editBody: false, sun: null, sundays: [],
   flora: null, lay: null, forest: null, fsel: null, pendingSel: null, hues: new Map(), isleHues: new Map(), linksIn: new Map(), num: new Map(), byNum: [], jump: "", move: false, joined: false,
   scope: null, mean: null, suggest: null, aiOn: false,
   garden: null, model: [], hubs: [], hub: -1, isle: -1, topic: -1, treeBack: "#/", meanBack: "#/", techBack: "#/", hashNow: null, water: undefined,
@@ -68,8 +69,8 @@ function pathOf(n) {
 
 // ---------- data ----------
 async function load() {
-  const [zones, trees, nodes, links, inbox, patches, pages] = await Promise.all([store.allZones(), store.allTrees(), store.allNodes(), store.allLinks(), store.listInbox(), store.listPatches(), store.listPages()]);
-  S.allZones = zones; S.allTrees = trees; S.nodes = nodes; S.links = links; S.inbox = inbox; S.patches = patches;
+  const [zones, trees, nodes, links, inbox, patches, pages, sundays] = await Promise.all([store.allZones(), store.allTrees(), store.allNodes(), store.allLinks(), store.listInbox(), store.listPatches(), store.listPages(), store.listSundays().catch(() => [])]);
+  S.allZones = zones; S.allTrees = trees; S.nodes = nodes; S.links = links; S.inbox = inbox; S.patches = patches; S.sundays = sundays;
   S.pages = pages.map((p) => { const kind = p.kind || "page"; return { ...p, kind, parentId: p.parentId || null, props: kind === "page" ? withStd(p.props) : p.props || [], blocks: p.blocks || textToBlocks(p.text || "") }; });   // early beta pages were plain text in a topic
   S.vocab = (await store.getMeta("vocab").catch(() => null)) || []; vocab?.reindex();
   S.zones = zones.filter((z) => !z.archived).sort(byOrder);
@@ -527,7 +528,7 @@ function labelOpacity(L, dist) {
 async function go() {
   await flushPage(); closeAll(); S.pick?.finish(null); stopPlay();
   if (!/^#\/notes/.test(location.hash)) { S.ed?.destroy(); S.ed = null; }
-  S.quick = null; S.review = null; S.cutoff = null; S.stitch = false; endJump(); if (S.move) toggleMove(false);
+  S.quick = null; S.review = null; S.cutoff = null; endJump(); if (S.move) toggleMove(false);
   await load();
   const m = location.hash.match(/^#\/tree\/([^/?]+)/), id = m && decodeURIComponent(m[1]);
   const mm = location.hash.match(/^#\/meaning(?:\/([^/?]+))?/), tm = location.hash.match(/^#\/techtree(?:\/([^/?]+))?/), nm = location.hash.match(/^#\/notes(?:\/([^/?]+))?/);
@@ -699,7 +700,7 @@ function renderTop() {
     const all = S.model.flatMap((q) => q.topics).filter((q) => q.id), ideas = S.nodes.filter((n) => treeOf(n.treeId)).length;
     put($("#top"), brand, beta,
       el("div", { class: "tstats", id: "gstats" }, el("span", {}, el("b", { text: String(ideas) }), " ideas"), el("span", {}, el("b", { text: String(S.trees.length) }), " graphs"), el("span", {}, el("b", { text: String(all.length) }), " topics")),
-      el("span", { class: "grow" }), waterBtn(() => water(null)),
+      el("span", { class: "grow" }), sunBtn(), waterBtn(() => water(null)),
       swap, search, add([{ label: "New knowledge graph", key: "N", run: () => newGraph() }, { label: "New topic", key: "Z", run: newZone }, { label: "Capture a thought", key: "I", run: capture }]),
       ib("gFold", (gfold ? "Show the panel" : "Hide the panel") + " (])", ICON.panel, () => { gfold = !gfold; renderGarden(); renderTop(); }), more());
   } else if (S.view === "garden") {
@@ -708,11 +709,11 @@ function renderTop() {
   } else if (S.fscope) {
     const m = S.view === "meaning";
     put($("#top"), back(m ? S.meanBack : S.forestBack || "#/"), el("div", { class: "crumb" }, el("h1", { text: S.fscope.name }), el("button", { class: "link", id: "scopeAll", type: "button", text: "Show all", onclick: () => (m ? goMeaning() : openScope()) })), beta, el("span", { class: "grow" }),
-      waterBtn(() => water(null)), swap, search, add([{ label: "New knowledge graph", key: "N", run: () => newGraph() }, { label: "New topic", key: "Z", run: newZone }, { label: "Capture a thought", key: "I", run: capture }]), more());
+      sunBtn(), waterBtn(() => water(null)), swap, search, add([{ label: "New knowledge graph", key: "N", run: () => newGraph() }, { label: "New topic", key: "Z", run: newZone }, { label: "Capture a thought", key: "I", run: capture }]), more());
   } else {
     put($("#top"), brand, beta, el("span", { class: "grow" }),
       S.inbox.length ? el("button", { class: "btn", id: "inboxBtn", onclick: () => { S.panel = S.panel === "inbox" ? null : "inbox"; renderPanel(); } }, "Inbox", el("span", { class: "thirst", text: String(S.inbox.length) })) : null,
-      waterBtn(() => water(null)), swap, search, add([{ label: "New knowledge graph", key: "N", run: () => newGraph() }, { label: "New topic", key: "Z", run: newZone }, { label: "Capture a thought", key: "I", run: capture }]), more());
+      sunBtn(), waterBtn(() => water(null)), swap, search, add([{ label: "New knowledge graph", key: "N", run: () => newGraph() }, { label: "New topic", key: "Z", run: newZone }, { label: "Capture a thought", key: "I", run: capture }]), more());
   }
 }
 // Beta only: put the demo islands back, as they were when the beta first opened.
@@ -752,6 +753,7 @@ function appMenu(anchor) {
     S.view !== "tech" && { label: "Tech tree", key: "K", run: openTech },
     S.view !== "notes" && S.view !== "tree" && { label: "Notes", key: "O", run: openNotes },
     S.view === "forest" && { label: "Timeline", key: "T", run: toggleTimeline },
+    desktop && { label: "Sunday session", key: "U", run: startSunday },
     archived.length && { label: "Archived", run: () => menu(anchor, archived.map((x) => ({ label: `Restore ${x.name}`, run: async () => { await safely(() => (x.rootId ? store.updateTree : store.updateZone)(x.id, { archived: false })); refresh(); } }))) },
     "-", S.view === "isles" && { label: "Import map", run: importMap }, { label: "Import exam", run: importExam }, { label: "Export backup", run: exportBackup }, { label: "Restore backup", run: () => $("#importFile").click() },
     CHANNEL && { label: "Reset demo data", run: resetDemo },
@@ -768,7 +770,7 @@ function appMenu(anchor) {
 function treeMenu(anchor) {
   const t = S.tree;
   menu(anchor, [
-    { label: "Patches", key: "P", run: togglePatches }, { label: "Timeline", key: "T", run: toggleTimeline },
+    { label: "Timeline", key: "T", run: toggleTimeline },
     { label: "Meaning view", key: "M", run: () => { S.pendingSel = S.sel; goMeaning(t.zoneId); } }, { label: "Tech tree", key: "K", run: openTech }, { label: "Fit view", key: "0", run: fitView },
     "-", { label: "Rename", run: () => renameThing(t, store.updateTree, "Knowledge graph") }, { label: "Colour", run: () => colourThing(t, store.updateTree) },
     S.zones.length > 1 && { label: "Move to topic", run: async () => {
@@ -823,7 +825,7 @@ function shortcuts() {
   const groups = [
     ["Everywhere", [["Click", "Pick"], ["Double-click  ↵", "Go in, open"], ["Right-click", "Its menu (tech tree: open or close what's under it)"], ["Drag", "Move what you hold; on empty space, turn or pan"],
       ["Wheel", "Zoom"], ["1–9  ← ↑ ↓ →", "Pick by number, or the next one"], ["Esc", "Let go, then step back out"], ["⇧Esc", "Straight back"], ["0", "Fit"], ["V", "The other view: board and 3D, separate and joined, tree and web"], ["M", "Meaning: ideas arranged by what they mean"],
-      ["⇧Tab", "Garden, Knowledge, Library (Knowledge shows what's picked; Tab alone in the garden)"], ["[  ]", "The panel on the left, on the right"], ["/", "Search"], ["I", "Capture a thought"], ["K", "Tech tree"], ["O", "Notes beside a graph"], ["?", "These keys"]]],
+      ["⇧Tab", "Garden, Knowledge, Library (Knowledge shows what's picked; Tab alone in the garden)"], ["[  ]", "The panel on the left, on the right"], ["/", "Search"], ["I", "Capture a thought"], ["K", "Tech tree"], ["O", "Notes beside a graph"], ["U", "Sunday session (Bonsai Desktop)"], ["?", "These keys"]]],
     ["Building a graph", [["Tab", "Add under"], ["↵", "Add beside"], ["R", "Rename"], ["Del", "Delete (a picked link too)"], ["L", "Link"], ["G", "Graft"], ["X", "Make its own graph"], ["C", "Colour"], ["Space", "Notes"], ["⇧↵", "Open the board's graph in 3D"],
       ["Drag", "Move an idea; drop it on another to graft"], ["+ or Alt-drag", "Pull out a new idea, or a link"]]],
     ["Garden", [["W", "Water"], ["D", "Day or night"], ["N  Z", "New graph, new topic"], ["S", "Split a full topic"]]],
@@ -1011,7 +1013,6 @@ function togglePanel() {
   if (!ideaView()) return;
   S.panel = S.panel === "node" ? null : S.byId.get(S.sel) ? "node" : S.panel; renderPanel();
 }
-function togglePatches() { if (S.view !== "tree") return; S.panel = S.panel === "patches" ? null : "patches"; S.stitch = false; renderPanel(); }
 async function removeNode(id) {
   const n = S.byId.get(id); if (!n || n.parentId == null) return;
   const snap = await safely(() => store.deleteNode(id)); if (!snap) return;
@@ -1139,11 +1140,10 @@ function renderPanel() {
   S.flush?.(); S.flush = null;
   if (S.panel === "node" && !(ideaView() && S.byId.get(S.sel))) S.panel = null;
   if (S.panel === "suggest" && S.view !== "meaning") S.panel = null;
-  if (S.panel === "patches" && S.view !== "tree") S.panel = null;
   const wide = isWide(); document.body.dataset.wide = wide ? "1" : "";
   if (!S.panel) { p.hidden = true; p.replaceChildren(); document.body.dataset.panel = ""; document.body.dataset.wide = ""; return; }
   p.hidden = false; document.body.dataset.panel = S.panel;
-  const body = (S.panel === "node" ? nodePanel(S.byId.get(S.sel)) : S.panel === "patches" ? patchesPanel() : S.panel === "suggest" ? suggestPanel() : inboxPanel()).flat().filter(Boolean);
+  const body = (S.panel === "node" ? nodePanel(S.byId.get(S.sel)) : S.panel === "suggest" ? suggestPanel() : inboxPanel()).flat().filter(Boolean);
   if (!wide || S.panel !== "node") return put(p, ...body);
   const host = el("div", { class: "wideweb" }), tree = S.tree, nodes = S.byTree.get(tree.id) || [], ids = new Set(nodes.map((n) => n.id)), looks = looksFor(tree, nodes, false);
   put(p, el("div", { class: "wide" }, host, el("div", { class: "widecard" }, ...body)));
@@ -1195,30 +1195,6 @@ function nodePanel(n) {
       el("div", { class: "row" }, numTag(k.id), el("b", { text: k.title }), c ? el("span", { class: "muted", text: `+${c}` }) : null), k.note ? el("span", { class: "muted", text: k.note }) : null); })) : null,
   ];
 }
-function patchesPanel() {
-  const tree = S.tree, ps = S.patches.filter((p) => p.treeId === tree.id), root = S.byId.get(tree.rootId);
-  const text = el("textarea", { id: "patchText", rows: 4, placeholder: "What clicked?", "aria-label": "New patch" });
-  const add = async (e) => {
-    e.preventDefault();
-    const low = text.value.toLowerCase(), ids = (S.byTree.get(tree.id) || []).filter((n) => n.title.length >= 3 && low.includes(n.title.toLowerCase())).map((n) => n.id);
-    if (S.sel && S.sel !== tree.rootId) ids.push(S.sel);
-    if (await safely(() => store.addPatch({ treeId: tree.id, text: text.value, nodeIds: ids }))) refresh();
-  };
-  const stitch = el("textarea", { id: "stitchText", rows: 5, placeholder: "The bigger pattern", "aria-label": "Stitch" });
-  const saveStitch = async (e) => {
-    e.preventDefault(); const v = stitch.value.trim(); if (!v) return;
-    const body = `${root.body ? root.body + "\n\n" : ""}## Stitch · ${fmtDate(Date.now())}\n${v}`;
-    if (await safely(() => store.updateNode(root.id, { body }))) { S.stitch = false; S.panel = "node"; S.sel = root.id; await refresh(); toast("Stitched into the start"); }
-  };
-  return [
-    el("div", { class: "ph" }, el("h2", { text: "Patches" }), ps.length >= 2 && el("button", { class: "btn", id: "stitchBtn", text: "Stitch", onclick: () => { S.stitch = !S.stitch; renderPanel(); } }), panelClose()),
-    S.stitch && el("form", { class: "stack", onsubmit: saveStitch }, stitch, el("button", { class: "btn primary", text: "Save to the start" })),
-    ps.map((p) => el("article", { class: "patch" }, el("div", { class: "row" }, el("time", { text: fmtDate(p.createdAt) }), el("span", { class: "grow" }),
-      ib(null, "Delete patch", ICON.close, async () => { await safely(() => store.deletePatch(p.id)); refresh(); })), el("p", { text: p.text }),
-      el("div", { class: "chips" }, p.nodeIds.filter((id) => S.byId.get(id)?.treeId === tree.id).map((id) => el("button", { class: "chip", text: S.byId.get(id).title, onclick: () => select(id, { fly: true }) }))))),
-    !S.stitch && el("form", { class: "stack", onsubmit: add }, text, el("button", { class: "btn primary", text: "Add patch" })),
-  ];
-}
 function inboxPanel() {
   const input = el("input", { id: "inboxText", placeholder: "Thought", maxLength: 140, "aria-label": "Thought", autocomplete: "off" });
   return [
@@ -1264,9 +1240,10 @@ async function passAll(ids) {
   toast(`Watered ${before.length}`, { label: "Undo", run: async () => { await safely(() => store.restoreRows({ nodes: before })); refresh(); } });
 }
 function renderReview() {
+  if (S.sun) return renderSunday();
   if (S.oral) return renderOral();
   const box = $("#review"), r = S.review, n = r && S.byId.get(r.ids[r.i]);
-  box.classList.remove("oral");
+  box.classList.remove("oral", "sunday");
   if (!n) { box.hidden = true; box.replaceChildren(); return; }
   const parent = S.byId.get(n.parentId), kids = kidsOf(n.id);
   box.hidden = false;
@@ -1380,7 +1357,7 @@ async function saveOralMarks() {
 function renderOral() {
   const box = $("#review"), o = S.oral; if (!o) return;
   const tree = treeOf(o.treeId), b = (id, text, k, run, cls = "btn") => el("button", { class: cls, id, onclick: run }, text, k ? el("kbd", { text: k }) : null);
-  box.hidden = false; box.classList.add("oral");
+  box.hidden = false; box.classList.add("oral"); box.classList.remove("sunday");
   const head = el("div", { class: "row" }, el("span", { class: "muted grow", text: [tree?.name, o.marks ? "Marks" : `Question ${o.turns.length + 1}`].filter(Boolean).join(" › ") }), ib("oralClose", "Stop", ICON.close, stopOral));
   if (o.busy) return put(box, head, el("p", { class: "muted", id: "oralBusy", text: o.busy }), el("div", { class: "row" }, b("oralStop", "Stop", "Esc", () => (o.job ? o.job.cancel() : stopOral()))));
   if (o.marks) {
@@ -1396,6 +1373,110 @@ function renderOral() {
     el("div", { class: "row" }, b("oralSend", "Send", "↵", sendOral, "btn primary"), tts() ? b("oralRepeat", "Repeat", "R", () => sayAloud(o.q)) : null,
       tts() ? el("button", { class: "btn", id: "oralVoice", onclick: () => { setPref("voice", voiceOn() ? "0" : "1"); voiceOn() ? sayAloud(o.q) : hush(); renderOral(); } }, voiceOn() ? "Voice on" : "Voice off") : null,
       o.turns.length ? b("oralFinish", "Finish", "F", finishOral) : null, el("span", { class: "grow" }), el("span", { class: "muted", id: "oralHeard", text: `${o.shown.length} of ${o.g.ideas.length} heard` })));
+}
+
+// ---------- sunday session ----------
+// About ten minutes with Claude on the week (Bonsai Desktop): it knows what was added, edited and missed in
+// watering (sunday.js `weekOf`), asks one question at a time like the oral (shown and read aloud; his answers are
+// the patches), then proposes the stitch: links, note fixes, questions, ideas to bring back sooner. He ticks what
+// to keep; ↵ saves it all in one go (store.saveSunday), with Undo. Offered quietly in the top bar on a Sunday
+// until one is held that day; U or the menu any day. Each session is recorded in meta `sundays` (store.listSundays).
+let sunClock = null;   // tests set the date (bonsai.sunday.setClock)
+const clockNow = () => sunClock ?? Date.now();
+const sundayDue = () => desktop && isSunday(clockNow()) && !S.sundays.some((r) => r.day === dayOf(clockNow()));
+const sunBtn = () => (sundayDue() && !S.sun ? el("button", { class: "btn", id: "sundayGo", title: "Sunday session (U)", onclick: () => startSunday() }, "Sunday", el("kbd", { text: "U" })) : null);
+async function startSunday() {
+  if (S.sun) return;
+  if (!desktop) return toast("Sunday sessions run in Bonsai Desktop");
+  const bad = liveProblem(await liveStatus()); if (bad) return toast(bad);
+  const at = clockNow(), events = await store.eventsSince(new Date(at - 7 * DAY).toISOString()).catch(() => []);
+  const week = weekOf({ zones: S.allZones, trees: S.allTrees, nodes: S.nodes, events, links: S.links }, at);
+  if (S.oral) stopOral(); S.review = null;
+  S.sun = { week, at: new Date(at).toISOString(), day: dayOf(at), turns: [], q: sundayOpen(week), busy: "", stitch: null };
+  renderChrome(); sayAloud(S.sun.q); setTimeout(() => $("#sunAnswer")?.focus(), 50);
+}
+async function stopSunday() {
+  const u = S.sun; if (!u) return; u.job?.cancel(); hush(); S.sun = null;
+  if (u.stitch) await safely(() => store.addSunday({ day: u.day, turns: u.turns, summary: u.stitch.summary, kept: tally([]), saved: false }));   // held, nothing kept
+  await refresh(); renderChrome();
+}
+function sunAsk(prompt, label) {
+  const u = S.sun; u.busy = label; renderSunday();
+  u.job = askClaude(prompt);
+  return u.job.done.then((r) => {
+    u.job = null; u.busy = ""; if (S.sun !== u) return null;
+    if (!r.ok) { if (r.code !== "cancelled") toast(r.message || "Claude didn't answer"); renderSunday(); return null; }
+    return r.text;
+  });
+}
+async function sendSunday() {
+  const u = S.sun, a = ($("#sunAnswer")?.value || "").trim();
+  if (!u || u.busy || u.stitch) return; if (!a) return toast("Say or type an answer first");
+  hush();
+  const turns = [...u.turns, { q: u.q, a }];
+  const back = () => { renderSunday(); const t = $("#sunAnswer"); if (t) t.value = a; };
+  const text = await sunAsk(sundayPrompt(u.week, turns), "Thinking");
+  if (text == null) { if (S.sun === u) back(); return; }
+  let r; try { r = readTurn(jsonIn(text)); } catch (e) { toast(e.message); return back(); }
+  u.turns = turns;
+  if (r.done || turns.length >= SUNDAY_MAX) return stitchSunday();
+  u.q = r.next; renderSunday(); sayAloud(u.q); $("#sunAnswer")?.focus();
+}
+async function stitchSunday() {
+  const u = S.sun; if (!u || u.busy) return; hush();
+  const a = ($("#sunAnswer")?.value || "").trim(); if (a && !u.stitch) u.turns.push({ q: u.q, a });
+  if (!u.turns.length) return stopSunday();
+  const text = await sunAsk(stitchPrompt(u.week, u.turns), "Stitching"); if (text == null) return;
+  try { u.stitch = readStitch(jsonIn(text), u.week); } catch (e) { return toast(e.message); }
+  renderSunday();
+}
+async function saveSundayStitch() {
+  const u = S.sun; if (!u?.stitch || u.busy) return;
+  const kept = u.stitch.items.filter((x) => x.on), sum = tally(kept);
+  const made = await safely(() => store.saveSunday(kept, { day: u.day, turns: u.turns, summary: u.stitch.summary, kept: sum })); if (!made) return;
+  S.sun = null; hush(); await refresh({ animate: true }); renderChrome();
+  const said = [sum.links && `${sum.links} link${sum.links === 1 ? "" : "s"}`, sum.notes && `${sum.notes} note${sum.notes === 1 ? "" : "s"}`, sum.questions && `${sum.questions} question${sum.questions === 1 ? "" : "s"}`, sum.fuzzy && `${sum.fuzzy} sooner`].filter(Boolean).join(", ");
+  toast(`Stitched${said ? ": " + said : ""}`, { label: "Undo", run: async () => { await safely(() => store.undoSunday(made)); await refresh(); renderChrome(); } });
+}
+function sunKey(k, stop) {
+  const u = S.sun;
+  if (k === "Enter") { stop(); return u.stitch ? saveSundayStitch() : sendSunday(); }
+  if (u.stitch && /^[1-9]$/.test(k)) { stop(); const x = u.stitch.items[+k - 1]; if (x) { x.on = !x.on; renderSunday(); } return; }
+  if (k === "f" && !u.stitch && u.turns.length) { stop(); return stitchSunday(); }
+  if (k === "r" && !u.stitch) { stop(); return sayAloud(u.q); }
+}
+const ideaName = (id) => S.byId.get(id)?.title || "?";
+function stitchRow(x, i) {
+  const k = i < 9 ? el("kbd", { text: String(i + 1) }) : null;
+  const body = x.kind === "link" ? [el("b", { text: `${ideaName(x.a)} ↔ ${ideaName(x.b)}` }), x.label ? el("span", { class: "muted", text: " " + x.label }) : null]
+    : x.kind === "note" ? [el("b", { text: ideaName(x.id) }), el("span", { class: "muted", text: x.mode === "replace" ? " → " : " + " }), el("span", { text: x.text })]
+    : x.kind === "question" ? [el("b", { text: ideaName(x.id) }), el("span", { class: "muted", text: ` ${x.qk} ` }), el("span", { text: x.q })]
+    : [el("b", { text: ideaName(x.id) })];
+  return el("li", { class: "mark" + (x.on ? " shown" : ""), dataset: { kind: x.kind }, title: x.kind === "question" && x.a ? x.a : "", onclick: () => { x.on = !x.on; renderSunday(); } },
+    el("span", { class: "tick", text: x.on ? "✓" : "" }), el("span", { class: "grow" }, ...body), k);
+}
+function renderSunday() {
+  const box = $("#review"), u = S.sun; if (!u) return;
+  const b = (id, text, k, run, cls = "btn") => el("button", { class: cls, id, onclick: run }, text, k ? el("kbd", { text: k }) : null);
+  box.hidden = false; box.classList.add("oral", "sunday");
+  const head = el("div", { class: "row" }, el("span", { class: "muted grow", text: ["Sunday", u.stitch ? "Stitch" : `Question ${u.turns.length + 1}`].join(" › ") }),
+    el("span", { class: "muted", id: "sunWeek", text: `${u.week.addedCount} added · ${u.week.missedCount} missed` }), ib("sunClose", "Stop", ICON.close, stopSunday));
+  if (u.busy) return put(box, head, el("p", { class: "muted", id: "sunBusy", text: u.busy }), el("div", { class: "row" }, b("sunStop", "Stop", "Esc", () => (u.job ? u.job.cancel() : stopSunday()))));
+  if (u.stitch) {
+    const groups = [["link", "Links"], ["note", "Notes"], ["question", "Questions"], ["fuzzy", "Sooner"]], items = u.stitch.items;
+    return put(box, head, u.stitch.summary ? el("h2", { id: "sunSummary", text: u.stitch.summary }) : null,
+      el("div", { class: "sunstitch", id: "sunStitch" }, items.length ? groups.map(([kind, name]) => {
+        const xs = items.map((x, i) => [x, i]).filter(([x]) => x.kind === kind); if (!xs.length) return null;
+        return el("section", {}, el("h3", { text: name }), el("ul", { class: "oralmarks" }, xs.map(([x, i]) => stitchRow(x, i))));
+      }) : el("p", { class: "muted", text: "Nothing to stitch" })),
+      el("div", { class: "row" }, b("sunSave", "Save", "↵", saveSundayStitch, "btn primary"), b("sunDiscard", "Discard", "Esc", stopSunday)));
+  }
+  const ta = el("textarea", { id: "sunAnswer", rows: 3, placeholder: "Answer here. Win+H to speak. ↵ sends, ⇧↵ new line" });
+  ta.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); e.stopPropagation(); sendSunday(); } });
+  put(box, head, el("h2", { id: "sunQ", text: u.q }), ta,
+    el("div", { class: "row" }, b("sunSend", "Send", "↵", sendSunday, "btn primary"), tts() ? b("sunRepeat", "Repeat", "R", () => sayAloud(u.q)) : null,
+      tts() ? el("button", { class: "btn", id: "sunVoice", onclick: () => { setPref("voice", voiceOn() ? "0" : "1"); voiceOn() ? sayAloud(u.q) : hush(); renderSunday(); } }, voiceOn() ? "Voice on" : "Voice off") : null,
+      u.turns.length ? b("sunFinish", "Stitch", "F", stitchSunday) : null, el("span", { class: "grow" }), el("span", { class: "muted", text: `${u.turns.length + 1} / ${SUNDAY_MAX}` })));
 }
 
 // ---------- timeline ----------
@@ -1945,6 +2026,7 @@ function back() {
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || document.activeElement?.isContentEditable) return document.activeElement.blur();
   if (S.move) return toggleMove(false);
   if (S.view === "notes" && (S.gsel || S.glink) && graphPage(S.npage)) return S.boardPick?.(null);
+  if (S.sun) return stopSunday();
   if (S.oral) return stopOral();
   if (S.review) return endReview();
   if (S.cutoff != null) return toggleTimeline();
@@ -1961,6 +2043,7 @@ function onKey(e) {
   if (e.key === "Escape") { e.preventDefault(); if (e.shiftKey && S.backTo && $("#backBtn") && !overlayOpen()) { location.hash = S.backTo; return; } return back(); }
   if (e.ctrlKey || e.metaKey || e.altKey || overlayOpen() || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName) || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || e.target?.isContentEditable || document.activeElement?.isContentEditable) return;
   const k = e.key.length === 1 ? e.key.toLowerCase() : e.key, stop = () => e.preventDefault();
+  if (S.sun) return sunKey(k, stop);
   if (S.oral) return oralKey(k, stop);
   if (S.review) {
     const r = S.review;
@@ -1976,6 +2059,7 @@ function onKey(e) {
   if (k === "i") { stop(); return capture(); }
   if (k === "k") { stop(); return openTech(); }
   if (k === "o") { stop(); return openNotes(); }
+  if (k === "u") { stop(); return startSunday(); }
   if (k === "[" || k === "]") { stop(); return sideKey(k === "["); }
   if (S.view === "tech") return techKey(k, stop);
   if (S.view === "notes") return notesKey(k, stop, e);
@@ -2028,7 +2112,6 @@ function onKey(e) {
   else if (k === "l") { stop(); linkFrom(); }
   else if (k === "g") { stop(); graft(); }
   else if (k === "c") { if (n) cycleColour(n); }
-  else if (k === "p") { stop(); togglePatches(); }
   else if (k.startsWith("Arrow")) { stop(); nav(k); }
 }
 
@@ -3068,7 +3151,8 @@ async function init() {
     const c = await store.counts().catch(() => null);
     if (c && !c.zones && !(await store.getMeta("demo").catch(() => null))) await store.importAll(demoBackup());
   }
-  window.bonsai = { S, store, sync, refresh, get stage() { return stage; }, get isles() { return isles; }, get tech() { return tech; }, get vocab() { return vocab; }, thirst, water, openTree, graphItems };
+  window.bonsai = { S, store, sync, refresh, get stage() { return stage; }, get isles() { return isles; }, get tech() { return tech; }, get vocab() { return vocab; }, thirst, water, openTree, graphItems,
+    sunday: { list: () => store.listSundays(), start: startSunday, setClock: (t) => { sunClock = t == null ? null : +new Date(t); renderTop(); }, get due() { return sundayDue(); } } };
   await go();
   document.body.dataset.ready = "1";
   syncStart();

@@ -180,7 +180,7 @@ time{font-size:12px;color:var(--muted)}
 .inboxrow span{flex:1;overflow-wrap:anywhere}
 
 .review{position:absolute;left:var(--dl,0px);right:var(--dr,0px);bottom:0;max-height:62%;overflow:auto;z-index:6;display:grid;gap:10px;
-  background:var(--card);border-top:1px solid var(--line);padding:14px max(14px,calc(50% - 300px)) calc(14px + env(safe-area-inset-bottom))}
+  background:var(--card);border-top:1px solid var(--line);padding:14px max(14px,calc((100% - var(--dl,0px) - var(--dr,0px)) / 2 - 300px)) calc(14px + env(safe-area-inset-bottom))}
 .review h2{font-size:19px;text-wrap:balance}
 .review.oral textarea{width:100%;font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--ink);resize:vertical}
 .inkshot{max-width:100%;max-height:220px;object-fit:contain;border:1px solid var(--line);border-radius:4px;background:#fff;justify-self:start}
@@ -188,6 +188,11 @@ time{font-size:12px;color:var(--muted)}
 .oralmarks .mark{cursor:pointer;padding:4px 8px;border-radius:4px;border:1px solid var(--line)}
 .oralmarks .mark.shown b{color:var(--accent)}
 .oralmarks .mark.changed{outline:1px dashed var(--muted)}
+.sunstitch{display:grid;gap:10px}
+.sunstitch h3{font-size:12px;font-weight:600;color:var(--muted);margin:0 0 4px}
+.sunday .oralmarks .mark{display:flex;gap:8px;align-items:baseline}
+.sunday .oralmarks .mark:not(.shown){opacity:.55}
+.sunday .oralmarks .tick{flex:none;width:1em;color:var(--accent);font-weight:700}
 .rv-note{font-weight:600}
 .rv-kids{margin:0;padding-left:1.2em;color:var(--muted)}
 .rate{flex-wrap:wrap}
