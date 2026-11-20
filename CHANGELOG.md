@@ -2,6 +2,9 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.32.1 — 2026-11-20
+- The mountain keeps off a large centrepiece: on a small island it is set back so 5 units of clear ground lie between the centrepiece and its foot, and is made smaller only when there's no room to set it back. The arches island is unchanged.
+
 ## 0.32.0 — 2026-11-20
 - Handwriting to text (Bonsai Desktop 0.2.0): on a pen page, **To text (X)** sends a picture of the page, or of what the lasso holds, to Claude, which writes it out as an outline (headings, bullets, maths typed as text, a line saying what each diagram shows). Check it, then **Make a typed page**: it opens beside the pen page, which stays as it is. Undo takes it away. An older Bonsai Desktop says to update.
 

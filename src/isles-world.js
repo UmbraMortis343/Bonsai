@@ -104,9 +104,14 @@ export function buildWorld(isl, N) {
   const put = (x, y, z, m) => { grid[I(x, y, z)] = m; const j = J(x, z); if (y > ymax[j]) ymax[j] = y; if (y < ymin[j]) ymin[j] = y; };
   const set = (x, y, z, m) => { x = Math.round(x); y = Math.round(y); z = Math.round(z); if (inb(x, y, z) && grid[I(x, y, z)] === 0) { put(x, y, z, m); if (MATS[m][4]) glowVox.push(I(x, y, z)); } };
   const n = TOPICS.length, seeds = TOPICS.map((t, i) => { const a = (-90 + (360 / n) * i) * Math.PI / 180; return [Math.cos(a) * 0.62, Math.sin(a) * 0.62, a]; });
-  const arches = isl.landmark === "arches", MT = [0, -0.66], HOL = arches ? [0, 0.03] : [0, 0], HOLR = 6.5, keep = arches ? 0 : Math.max(PLAZA[isl.landmark] || 9.5, (span ? span.max : 0) + 1.5), heartR = arches ? 0.235 : Math.max(0.235, (keep + (PLAZA[isl.landmark] ? 0.5 : 1.5)) / Rw), paved = isl.landmark === "academy" || isl.landmark === "amphitheatre";
+  const arches = isl.landmark === "arches", HOL = arches ? [0, 0.03] : [0, 0], HOLR = 6.5, keep = arches ? 0 : Math.max(PLAZA[isl.landmark] || 9.5, (span ? span.max : 0) + 1.5), heartR = arches ? 0.235 : Math.max(0.235, (keep + (PLAZA[isl.landmark] ? 0.5 : 1.5)) / Rw), paved = isl.landmark === "academy" || isl.landmark === "amphitheatre";
   // how far water must stay from the middle when it lies in direction a and is hw wide (both in radians): the centrepiece's reach that way, and a little more
   const keepAt = (a, hw) => { if (!span) return 0; let m = isl.landmark === "statue" ? 8 : 0; const k0 = sectorOf(a), kn = Math.ceil((hw / (Math.PI * 2)) * SECTORS) + 1; for (let k = -kn; k <= kn; k++) m = Math.max(m, span.dir[(k0 + k + SECTORS) % SECTORS]); return m + 1.5; };
+  // the mountain: its near foot (0.21 of the island's radius from the peak, times its scale MK) stays clear of the centrepiece's
+  // reach that way with 5 units of clear ground, so on a small island it is set back, and only made smaller when setting it back would take it off the island
+  let MK = 1, MZ = 0.66;
+  if (isl.mountain && span) { const foot = keepAt(-Math.PI / 2, 0.9) + 3.5; for (MK of [1, 0.85, 0.72, 0.6]) { MZ = Math.max(0.66, foot / Rw + 0.21 * MK); if (MZ <= 0.78) break; } MZ = Math.min(MZ, 0.8); }
+  const MT = [0, -MZ], MDZ = MZ - 0.66;
   retint(TOPICS);
   const pts = [[0.02, -0.42], [-0.13, -0.3], [0.08, -0.16], [0, 0.03], [-0.07, 0.22], [0.12, 0.42], [-0.03, 0.62], [0.1, 0.84], [0.16, 1.1], [0.2, 1.45], [0.27, 1.85]];
 
@@ -128,7 +133,7 @@ export function buildWorld(isl, N) {
       feats.push({ x: c + HOL[0] * R, z: c + HOL[1] * R, r: HOLR, level: W0, carve: 3.5, bed: 2.4, topic: -1 });
     }
     else if (isl.mountain) {   // with no river to join, the waterfall lands in a small lake at the mountain's foot: set back until it clears the centrepiece, smaller if the gap is tight. With no room for a lake there is no waterfall either
-      const r0 = 3.3 * Math.sqrt(isl.size), near = keepAt(-Math.PI / 2, 0.35), d = clamp(near + r0 + 0.5, 0.49 * Rw, 0.57 * Rw), r = Math.min(r0, d - near - 0.5);
+      const r0 = 3.3 * Math.sqrt(isl.size), near = keepAt(-Math.PI / 2, 0.35), d = clamp(near + r0 + 0.5, (0.49 + MDZ) * Rw, (0.57 + MDZ) * Rw), r = Math.min(r0, d - near - 0.5);
       fall = r >= 1.6; if (fall) feats.push({ x: c + pts[0][0] * R, z: c - (d / Rw) * R, r, level: G + 0.9, carve: 1.8, bed: 1.3, topic: -1 });
     }
     if (isl.landmark === "statue") feats.push({ x: c, z: c, r: 8.4, level: G + 0.9, carve: 4, bed: 1.2, topic: -1 });   // the statue stands in a pool
@@ -151,7 +156,7 @@ export function buildWorld(isl, N) {
     const rimW = 2.2 / Rw, depth = 20 * Math.pow(isl.size * E, 0.8);
     for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
       const px = (x - c) / R, pz = (z - c) / R, o = Math.hypot(px, pz), j = J(x, z); if (o > E) continue;
-      const mm = isl.mountain ? Math.pow(sstep(0.5, 0.02, Math.hypot(px - MT[0], (pz - MT[1]) * (pz > MT[1] ? 2.4 : 1.15))), 1.25) : 0;
+      const mm = isl.mountain ? Math.pow(sstep(0.5 * MK, 0.02 * MK, Math.hypot(px - MT[0], (pz - MT[1]) * (pz > MT[1] ? 2.4 : 1.15))), 1.25) : 0;
       const wx = px + (fb(px * 3 + 9, pz * 3, 4) - 0.47) * 0.2, wz = pz + (fb(px * 3, pz * 3 + 7, 5) - 0.47) * 0.2;
       let d1 = 9, d2 = 9, b = 0;
       for (let i = 0; i < n; i++) { const d = Math.hypot(wx - seeds[i][0], wz - seeds[i][1]) - (i === 0 ? mm * 0.5 : 0) + (hash2(x, z, 3) - 0.5) * 0.03; if (d < d1) { d2 = d1; d1 = d; b = i; } else if (d < d2) d2 = d; }
@@ -160,7 +165,7 @@ export function buildWorld(isl, N) {
       edge[j] = -sstep(0, 0.3, d2 - d1) * 0.7 + (fb(px * 6, pz * 6, 9) - 0.47) * 0.5;
       seedD[j] = Math.hypot(wx - seeds[b][0], wz - seeds[b][1]) + (fb(px * 7, pz * 7, 13) - 0.47) * 0.14;
       let h = G + fb(px * 2.3 + 3, pz * 2.3, 1) * 5;
-      if (isl.mountain) { h += 26 * mm * (0.82 + fb(px * 7, pz * 7, 2) * 0.36); h += 13 * Math.pow(sstep(0.28, 0.02, Math.hypot(px + 0.3, (pz + 0.66) * 1.3)), 1.2) * (0.8 + fb(px * 9, pz * 9, 22) * 0.4); }
+      if (isl.mountain) { const mh = Math.sqrt(MK); h += 26 * mh * mm * (0.82 + fb(px * 7, pz * 7, 2) * 0.36); h += 13 * mh * Math.pow(sstep(0.28 * MK, 0.02, Math.hypot(px + 0.3 * MK, (pz - MT[1]) * 1.3)), 1.2) * (0.8 + fb(px * 9, pz * 9, 22) * 0.4); }
       else if (!heart && B === "highland") h += Math.max(0, fb(px * 4.5, pz * 4.5, 23) - 0.52) * 30;   // crags
       if (!heart && B === "lantern") h += Math.max(0, fb(px * 5, pz * 5, 12) - 0.56) * 24;
       if (isl.landmark === "academy") h = lerp(h, G + 4.5, sstep(21, 15, rc));   // the academy stands on a low flat hill
@@ -483,7 +488,7 @@ export function buildWorld(isl, N) {
   for (const id in LIBRARY) { SCALE[id] = 1; FOOT[id] = libModel(id).reach * LIB_U * 0.8; }
   TOPICS.forEach((t, i) => {   // a topic that has filled its plot gets a landmark of its own
     if (t.growth < 1 || !LM[t.mark]) return;
-    const a = seeds[i][2], q = t.biome === "highland" && isl.mountain ? [0.3, -0.36] : [Math.cos(a + 0.42) * 0.8, Math.sin(a + 0.42) * 0.8];
+    const a = seeds[i][2], q = t.biome === "highland" && isl.mountain ? [0.3 * MK, -0.36 - MDZ] : [Math.cos(a + 0.42) * 0.8, Math.sin(a + 0.42) * 0.8];
     let best = null, bv = 1e9, sc = 0, fr = 0;
     for (const shrink of LIBRARY[t.mark] ? [1, 0.8, 0.65] : [1]) {   // a big library landmark that finds no level ground is tried smaller
       sc = SCALE[t.mark] * (1 + 0.1 * tierOf(t.growth)) * shrink; fr = Math.round(V((FOOT[t.mark] || 3.4) * sc));
@@ -511,7 +516,7 @@ export function buildWorld(isl, N) {
     HU = HS[i];
     if (t.growth > 1.3) { const a = seeds[i][2]; let x = Math.round(c + Math.cos(a) * 1.13 * R), z = Math.round(c + Math.sin(a) * 1.13 * R); for (let k = 0; k < 30 && !(inb(x, 0, z) && free(x, z)); k++) { x += Math.round((hash2(k, i, 83) - 0.5) * V(4)); z += Math.round((hash2(k, i, 84) - 0.5) * V(4)); x = clamp(x, 1, N - 2); z = clamp(z, 1, N - 2); } if (free(x, z)) PLANT[ELDER[t.biome]](x, ht[J(x, z)] + 1, z, u0 * (1.2 + 1.2 * (t.growth - 1.3)), stateAt(J(x, z))); }
     if (t.growth <= 0.5) return;
-    const p = t.biome === "highland" && isl.mountain ? [-0.2, -0.42] : seeds[i]; let x = Math.round(c + p[0] * R), z = Math.round(c + p[1] * R);
+    const p = t.biome === "highland" && isl.mountain ? [-0.2 * MK, -0.42 - MDZ] : seeds[i]; let x = Math.round(c + p[0] * R), z = Math.round(c + p[1] * R);
     for (let k = 0; k < 40 && !free(x, z); k++) { x += Math.round((hash2(k, i, 81) - 0.5) * V(5)); z += Math.round((hash2(k, i, 82) - 0.5) * V(5)); x = Math.min(N - 2, Math.max(1, x)); z = Math.min(N - 2, Math.max(1, z)); }
     if (free(x, z)) PLANT[ELDER[t.biome]](x, ht[J(x, z)] + 1, z, u0 * (1.1 + 1.5 * (Math.min(t.growth, 1.5) - 0.5)), stateAt(J(x, z)));
   });

@@ -5,7 +5,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { start, state } from "./lib.mjs";
 import { readMap, checkMaps, progress, exportExam, readExam, planExam, ideaKey } from "../src/exams.js";
-import { recallPrompt, readRecall, readMarks, oralPrompt, readOral, oralMarkPrompt, ORAL_MAX, connectPairs } from "../tools/exams/paper.js";
+import { recallPrompt, readRecall, readMarks, oralPrompt, readOral, oralMarkPrompt, ORAL_MAX, connectPairs } from "../src/paper.js";
 
 const t = await start("run20-exams", 4320);
 const dir = "tools/exams/maps/", rows = readdirSync(dir).map((f) => readFileSync(dir + f, "utf8")).map((text) => ({ ...readMap(text), text }));
