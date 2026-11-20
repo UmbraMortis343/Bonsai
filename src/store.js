@@ -136,6 +136,7 @@ export const allZones = () => tx(["zones"], "readonly", (s) => reqP(s.zones.getA
 export const allTrees = () => tx(["trees"], "readonly", (s) => reqP(s.trees.getAll()));
 export const allLinks = () => tx(["links"], "readonly", (s) => reqP(s.links.getAll()));
 export const listEvents = () => tx(["events"], "readonly", (s) => reqP(s.events.index("at").getAll()));
+export const eventsSince = (iso) => tx(["events"], "readonly", (s) => reqP(s.events.index("at").getAll(IDBKeyRange.lowerBound(iso))));
 
 // Children of a node, in order.
 export function childrenOf(nodes, parentId) {
@@ -341,6 +342,64 @@ export async function saveOral(results) {
       s.nodes.put(next);
     }
     return before;
+  });
+}
+// ---------- the Sunday session (sunday.js, `startSunday` in main.js) ----------
+// Each session is kept in meta `sundays`: [{ id, at, day, turns: [{ q, a }], summary, kept: { links, notes,
+// questions, fuzzy }, saved, undone }], newest last, for the calendar and the month in review.
+const SUNDAYS_KEPT = 260;
+export const listSundays = async () => (await tx(["meta"], "readonly", (s) => reqP(s.meta.get("sundays"))))?.value || [];
+async function putSunday(s, record) {
+  const list = ((await reqP(s.meta.get("sundays")))?.value || []).filter((r) => r.id !== record.id);
+  s.meta.put({ key: "sundays", value: [...list, record].slice(-SUNDAYS_KEPT) });
+}
+// A session that ended without saving anything (still a session held).
+export const addSunday = (record) => tx(["meta"], "readwrite", (s) => putSunday(s, { id: uid(), at: now(), ...record }));
+// What he kept from the stitch, saved in one go: items are { kind: "link", a, b, label } | { kind: "note", id, mode:
+// "replace" (the short note) | "add" (appended to the notes), text } | { kind: "question", id, qk, q, a } (added to
+// node.qs) | { kind: "fuzzy", id } (rated again, so it comes back sooner). Returns what undoSunday needs.
+export async function saveSunday(items, record) {
+  return tx(["nodes", "links", "events", "meta"], "readwrite", async (s) => {
+    const before = new Map(), cur = new Map(), linkIds = [];
+    const get = async (id) => {
+      if (cur.has(id)) return cur.get(id);
+      const n = await reqP(s.nodes.get(id)); if (!n) return null;
+      before.set(id, n); const c = { ...n }; cur.set(id, c); return c;
+    };
+    for (const x of items) {
+      if (x.kind === "link") {
+        if (!x.a || !x.b || x.a === x.b || !(await get(x.a)) || !(await get(x.b))) continue;
+        const ab = await reqP(s.links.index("fromId").getAll(x.a)), ba = await reqP(s.links.index("fromId").getAll(x.b));
+        if (ab.some((l) => l.toId === x.b) || ba.some((l) => l.toId === x.a)) continue;
+        const l = { id: uid(), fromId: x.a, toId: x.b, label: clean(x.label, 60), note: "", by: "sunday", createdAt: now(), updatedAt: now() };
+        s.links.put(l); linkIds.push(l.id); logEvent(s, "link.create", l.id, { fromId: x.a, toId: x.b, by: "sunday" });
+        continue;
+      }
+      const n = await get(x.id); if (!n) continue;
+      if (x.kind === "note") {
+        if (x.mode === "replace") n.note = clean(x.text, 500);
+        else n.body = ((n.body || "").trimEnd() + (n.body ? "\n\n" : "") + String(x.text || "").trim()).slice(0, 200000);
+        n.updatedAt = now(); logEvent(s, "node.edit", n.id, { fields: [x.mode === "replace" ? "note" : "body"], by: "sunday" });
+      } else if (x.kind === "question") {
+        n.qs = [...(n.qs || []), { kind: x.qk || "why", q: clean(x.q, 300), a: clean(x.a, 600), by: "claude", at: now() }];
+        n.updatedAt = now(); logEvent(s, "node.edit", n.id, { fields: ["qs"], by: "sunday" });
+      } else if (x.kind === "fuzzy" && !n.ghost) {
+        n.srs = rate(n, "again"); n.reviewedAt = now(); logEvent(s, "node.review", n.id, { rating: "again", by: "sunday" });
+      }
+    }
+    for (const n of cur.values()) s.nodes.put(n);
+    const id = uid(); await putSunday(s, { id, at: now(), ...record, saved: true });
+    return { nodes: [...before.values()].filter((n) => JSON.stringify(n) !== JSON.stringify(cur.get(n.id))), linkIds, record: id };
+  });
+}
+// Takes a saved stitch back: the ideas as they were, the new links gone, the record marked undone.
+export async function undoSunday(made) {
+  return tx(["nodes", "links", "events", "meta"], "readwrite", async (s) => {
+    for (const n of made.nodes || []) s.nodes.put(n);
+    for (const id of made.linkIds || []) { s.links.delete(id); logEvent(s, "link.delete", id); }
+    if ((made.nodes || []).length) logEvent(s, "node.restore", made.nodes[0].id, { count: made.nodes.length });
+    const list = (await reqP(s.meta.get("sundays")))?.value || [], r = list.find((x) => x.id === made.record);
+    if (r) await putSunday(s, { ...r, undone: true });
   });
 }
 // Moves an idea (and its branch) under a new parent, possibly in another tree.
