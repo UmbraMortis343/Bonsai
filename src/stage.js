@@ -107,7 +107,7 @@ export class Stage {
     }
     for (const fn of this.tickers) if (fn(dt, now)) active = true;
     this.applyCamera();
-    this.renderer.render(this.scene, this.camera);
+    this.renderer.render(this.scene, this.camera); this.onRender?.();   // onRender: the timelapse's video copies the frame here
     this.updateLabels();
     if (active) this.invalidate(); else this.last = 0;
   }

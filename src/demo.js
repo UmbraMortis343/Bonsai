@@ -311,28 +311,33 @@ export function demoBackup(now = Date.now()) {
   let seed = 7; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
   let n = 0; const id = (p) => `${p}-${(++n).toString(36)}`;
   const zones = [], trees = [], nodes = [], links = [], byTitle = new Map(), zoneByName = new Map();
-  const made = iso(now - 40 * DAY);
-  ISLANDS.forEach(([, , , , topics]) => topics.forEach((name) => { const z = { id: id("z"), name, color: null, order: zones.length + 1, archived: false, createdAt: made, updatedAt: made }; zones.push(z); zoneByName.set(name, z); }));
+  // Dates are spread out, so the timelapse has a garden to grow: a topic every couple of days from 60 days ago, each
+  // graph a few days after the last, and its ideas a few at a time every few days, the last ones up to a day ago.
+  // Physics all came in one day, as if grown from a page of notes: a big day on the timelapse's slider.
+  const start = now - 60 * DAY, nTopics = ISLANDS.reduce((a, x) => a + x[4].length, 0), born = new Map(), at = (t) => Math.min(now - DAY, t), oneDay = new Set();
+  ISLANDS.forEach(([iid, , , , topics]) => topics.forEach((name) => { if (iid === "phys") oneDay.add(name); const c = iso(iid === "phys" ? start + 34 * DAY : start + (zones.length / nTopics) * 50 * DAY), z = { id: id("z"), name, color: null, order: zones.length + 1, archived: false, createdAt: c, updatedAt: c }; zones.push(z); zoneByName.set(name, z); }));
   for (const [name, text] of Object.entries(OUTLINES)) {
     const z = zoneByName.get(name);
     text.split(/\n\s*\n/).forEach((block, gi) => {
       const lines = block.split("\n").filter((l) => l.trim());
-      const t = { id: id("t"), zoneId: z.id, name: lines[0].split("|")[0].trim(), color: null, rootId: null, order: gi + 1, archived: false, createdAt: made, updatedAt: made };
+      const quick = oneDay.has(name), t0 = at(Date.parse(z.createdAt) + (quick ? gi * 600000 : gi * 4 * DAY)), t = { id: id("t"), zoneId: z.id, name: lines[0].split("|")[0].trim(), color: null, rootId: null, order: gi + 1, archived: false, createdAt: iso(t0), updatedAt: iso(t0) };
       const stack = [], order = new Map();
-      for (const line of lines) {
+      for (const [j, line] of lines.entries()) {
         const depth = (line.match(/^ */)[0].length) / 2, [title, note = ""] = line.trim().split("|").map((s) => s.trim());
         while (stack.length > depth) stack.pop();
         const parentId = stack.length ? stack[stack.length - 1] : null, k = order.get(parentId) || 0; order.set(parentId, k + 1);
         // about two in three are reviewed and not due; the rest are due now, a few long overdue
         const r = rnd(), reviewed = iso(now - (3 + rnd() * 20) * DAY), due = r < 0.62 ? now + (1 + rnd() * 14) * DAY : r < 0.85 ? now - rnd() * 0.8 * DAY : now - (2 + rnd() * 10) * DAY;
-        const node = { id: id("n"), treeId: t.id, parentId, title, note, body: "", color: null, order: k + 1, createdAt: made, updatedAt: made, reviewedAt: reviewed, srs: { interval: 3, ease: 2.5, reps: 2, lapses: 0, passes: 2, due: iso(due) } };
+        const c = at(t0 + (quick ? 0 : Math.floor(j / 5) * 3 * DAY) + j * 60000), seen = iso(Math.max(Date.parse(reviewed), Math.min(now - 3600000, c + DAY / 2)));
+        const node = { id: id("n"), treeId: t.id, parentId, title, note, body: "", color: null, order: k + 1, createdAt: iso(c), updatedAt: iso(c), reviewedAt: seen, srs: { interval: 3, ease: 2.5, reps: 2, lapses: 0, passes: 2, due: iso(due) } };
+        born.set(node.id, c);
         nodes.push(node); if (!parentId) t.rootId = node.id; if (!byTitle.has(title)) byTitle.set(title, node.id);
         stack.push(node.id);
       }
       trees.push(t);
     });
   }
-  for (const [a, b, label = ""] of LINKS) { const x = byTitle.get(a), y = byTitle.get(b); if (x && y && x !== y) links.push({ id: id("l"), fromId: x, toId: y, label, note: "", createdAt: made, updatedAt: made }); }
+  for (const [a, b, label = ""] of LINKS) { const x = byTitle.get(a), y = byTitle.get(b); if (x && y && x !== y) { const c = iso(Math.max(born.get(x), born.get(y))); links.push({ id: id("l"), fromId: x, toId: y, label, note: "", createdAt: c, updatedAt: c }); } }
   const garden = { hubs: HUBS.map(([hid, name]) => ({ id: hid, name })), zone: Object.fromEntries(Object.entries(FILL).map(([name, fill]) => [zoneByName.get(name).id, { fill }])), patron: "none",
     islands: ISLANDS.map(([iid, name, landmark, hubId, topics, after, from]) => ({ id: iid, name, landmark, hubId, zoneIds: topics.map((t) => zoneByName.get(t).id), after: after || null, from: (from && byTitle.get(from)) || null })) };
   const pages = [];

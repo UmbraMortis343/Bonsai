@@ -270,7 +270,7 @@ export function createIsles(opts) {
   const detail = (isl, k) => (k === foc ? 1 : isl.topics.every((t) => t.mist) ? Math.min(far(), 0.42) : far());
 
   // ---------- building: one island a frame, so the page never freezes for long ----------
-  const queue = []; let ready = false;
+  const queue = []; let ready = false, frameHook = null;   // frameHook: called after each frame is drawn (the timelapse's video copies it then)
   const sigOf = (isl, k) => JSON.stringify([quality, detail(isl, k), isl.landmark, isl.patron, isl.mountain, isl.topics.map((t) => [t.biome, Math.round(t.health * 20), Math.round(Math.min(2, t.growth) * 20), t.mark, t.color, t.color2, t.color3, !!t.mist])]);
   function check(isl) { const k = ISLANDS.indexOf(isl), sig = sigOf(isl, k); if (isl.sig !== sig && !queue.includes(isl)) { if (k === foc) queue.unshift(isl); else queue.push(isl); } }
   function buildNext() {
@@ -362,7 +362,7 @@ export function createIsles(opts) {
     for (const hub of HUBS) if (hub.bank) drawBank(hub.bank, t);
     if (links.flames) drawLinks(t);
     drawSky(t, dt);
-    renderer.render(scene, cam);
+    renderer.render(scene, cam); frameHook?.();
     const at = (e, v, lift) => { e.style.transform = `translate(${((v.x + 1) / 2 * W).toFixed(1)}px,${((1 - v.y) / 2 * Hh).toFixed(1)}px) translate(-50%,${lift})`; };
     ISLANDS.forEach((isl, i) => {
       if (!isl.world) return;
@@ -453,6 +453,8 @@ export function createIsles(opts) {
     // turn the camera to a set angle: yaw, and pitch up to straight down (for pictures and checks; dragging stops short of that)
     snap,
     get hasData() { return ISLANDS.length > 0; },
+    get busy() { return queue.length > 0; },   // islands still waiting to be rebuilt
+    set onFrame(f) { frameHook = f; },
     look(y, p) { yaw = y; pitch = clamp(p, 0.2, Math.PI / 2 - 0.004); idle = 0; wake(); },
     select(k) { selTopic = k; showTags(); },
     setActive(on) { active = on; if (on) { renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, QUALITY[quality].dpr)); resize(); wake(); } },

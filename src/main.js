@@ -26,6 +26,7 @@ import { weekOf, sundayOpen, sundayPrompt, readTurn, stitchPrompt, readStitch, t
 import * as sync from "./sync.js";
 import { createInk } from "./ink.js";
 import * as focus from "./focus.js";
+import { createHistory } from "./history.js";
 
 const PALETTE = [["Blue", "#3b82f6"], ["Violet", "#8b5cf6"], ["Pink", "#ec4899"], ["Red", "#ef4444"], ["Orange", "#f97316"], ["Amber", "#f59e0b"], ["Green", "#22c55e"], ["Teal", "#14b8a6"], ["Cyan", "#06b6d4"]];
 const SWATCHES = [["Auto", ""], ...PALETTE];
@@ -34,7 +35,7 @@ const ICON = {
   pin: "M9 3h6l-1 7 3 3H7l3-3zM12 13v8", swap: "M4 8h13l-3-3M20 16H7l3 3", ink: "M6 3h9l4 4v14H6zM9 16c1.5-3 3-1 4-2.5s1-2.5 2-2.5", sideOff: "M4 4h16v16H4zM9 4v16M15 9l-3 3 3 3", sideOn: "M4 4h16v16H4zM9 4v16M12 9l3 3-3 3",
   book: "M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3zM5 17a3 3 0 0 1 3-3h11",
   back: "M15 5l-7 7 7 7", fold: "M6 9l6 6 6-6", unfold: "M6 15l6-6 6 6", close: "M6 6l12 12M18 6L6 18", plus: "M12 5v14M5 12h14", more: "M5 12h.01M12 12h.01M19 12h.01",
-  search: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4", panel: "M4 5h16v14H4zM15 5v14", side: "M4 5h16v14H4zM9 5v14", drop: "M12 3c3 4.5 6 7.6 6 11a6 6 0 0 1-12 0c0-3.4 3-6.5 6-11z", page: "M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h5", folder: "M3 6h6l2 2h10v11H3z", graph: "M7 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM21 8a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM6.3 7.6l4.7 8.6M17.6 9.6l-4.6 6.8M7 6.2l10 1.6", sprout: "M12 21v-8M12 13c0-4 3-6 7-6 0 4-3 6-7 6zM12 15c0-3-2-5-6-5 0 3 2 5 6 5z", inbox: "M4 13l3-8h10l3 8v6H4zM4 13h5a3 3 0 0 0 6 0h5", play: "M8 5l11 7-11 7z", pause: "M8 5v14M16 5v14",
+  search: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4", panel: "M4 5h16v14H4zM15 5v14", side: "M4 5h16v14H4zM9 5v14", drop: "M12 3c3 4.5 6 7.6 6 11a6 6 0 0 1-12 0c0-3.4 3-6.5 6-11z", page: "M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h5", folder: "M3 6h6l2 2h10v11H3z", graph: "M7 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM21 8a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM6.3 7.6l4.7 8.6M17.6 9.6l-4.6 6.8M7 6.2l10 1.6", sprout: "M12 21v-8M12 13c0-4 3-6 7-6 0 4-3 6-7 6zM12 15c0-3-2-5-6-5 0 3 2 5 6 5z", inbox: "M4 13l3-8h10l3 8v6H4zM4 13h5a3 3 0 0 0 6 0h5", play: "M8 5l11 7-11 7z", video: "M3 7h12v10H3zM15 11l6-3v8l-6-3", pause: "M8 5v14M16 5v14",
 };
 const icon = (d) => el("span", { class: "ic", html: `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>` });
 const ib = (id, label, d, onclick) => el("button", { class: "ib", id, title: label, "aria-label": label, onclick }, icon(d));
@@ -49,7 +50,7 @@ const S = {
   garden: null, model: [], hubs: [], hub: -1, isle: -1, topic: -1, treeBack: "#/", meanBack: "#/", techBack: "#/", hashNow: null, water: undefined,
 };
 const ideaView = () => S.view === "tree" || S.view === "meaning";
-let stage, isles, tech, T, labelEls = new Map(), decor = [], selMesh, playTimer = 0;
+let stage, isles, tech, T, labelEls = new Map(), decor = [], selMesh;
 
 // Scene colours come from the stylesheet, so light and dark stay in step.
 function theme() {
@@ -534,7 +535,7 @@ function labelOpacity(L, dist) {
 
 // ---------- views ----------
 async function go() {
-  await flushPage(); closeAll(); S.pick?.finish(null); stopPlay();
+  await flushPage(); closeAll(); S.pick?.finish(null); tlClose(true);
   if (!/^#\/notes/.test(location.hash)) { S.ed?.destroy(); S.ed = null; }
   S.quick = null; S.review = null; S.cutoff = null; endJump(); if (S.move) toggleMove(false);
   await load();
@@ -760,7 +761,7 @@ function appMenu(anchor) {
     (S.view === "forest" || S.view === "isles") && { label: "Meaning view", key: "M", run: () => goMeaning() },
     S.view !== "tech" && { label: "Tech tree", key: "K", run: openTech },
     S.view !== "notes" && S.view !== "tree" && { label: "Notes", key: "O", run: openNotes },
-    S.view === "forest" && { label: "Timeline", key: "T", run: toggleTimeline },
+    (S.view === "forest" || S.view === "isles") && { label: "Timelapse", key: "T", run: tlToggle },
     desktop && { label: "Sunday session", key: "U", run: startSunday },
     archived.length && { label: "Archived", run: () => menu(anchor, archived.map((x) => ({ label: `Restore ${x.name}`, run: async () => { await safely(() => (x.rootId ? store.updateTree : store.updateZone)(x.id, { archived: false })); refresh(); } }))) },
     "-", S.view === "isles" && { label: "Import map", run: importMap }, { label: "Import exam", run: importExam }, { label: "Export backup", run: exportBackup }, { label: "Restore backup", run: () => $("#importFile").click() },
@@ -778,7 +779,7 @@ function appMenu(anchor) {
 function treeMenu(anchor) {
   const t = S.tree;
   menu(anchor, [
-    { label: "Timeline", key: "T", run: toggleTimeline },
+    { label: "Timelapse", key: "T", run: tlToggle },
     { label: "Meaning view", key: "M", run: () => { S.pendingSel = S.sel; goMeaning(t.zoneId); } }, { label: "Tech tree", key: "K", run: openTech }, { label: "Fit view", key: "0", run: fitView },
     "-", { label: "Rename", run: () => renameThing(t, store.updateTree, "Knowledge graph") }, { label: "Colour", run: () => colourThing(t, store.updateTree) },
     S.zones.length > 1 && { label: "Move to topic", run: async () => {
@@ -837,6 +838,7 @@ function shortcuts() {
     ["Building a graph", [["Tab", "Add under"], ["↵", "Add beside"], ["R", "Rename"], ["Del", "Delete (a picked link too)"], ["L", "Link"], ["G", "Graft"], ["X", "Make its own graph"], ["C", "Colour"], ["Space", "Notes"], ["⇧↵", "Open the board's graph in 3D"],
       ["Drag", "Move an idea; drop it on another to graft"], ["+ or Alt-drag", "Pull out a new idea, or a link"]]],
     ["Garden", [["W", "Water"], ["D", "Day or night"], ["N  Z", "New graph, new topic"], ["S", "Split a full topic"], ["⇧1–3  ⇧0", "Focus, Keep, Settled; a topic back to its island's"]]],
+    ["Timelapse", [["T", "Open or close"], ["Space", "Play or pause"], ["← →", "A day back or on"], ["⇧← ⇧→", "The marks: Sundays and big days"], ["⇧T", "Save as video"], ["Esc", "Back to now"]]],
     ["Tech tree", [["Space", "Open or close"], ["↵", "Put in the middle; again to open"], ["H  A", "Whole tree, everything open"], ["B", "What an island grows from"]]],
     ["Library", [["N  F  W", "New page, folder, pen page"], ["⇧V", "Vocab"], ["P H E L", "Pen page: pen, highlighter, eraser, lasso"], ["C  S  B  T", "Pen page: colour, size, paper, touch"]]],
   ];
@@ -1487,36 +1489,158 @@ function renderSunday() {
       u.turns.length ? b("sunFinish", "Stitch", "F", stitchSunday) : null, el("span", { class: "grow" }), el("span", { class: "muted", text: `${u.turns.length + 1} / ${SUNDAY_MAX}` })));
 }
 
-// ---------- timeline ----------
-function timeRange() {
-  const xs = S.view === "tree" ? [S.tree, ...(S.byTree.get(S.tree.id) || [])] : [...S.zones, ...S.trees];
-  const min = Math.min(Date.now() - 1000, ...xs.map((x) => Date.parse(x.createdAt)));
-  return [min, Date.now()];
+// ---------- timelapse ----------
+// One slider for the past (T), in the garden and in Knowledge, docked in the bottom bar. The garden is drawn from
+// history.at(t) (src/history.js): topics come as they were made, plots grow and dry as they did; nothing is written.
+// Knowledge keeps its cut (S.cutoff): what was made after t is left out. A month plays in about 10 s; longer spans
+// go a little faster per month. Ticks mark Sundays and big days (an exam brought in, a large Grow, many new ideas).
+// ⇧T records a play-through of what's showing as a video and offers the file.
+let tlSecs = null, tlRaf = 0, tlLast = 0;   // tlSecs: a set play length, for tests
+const tlWhere = () => (S.view === "isles" ? "garden" : S.view === "forest" || S.view === "tree" ? "knowledge" : null);
+const tlPast = () => (S.tl?.where === "garden" && S.tl.t < S.tl.max ? S.tl.past : null);
+const tlLength = (tl) => tlSecs ?? Math.min(40, Math.max(4, 10 * Math.sqrt((tl.max - tl.min) / (30 * DAY))));
+const tlDate = (t) => new Date(t).toLocaleDateString(undefined, { day: "numeric", month: "short", ...(new Date(t).getFullYear() !== new Date().getFullYear() ? { year: "numeric" } : {}) });
+const tlToggle = () => (S.tl ? tlClose() : tlOpen());
+const below = (xs, t) => { let lo = 0, hi = xs.length; while (lo < hi) { const m = (lo + hi) >> 1; if (xs[m] <= t) lo = m + 1; else hi = m; } return lo; };
+async function tlOpen() {
+  const where = tlWhere(); if (!where || S.tl) return;
+  const events = await store.listEvents().catch(() => []);
+  if (S.tl || tlWhere() !== where) return;
+  const hist = createHistory({ zones: S.allZones, trees: S.allTrees, nodes: S.nodes, links: S.links, events, pages: S.pages }), max = Date.now();
+  // Knowledge reads its range as before: from the first topic or graph (in a graph, the graph) to now
+  const xs = where === "garden" ? [] : S.view === "tree" ? [S.tree, ...(S.byTree.get(S.tree.id) || [])] : [...S.zones, ...S.trees];
+  const min = where === "garden" ? hist.min : Math.min(max - 1000, ...xs.map((x) => Date.parse(x.createdAt)));
+  const times = where === "garden" ? [] : (S.view === "tree" ? S.byTree.get(S.tree.id) || [] : [...S.zones, ...S.trees, ...S.nodes]).map((x) => Date.parse(x.createdAt)).sort((a, b) => a - b);
+  S.tl = { where, hist, min, max, t: max, playing: false, ticks: hist.ticks(min, max), times, sig: null, dirty: false, drawn: 0, past: null, ui: null, rec: null };
+  if (where === "knowledge") { S.cutoff = max; S.panel = null; S.quick = null; S.review = null; S.tl.sig = below(times, max); rebuild(); }
+  else if (S.topic >= 0) pickTopic(-1);
+  renderChrome(); tlLoop();
 }
-function stopPlay() { clearInterval(playTimer); playTimer = 0; }
-function toggleTimeline() {
-  if (S.view === "garden" || S.view === "meaning") return;
-  stopPlay();
-  if (S.cutoff != null) S.cutoff = null;
-  else { S.cutoff = Date.now(); S.panel = null; S.quick = null; S.review = null; }
-  rebuild(); renderChrome();
+// quiet: when go() is about to draw everything again anyway
+function tlClose(quiet = false) {
+  const tl = S.tl; if (!tl) return;
+  tlRecStop(false); S.tl = null; cancelAnimationFrame(tlRaf);
+  if (quiet) return;
+  if (tl.where === "knowledge") { S.cutoff = null; rebuild(); } else if (S.view === "isles") drawIsles();
+  renderChrome();
 }
+// now: draw at once (scrubbing), else on the next frame
+function tlSet(t, now = false) {
+  const tl = S.tl; if (!tl) return;
+  tl.t = Math.max(tl.min, Math.min(tl.max, t)); tl.dirty = true;
+  if (now && !(tl.where === "garden" && isles?.busy)) tlDraw(performance.now()); else tlPaint();
+}
+function tlPlay(on = !S.tl?.playing) {
+  const tl = S.tl; if (!tl) return;
+  if (on && tl.t >= tl.max - 1) tlSet(tl.min, true);
+  tl.playing = on; tlLast = 0; tlPaint();
+}
+function tlStep(k, shift) {
+  const tl = S.tl, d = k === "ArrowRight" ? 1 : -1; tl.playing = false;
+  if (!shift) return tlSet(tl.t + d * DAY, true);
+  const next = d > 0 ? tl.ticks.find((x) => x.at > tl.t + 1000) : [...tl.ticks].reverse().find((x) => x.at < tl.t - 1000);
+  tlSet(next ? next.at : d > 0 ? tl.max : tl.min, true);
+}
+function tlLoop() {
+  cancelAnimationFrame(tlRaf); tlLast = 0;
+  const step = (now) => {
+    const tl = S.tl; if (!tl) return;
+    if (tl.playing) {
+      const dt = tlLast ? Math.min(0.1, (now - tlLast) / 1000) : 0;
+      let t = tl.t + (dt * (tl.max - tl.min)) / tlLength(tl);
+      if (t >= tl.max) { t = tl.max; tl.playing = false; if (tl.rec) tlRecFinish(tl); }
+      tlSet(t);
+    }
+    tlLast = now;
+    // the garden rebuilds an island a frame; the next step waits until they are all done
+    if (tl.dirty && now - tl.drawn > (tl.playing ? 90 : 30) && !(tl.where === "garden" && isles?.busy)) tlDraw(now);
+    tlRaf = requestAnimationFrame(step);
+  };
+  tlRaf = requestAnimationFrame(step);
+}
+function tlDraw(now) {
+  const tl = S.tl; tl.drawn = now; tl.dirty = false;
+  if (tl.where === "knowledge") {
+    S.cutoff = tl.t; const n = below(tl.times, tl.t);
+    if (n !== tl.sig) { tl.sig = n; rebuild(); }
+    return tlPaint();
+  }
+  tl.past = tl.t < tl.max ? tl.hist.at(tl.t) : null;
+  const model = gardenModel(tl.past), sig = JSON.stringify([model.map((q) => q.topics.map((x) => [x.id, Math.round(x.growth * 20), Math.round(x.health * 20), x.mist])), tl.past?.links.length]);
+  if (sig !== tl.sig) { tl.sig = sig; drawIsles(model); }
+  tlPaint();
+}
+function tlPaint() {
+  const tl = S.tl, ui = tl?.ui; if (!ui) return;
+  ui.range.value = tl.t; ui.range.style.setProperty("--p", ((tl.t - tl.min) / Math.max(1, tl.max - tl.min)) * 100 + "%");
+  const n = tl.where === "garden" ? tl.hist.count(tl.t) : S.view === "tree" ? shownNodes(S.tree).length : S.flora?.ids.length || 0;
+  ui.label.textContent = `${tlDate(tl.t)} · ${n}`;
+  if (ui.playing !== tl.playing) { ui.playing = tl.playing; ui.play.replaceChildren(icon(tl.playing ? ICON.pause : ICON.play), el("kbd", { text: "Space" })); ui.play.title = tl.playing ? "Pause (Space)" : "Play (Space)"; ui.play.setAttribute("aria-label", tl.playing ? "Pause" : "Play"); }
+  ui.video.classList.toggle("on", !!tl.rec); ui.video.setAttribute("aria-pressed", String(!!tl.rec));
+}
+const TICK = { sunday: "Sunday", exam: "Exam", grow: "Grow", big: "" };
 function renderTimeline() {
-  const bar = $("#timeline");
-  if (S.cutoff == null) { bar.hidden = true; bar.replaceChildren(); return; }
-  const [min, max] = timeRange();
-  const label = el("span", { class: "when" }), count = () => (S.view === "tree" ? shownNodes(S.tree).length : S.flora.ids.length);
-  const range = el("input", { type: "range", id: "timeRange", min, max, step: Math.max(1, Math.round((max - min) / 400)), value: Math.min(max, S.cutoff), "aria-label": "Timeline" });
-  const show = () => { label.textContent = `${new Date(S.cutoff).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} · ${count()}`; };
-  const set = (v) => { S.cutoff = v; range.value = v; rebuild(); show(); };
-  range.addEventListener("input", () => { stopPlay(); set(+range.value); });
-  const play = ib("timePlay", "Play", ICON.play, () => {
-    if (playTimer) return stopPlay();
-    let v = min; set(v);
-    playTimer = setInterval(() => { v += (max - min) / 90; if (v >= max) { set(max); stopPlay(); } else set(v); }, 60);
-  });
-  put(bar, play, range, label, ib("timeClose", "Close timeline", ICON.close, toggleTimeline));
-  bar.hidden = false; show();
+  const bar = $("#timeline"), tl = S.tl;
+  if (!tl) { bar.hidden = true; bar.replaceChildren(); return; }
+  if (tl.ui && bar.contains(tl.ui.range)) { bar.hidden = false; return tlPaint(); }
+  const range = el("input", { type: "range", id: "timeRange", min: tl.min, max: tl.max, step: Math.max(1, Math.round((tl.max - tl.min) / 2000)), value: tl.t, "aria-label": "Time" });
+  range.addEventListener("input", () => { tl.playing = false; tlSet(+range.value, true); });
+  for (const ev of ["change", "pointerup"]) range.addEventListener(ev, () => range.blur());   // keys stay with the timelapse, not the slider
+  const pos = (at) => ((at - tl.min) / Math.max(1, tl.max - tl.min)) * 100;
+  const tip = (k) => `${tlDate(k.at)}${TICK[k.kind] ? " · " + TICK[k.kind] : ""}${k.n && k.kind !== "sunday" ? ` · ${k.n}` : ""}`;
+  const ticks = el("div", { class: "tticks" }, tl.ticks.map((k) => el("button", { class: "tick " + k.kind, type: "button", tabIndex: -1, style: `left:${pos(k.at)}%`, title: tip(k), "aria-label": tip(k), onclick: () => { tl.playing = false; tlSet(k.at, true); } })));
+  const keyed = (id, label, d, key, run) => el("button", { class: "ib keyed", id, type: "button", title: `${label} (${key})`, "aria-label": label, onclick: run }, icon(d), el("kbd", { text: key }));
+  tl.ui = { range, label: el("span", { class: "when", id: "timeWhen" }), play: keyed("timePlay", "Play", ICON.play, "Space", () => tlPlay()), video: keyed("timeVideo", "Save as video", ICON.video, "⇧T", tlVideo), playing: false };
+  put(bar, tl.ui.play, el("kbd", { class: "tstep", title: "A day back or on; with Shift, the marks", text: "← →" }), el("div", { class: "tlrail" }, range, ticks), tl.ui.label, tl.ui.video, closeBtn("timeClose", "Back to now", "Esc", () => tlClose()));
+  bar.hidden = false; tlPaint();
+}
+// ⇧T: plays the timelapse from the start and records what's showing, then offers the file (webm where the browser makes it)
+function tlVideo() {
+  if (S.tl?.rec) return tlRecStop(false);
+  if (typeof MediaRecorder === "undefined" || !HTMLCanvasElement.prototype.captureStream) return toast("Video isn't available here");
+  if (!S.tl) return tlOpen().then(() => S.tl && tlVideo());
+  const tl = S.tl, garden = tl.where === "garden", src = garden ? $("#igl") : $("#gl");
+  const k = Math.min(1, 1920 / Math.max(1, src.width)), cv = document.createElement("canvas");
+  cv.width = Math.max(2, Math.round((src.width * k) / 2) * 2); cv.height = Math.max(2, Math.round((src.height * k) / 2) * 2);
+  const ctx = cv.getContext("2d"), w = cv.width, h = cv.height, font = getComputedStyle(document.body).fontFamily;
+  const sky = ctx.createRadialGradient(w / 2, h * 0.42, 0, w / 2, h * 0.42, Math.hypot(w / 2, h * 0.58));   // the garden's backdrop, as in .isles
+  const night = isles?.night; sky.addColorStop(0, night ? "#141a3a" : "#252a45"); sky.addColorStop(0.75, night ? "#05060c" : "#12141f"); sky.addColorStop(1, night ? "#05060c" : "#12141f");
+  const draw = () => {
+    if (garden) { ctx.fillStyle = sky; ctx.fillRect(0, 0, w, h); ctx.drawImage($("#sky"), 0, 0, w, h); }
+    ctx.drawImage(src, 0, 0, w, h);
+    const px = Math.max(12, Math.round(h / 34));
+    ctx.font = `600 ${px}px ${font}`; ctx.fillStyle = garden || document.body.classList.contains("night-ui") ? "rgba(255,255,255,.85)" : "rgba(29,29,27,.85)";
+    ctx.fillText(tlDate(S.tl?.t ?? Date.now()), px, h - px);
+  };
+  const keep = () => true, stream = cv.captureStream(30);
+  const type = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm", "video/mp4"].find((x) => MediaRecorder.isTypeSupported(x)) || "";
+  let rec; try { rec = new MediaRecorder(stream, { ...(type ? { mimeType: type } : {}), videoBitsPerSecond: 8e6 }); } catch { return toast("Video isn't available here"); }
+  const chunks = [], r = { rec, keep: false };
+  rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+  rec.onstop = () => {
+    if (garden) { if (isles) isles.onFrame = null; } else { stage.onRender = null; stage.tickers.delete(keep); }
+    stream.getTracks().forEach((x) => x.stop());
+    if (!r.keep || !chunks.length) return;
+    const blob = (S.tlVideo = new Blob(chunks, { type: rec.mimeType || type || "video/webm" }));
+    const a = el("a", { href: URL.createObjectURL(blob), download: `bonsai-timelapse-${new Date().toISOString().slice(0, 10)}.${/mp4/.test(blob.type) ? "mp4" : "webm"}` });
+    document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    toast("Video saved");
+  };
+  if (garden) isles.onFrame = draw; else { stage.onRender = draw; stage.tickers.add(keep); stage.invalidate(); }
+  tl.rec = r; rec.start(500); draw();
+  tlSet(tl.min, true); tl.playing = true; tlLast = 0; tlPaint();
+}
+// the end reached: wait for the last islands to be built, hold a moment, then stop and keep the file
+function tlRecFinish(tl, tries = 0) {
+  if (S.tl !== tl || !tl.rec) return;
+  if ((tl.dirty || (tl.where === "garden" && isles?.busy)) && tries < 60) { setTimeout(() => tlRecFinish(tl, tries + 1), 200); return; }
+  setTimeout(() => { if (S.tl === tl && tl.rec) tlRecStop(true); }, 900);
+}
+function tlRecStop(keep) {
+  const r = S.tl?.rec; if (!r) return;
+  S.tl.rec = null; r.keep = keep;
+  try { r.rec.stop(); } catch {}
+  tlPaint();
 }
 
 // ---------- empty forest ----------
@@ -1557,16 +1681,20 @@ const saveGarden = async () => { await safely(() => store.setMeta("garden", S.ga
 // What the garden draws: growth is how full a topic's plot is, health is the share of its ideas not waiting to be watered.
 // A topic with no ideas yet is uncharted, and lies under mist.
 // (o.fill, beta only: the demo's Workshop topics count as fuller than they are, to show every landmark tier)
-function gardenModel() {
-  const zone = new Map(S.zones.map((z) => [z.id, z])), now = Date.now(), hubs = hubsOf(S.garden), at = new Map(hubs.map((h, k) => [h.id, k]));
+function gardenModel(past = null) {
+  // past (timelapse): history.at(t), the garden as it was then; topics not there yet are left out, an island with none is bare rock
+  const zone = new Map(S.zones.map((z) => [z.id, z])), now = past ? past.t : Date.now(), hubs = hubsOf(S.garden), at = new Map(hubs.map((h, k) => [h.id, k]));
   const marks = assignMarks(S.garden.islands.flatMap((isl) => isl.zoneIds).map((id) => zone.get(id)).filter(Boolean).map((z) => ({ id: z.id, name: z.name, picked: S.garden.zone[z.id]?.mark })));   // no two topics share a guessed landmark
+  const ideasOf = (t) => (past ? past.byTree.get(t.id) || [] : S.byTree.get(t.id) || []).filter((n) => !n.ghost), kidN = (n) => (past ? past.kids.get(n.id) || 0 : kidsOf(n.id).length);
   const model = S.garden.islands.map((isl, i) => {
-    const topics = isl.zoneIds.map((id) => zone.get(id)).filter(Boolean).map((z, k) => {
-      const trees = S.trees.filter((t) => t.zoneId === z.id), nodes = trees.flatMap((t) => S.byTree.get(t.id) || []).filter((n) => !n.ghost), rev = nodes.filter((n) => srs.reviewable(n, kidsOf(n.id).length)), o = S.garden.zone[z.id] || {};
+    const topics = isl.zoneIds.map((id) => zone.get(id)).filter(Boolean).map((z, k) => [z, k]).filter(([z]) => !past || past.zones.has(z.id)).map(([z, k]) => {
+      const trees = S.trees.filter((t) => t.zoneId === z.id && (!past || past.trees.has(t.id))), nodes = trees.flatMap(ideasOf), rev = nodes.filter((n) => srs.reviewable(n, kidN(n))), o = S.garden.zone[z.id] || {};
       const level = zoneLevel(z.id), due = level === "settled" ? [] : rev.filter((n) => srs.isDue(n, now, focus.multOf(level)));   // Settled never withers; Keep's waiting ideas weigh half
-      return { id: z.id, name: z.name, level, biome: o.biome || BIOMES[k % 6][0], mark: marks.get(z.id), growth: Math.min(2, Math.pow((nodes.length + (CHANNEL ? o.fill || 0 : 0)) / FULL_PLOT, 0.6)), health: rev.length ? 1 - (focus.weightOf(level) * due.length) / rev.length : 1, ideas: nodes.length, mist: !nodes.length && charted(), due: due.map((n) => n.id), trees };
+      // the demo's pretend ideas grow in step with the real ones
+      const fill = CHANNEL && o.fill ? (past ? Math.round(o.fill * nodes.length / Math.max(1, S.trees.filter((t) => t.zoneId === z.id).flatMap((t) => S.byTree.get(t.id) || []).filter((n) => !n.ghost).length)) : o.fill) : 0;
+      return { id: z.id, name: z.name, level, biome: o.biome || BIOMES[k % 6][0], mark: marks.get(z.id), growth: Math.min(2, Math.pow((nodes.length + fill) / FULL_PLOT, 0.6)), health: rev.length ? 1 - (focus.weightOf(level) * due.length) / rev.length : 1, ideas: nodes.length, mist: !nodes.length && charted(), due: past ? [] : due.map((n) => n.id), trees };
     });
-    if (!topics.length) topics.push({ id: null, name: "", biome: "bloom", mark: "kit", growth: 0.04, health: 1, ideas: 0, mist: charted(), due: [], trees: [] });
+    if (!topics.length) topics.push({ id: null, name: "", biome: "bloom", mark: "kit", growth: 0.04, health: 1, ideas: 0, mist: !past && charted(), due: [], trees: [] });
     return { id: isl.id, name: isl.name, hub: at.get(hubKey(isl)) || 0, landmark: isl.landmark, patron: i === 0 && isl.landmark === "arches" ? S.garden.patron || "none" : undefined, mountain: isl.landmark === "arches" || !!isl.mountain, topics };
   });
   S.hubs = hubs.map((h, k) => ({ id: h.id, name: h.name, isles: model.map((q, i) => (q.hub === k ? i : -1)).filter((i) => i >= 0) }));
@@ -1574,10 +1702,10 @@ function gardenModel() {
 }
 const multi = () => (S.garden?.hubs?.length || 0) > 1, charted = () => !!S.garden?.mapAt;   // mist only means something once a map says what should be there
 // How many links run between ideas on two different islands; the garden widens those bridges.
-function crossLinks() {
+function crossLinks(links = S.links) {
   const where = new Map(); S.model.forEach((isl) => isl.topics.forEach((t) => where.set(t.id, isl.id)));
   const isleOf = (nodeId) => where.get(treeOf(S.byId.get(nodeId)?.treeId)?.zoneId), n = new Map();
-  for (const l of S.links) { const a = isleOf(l.fromId), b = isleOf(l.toId); if (a && b && a !== b) { const k = [a, b].sort().join("|"); n.set(k, (n.get(k) || 0) + 1); } }
+  for (const l of links) { const a = isleOf(l.fromId), b = isleOf(l.toId); if (a && b && a !== b) { const k = [a, b].sort().join("|"); n.set(k, (n.get(k) || 0) + 1); } }
   return [...n].map(([k, c]) => [...k.split("|"), c]);
 }
 function showWindow(garden, flat = false, notes = false) {
@@ -1607,16 +1735,16 @@ function showIsles() {
   if (S.pendingTopic) { goTopic(S.pendingTopic); S.pendingTopic = null; }
   if (S.pendingIsle) { const i = S.model.findIndex((q) => q.id === S.pendingIsle); S.pendingIsle = null; if (i >= 0) pickIsle(i); }
 }
-function drawIsles() {
-  const was = S.model[S.isle]?.id, wasHub = S.hubs[S.hub]?.id;
-  S.model = gardenModel();
+function drawIsles(model) {
+  const was = S.model[S.isle]?.id, wasHub = S.hubs[S.hub]?.id, past = tlPast();
+  S.model = model || gardenModel(past);
   if (was != null && S.model[S.isle]?.id !== was) { S.isle = S.model.findIndex((q) => q.id === was); if (S.isle < 0) S.topic = -1; }
   if (wasHub != null && S.hubs[S.hub]?.id !== wasHub) S.hub = S.hubs.findIndex((h) => h.id === wasHub);
   if (S.isle >= S.model.length) { S.isle = -1; S.topic = -1; }
   if (S.isle >= 0 && S.topic >= S.model[S.isle].topics.length) S.topic = -1;
   if (!multi() || S.hub >= S.hubs.length) S.hub = -1;
   if (S.isle >= 0) S.hub = multi() ? S.model[S.isle].hub : -1;
-  isles.setData(S.model, crossLinks(), S.hubs); isles.select(S.topic); renderGarden();
+  isles.setData(S.model, crossLinks(past?.links), S.hubs); isles.select(S.topic); renderGarden();
 }
 // Stepping in: every hub, then one hub, then one island, then one topic. A garden with a single hub skips the hub step.
 function pickHub(h) { S.hub = multi() && S.hubs[h] ? h : -1; S.isle = -1; S.topic = -1; isles.focusHub(S.hub); isles.select(-1); renderGarden(); }
@@ -2088,7 +2216,7 @@ function back() {
   if (S.sun) return stopSunday();
   if (S.oral) return stopOral();
   if (S.review) return endReview();
-  if (S.cutoff != null) return toggleTimeline();
+  if (S.tl) return tlClose();
   if (S.panel) { S.panel = null; return renderPanel(); }
   if (S.nside && S.view === "tree") return toggleSide();
   if (S.view === "garden" && S.fsel) return pickPlant(null);
@@ -2124,9 +2252,13 @@ function onKey(e) {
   if (S.view === "tech") return techKey(k, stop);
   if (S.view === "notes") return notesKey(k, stop, e);
   if (S.view === "tree" && S.cutoff == null && /^[0-9]$/.test(k) && (S.jump || k !== "0")) { stop(); return jumpDigit(k); }
-  if (k === "t" && S.view !== "isles") { stop(); return toggleTimeline(); }
+  if (k === "t" && tlWhere()) { stop(); return e.shiftKey ? tlVideo() : tlToggle(); }
+  if (S.tl) {
+    if (k === " ") { stop(); return tlPlay(); }
+    if (k === "ArrowLeft" || k === "ArrowRight") { stop(); return tlStep(k, e.shiftKey); }
+  }
   if (k === "0") { stop(); return S.view === "isles" ? pickHub(-1) : fitView(); }
-  if (S.cutoff != null) return;
+  if (S.cutoff != null || S.tl) return;
   if (S.view === "isles") return islesKey(k, stop);
   if (S.view === "garden") {
     if (k === "w") { stop(); return startReview(null); }
@@ -3212,6 +3344,7 @@ async function init() {
     if (c && !c.zones && !(await store.getMeta("demo").catch(() => null))) await store.importAll(demoBackup());
   }
   window.bonsai = { S, store, sync, refresh, get stage() { return stage; }, get isles() { return isles; }, get tech() { return tech; }, get vocab() { return vocab; }, thirst, water, openTree, graphItems, dueByLevel, setLevel, zoneLevel,
+    timelapse: { set secs(v) { tlSecs = v; }, get state() { return S.tl; } },
     sunday: { list: () => store.listSundays(), start: startSunday, setClock: (t) => { sunClock = t == null ? null : +new Date(t); renderTop(); }, get due() { return sundayDue(); } } };
   await go();
   document.body.dataset.ready = "1";
