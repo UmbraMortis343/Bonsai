@@ -9,6 +9,7 @@
 //        A cross-link ("leap") between any two nodes, even in different trees.
 //        srs {due, interval, ease, reps, lapses, passes} is the review schedule.
 //        wasTree {name, color} marks a trunk that was grafted in as a branch.
+//        qs [{kind, q, a, linkId?, hide?, by, at}] are questions watering asks (questions.js).
 // event {id, at, type, ref, data}  Append-only log for the growth timeline.
 // patch {id, treeId, text, nodeIds, createdAt}  A short reflection (Patchwork Text).
 // inbox {id, text, createdAt}  Quick-captured thoughts waiting to be filed.
@@ -23,6 +24,7 @@
 
 import { CHANNEL } from "./channel.js";
 import { rate } from "./srs.js";
+import { cleanQs } from "./questions.js";
 
 export const SCHEMA_VERSION = 5;
 const DB_NAME = CHANNEL ? "bonsai-" + CHANNEL : "bonsai";   // the beta never sees the real garden
@@ -259,9 +261,11 @@ export async function mergeZone(zoneId, intoTreeId) {
 }
 
 // ---------- nodes ----------
-function newNode(treeId, parentId, { title, note = "", body = "", color = null }, order) {
-  return { id: uid(), treeId, parentId, title: clean(title, 140), note: clean(note, 500), body: String(body || "").slice(0, 200000),
+function newNode(treeId, parentId, { title, note = "", body = "", color = null, qs = null }, order) {
+  const n = { id: uid(), treeId, parentId, title: clean(title, 140), note: clean(note, 500), body: String(body || "").slice(0, 200000),
     color, order, createdAt: now(), updatedAt: now(), reviewedAt: null };
+  const q = qs ? cleanQs(qs, "claude") : []; if (q.length) n.qs = q;   // questions Grow wrote as it went
+  return n;
 }
 export async function addNode(parentId, fields) {
   if (!clean(fields?.title, 140)) throw new Error("Give the idea a title.");
@@ -317,12 +321,12 @@ export async function restoreRows({ nodes = [], links = [] }) {
     if (nodes.length) logEvent(s, "node.restore", nodes[0].id, { count: nodes.length });
   });
 }
-// Records a review. rating: again | hard | good | easy.
-export async function reviewNode(id, rating) {
+// Records a review. rating: again | hard | good | easy. asked: the kind of question asked, if there was one.
+export async function reviewNode(id, rating, { asked = "" } = {}) {
   return tx(["nodes", "events"], "readwrite", async (s) => {
     const n = await reqP(s.nodes.get(id)); if (!n) throw new Error("That idea no longer exists.");
     const next = { ...n, srs: rate(n, rating), reviewedAt: now() };
-    s.nodes.put(next); logEvent(s, "node.review", id, { rating });
+    s.nodes.put(next); logEvent(s, "node.review", id, asked ? { rating, asked } : { rating });
     return next;
   });
 }
@@ -339,6 +343,29 @@ export async function saveOral(results) {
       if (n.ghost) { if (r.shown) { delete next.ghost; Object.assign(next, passed(2, k++)); logEvent(s, "node.create", n.id, { treeId: n.treeId, parentId: n.parentId }); } }
       else { next.srs = rate(n, r.shown ? "good" : "again"); next.reviewedAt = now(); logEvent(s, "node.review", n.id, { rating: r.shown ? "good" : "again", by: "oral" }); }
       s.nodes.put(next);
+    }
+    return before;
+  });
+}
+// An idea's questions, all at once (adding, editing and deleting one are all this). by: who wrote new ones.
+export async function setQuestions(id, qs, by = "you") {
+  return tx(["nodes", "events"], "readwrite", async (s) => {
+    const n = await reqP(s.nodes.get(id)); if (!n) throw new Error("That idea no longer exists.");
+    const next = { ...n, qs: cleanQs(qs, by), updatedAt: now() };
+    if (!next.qs.length) delete next.qs;
+    s.nodes.put(next); logEvent(s, "node.edit", id, { fields: ["qs"] });
+    return next;
+  });
+}
+// Questions for several ideas in one save, added to what each has: [{ id, qs }]. Returns the rows as they were, for Undo.
+export async function addQuestions(list) {
+  return tx(["nodes", "events"], "readwrite", async (s) => {
+    const before = [];
+    for (const { id, qs } of list) {
+      const n = await reqP(s.nodes.get(id)); if (!n) continue;
+      const add = cleanQs(qs, "claude"); if (!add.length) continue;
+      before.push(n);
+      s.nodes.put({ ...n, qs: cleanQs([...(n.qs || []), ...add]), updatedAt: now() }); logEvent(s, "node.edit", id, { fields: ["qs"] });
     }
     return before;
   });

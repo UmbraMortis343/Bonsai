@@ -1,6 +1,6 @@
 // A flat web of one knowledge graph, drawn like the tech tree's web view: dots in each idea's colour,
 // strings to the idea it hangs off, dashed links, the picked idea ringed and labelled.
-// createMiniWeb({ host, onPick(id), onOpen(id), num(id), ring(id), edit, … }) → { setData({ nodes, links, rootId, colour(id) }), select(id), resize(), destroy() }
+// createMiniWeb({ host, onPick(id), onOpen(id), num(id), ring(id), mask(id), edit, … }) → { setData({ nodes, links, rootId, colour(id) }), select(id), resize(), destroy() }
 // Drag to pan, wheel to zoom, click an idea to pick it, double-click to open it. num gives an idea its number, ring an
 // extra ring's colour (the Library marks what needs water in ochre). Every idea is the same size.
 // With edit (the Library's board): an idea's place is its own (node.xy, kept by onMove); dragging an idea moves it
@@ -8,7 +8,7 @@
 // Alt-drag, pulls out a string: let go on empty paper for a new idea there (onNew), on an idea to link them (onLink).
 // Right-click asks for a menu (onMenu); a graph dragged in from the Library and dropped on an idea is onDropTree.
 // Links can be picked too (onPickLink): hovered and picked ones are drawn bolder; right-click on one gives onMenu(null, …, linkId).
-export function createMiniWeb({ host, onPick, onOpen, num = () => null, ring = () => null, edit = false, onMove, onDrop, onNew, onLink, onMenu, onDropTree, onPickLink }) {
+export function createMiniWeb({ host, onPick, onOpen, num = () => null, ring = () => null, mask = () => null, edit = false, onMove, onDrop, onNew, onLink, onMenu, onDropTree, onPickLink }) {
   const canvas = document.createElement("canvas"), ctx = canvas.getContext("2d");
   canvas.className = "miniweb"; canvas.setAttribute("aria-label", "Graph"); host.append(canvas);
   let W = 1, H = 1, dpr = 1, P = new Map(), kids = new Map(), links = [], sel = null, hov = null, colour = () => "#888", sig = "";
@@ -94,7 +94,8 @@ export function createMiniWeb({ host, onPick, onOpen, num = () => null, ring = (
     ctx.textBaseline = "middle";
     for (const p of [...P.values()].sort((a, b) => rank(a) - rank(b))) {
       const rk = rank(p), font = rk <= 1 || p.depth === 0 ? "600 12px system-ui,sans-serif" : "500 11px system-ui,sans-serif"; ctx.font = font;
-      const nb = num(p.n.id); let s = (nb ? nb + "  " : "") + p.n.title; const full = s; while (s.length > 4 && ctx.measureText(s).width > 150) s = s.slice(0, -2); if (s !== full) s = s.trimEnd() + "…";
+      const nb = num(p.n.id), mk = mask(p.n.id); let s = (nb ? nb + "  " : "") + (mk ?? p.n.title); const full = s;   // mask: a name kept back while a question waits
+      while (s.length > 4 && ctx.measureText(s).width > 150) s = s.slice(0, -2); if (s !== full) s = s.trimEnd() + "…";
       // right of the dot, else left, else below, else above; the picked idea and the graph's start always get one
       const w = ctx.measureText(s).width, cx = SX(p.x), cy = SY(p.y);
       const spots = [[cx + 9, cy], [cx - 9 - w, cy], [cx - w / 2, cy + 16], [cx - w / 2, cy - 16]].map(([x, y]) => ({ x, y, b: { x0: x - 5, y0: y - 10, x1: x + w + 5, y1: y + 10 } }));
@@ -219,7 +220,7 @@ export function createMiniWeb({ host, onPick, onOpen, num = () => null, ring = (
     linkAt(id) { const l = links.find((x) => x.id === id), c = l && curve(l), r = canvas.getBoundingClientRect(); if (!c) return null; const t = 0.5, u = 0.5; return { x: r.left + u * u * c[0] + 2 * u * t * c[2] + t * t * c[4], y: r.top + u * u * c[1] + 2 * u * t * c[3] + t * t * c[5] }; },   // for tests
     select(id) { sel = id; const p = P.get(id); if (p && (SX(p.x) < 30 || SX(p.x) > W - 30 || SY(p.y) < 20 || SY(p.y) > H - 20)) { view.x = p.x; view.y = p.y; } draw(); },
     attach(newHost) { if (canvas.parentElement !== newHost) { ro.unobserve(host); host = newHost; newHost.append(canvas); ro.observe(newHost); } resize(); },
-    resize, fit() { fit(); draw(); },
+    resize, fit() { fit(); draw(); }, redraw: () => draw(),
     screenOf(id) { const p = P.get(id), r = canvas.getBoundingClientRect(); return p && { x: r.left + SX(p.x), y: r.top + SY(p.y) }; },   // for tests
     destroy() { ro.disconnect(); canvas.remove(); },
   };

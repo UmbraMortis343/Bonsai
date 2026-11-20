@@ -23,6 +23,7 @@ import { createVocab, createQuick, fleshPrompt, readFlesh } from "./vocab.js";
 import { desktop, canSee, liveStatus, liveProblem, askClaude, desktopUpdate } from "./live.js";
 import { oralOpen, oralPrompt, readOral, oralMarkPrompt, readMarks } from "./paper.js";
 import * as sync from "./sync.js";
+import { KINDS, KIND_NAME, REBUILD_Q, questionFor, usableQs, pickHide, questionsPrompt, readQuestions, dayNumber } from "./questions.js";
 import { createInk } from "./ink.js";
 
 const PALETTE = [["Blue", "#3b82f6"], ["Violet", "#8b5cf6"], ["Pink", "#ec4899"], ["Red", "#ef4444"], ["Orange", "#f97316"], ["Amber", "#f59e0b"], ["Green", "#22c55e"], ["Teal", "#14b8a6"], ["Cyan", "#06b6d4"]];
@@ -509,11 +510,12 @@ function placeSel() {
   if (p) { selMesh.position.copy(p); selMesh.scale.setScalar(S.flora.radii.get(S.sel) * 1.1 + 0.025); }
 }
 function labelOpacity(L, dist) {
+  if (S.review && masked(L.id)) return 0;   // a question waits on it
   if (S.view === "meaning") return L.kind === "group" || L.id === S.sel ? 1 : THREE.MathUtils.clamp(2.3 - dist / (stage.radius * 0.85), 0, 1);
   // rings read like a map: islands and hubs always named, topics from closer in, graphs from closer still
   if (L.as) return L.as === "hub" || L.as === "isle" ? 1 : L.as === "zone" ? THREE.MathUtils.clamp((330 - dist) / 60, 0, 1) : L.as === "tree" ? THREE.MathUtils.clamp((130 - dist) / 20, 0, 1) : THREE.MathUtils.clamp((48 - dist) / 10, 0, 1);
   if (S.view !== "tree") return L.kind === "hub" || L.kind === "isle" ? 1 : L.kind === "zone" ? THREE.MathUtils.clamp((520 - dist) / 60, 0, 1) : 1;   // graph names stay at any distance (his call, 0.18.1); they only give way where they'd touch
-  if (S.review) return L.id === S.sel ? 1 : 0;
+  if (S.review) return L.id === S.sel && !masked(L.id) ? 1 : 0;
   if (L.kind === "link") return THREE.MathUtils.clamp(2 - dist / (stage.radius * 1.1), 0, 1);
   if (L.id === S.sel || S.near.has(L.id)) return 1;
   if (stage.labels.length > 40) {
@@ -824,7 +826,7 @@ function shortcuts() {
     ["Everywhere", [["Click", "Pick"], ["Double-click  ↵", "Go in, open"], ["Right-click", "Its menu (tech tree: open or close what's under it)"], ["Drag", "Move what you hold; on empty space, turn or pan"],
       ["Wheel", "Zoom"], ["1–9  ← ↑ ↓ →", "Pick by number, or the next one"], ["Esc", "Let go, then step back out"], ["⇧Esc", "Straight back"], ["0", "Fit"], ["V", "The other view: board and 3D, separate and joined, tree and web"], ["M", "Meaning: ideas arranged by what they mean"],
       ["⇧Tab", "Garden, Knowledge, Library (Knowledge shows what's picked; Tab alone in the garden)"], ["[  ]", "The panel on the left, on the right"], ["/", "Search"], ["I", "Capture a thought"], ["K", "Tech tree"], ["O", "Notes beside a graph"], ["?", "These keys"]]],
-    ["Building a graph", [["Tab", "Add under"], ["↵", "Add beside"], ["R", "Rename"], ["Del", "Delete (a picked link too)"], ["L", "Link"], ["G", "Graft"], ["X", "Make its own graph"], ["C", "Colour"], ["Space", "Notes"], ["⇧↵", "Open the board's graph in 3D"],
+    ["Building a graph", [["Tab", "Add under"], ["↵", "Add beside"], ["R", "Rename"], ["Del", "Delete (a picked link too)"], ["L", "Link"], ["G", "Graft"], ["X", "Make its own graph"], ["C", "Colour"], ["Q", "Add a question"], ["Space", "Notes"], ["⇧↵", "Open the board's graph in 3D"],
       ["Drag", "Move an idea; drop it on another to graft"], ["+ or Alt-drag", "Pull out a new idea, or a link"]]],
     ["Garden", [["W", "Water"], ["D", "Day or night"], ["N  Z", "New graph, new topic"], ["S", "Split a full topic"]]],
     ["Tech tree", [["Space", "Open or close"], ["↵", "Put in the middle; again to open"], ["H  A", "Whole tree, everything open"], ["B", "What an island grows from"]]],
@@ -919,7 +921,7 @@ function ideaItems(n) {
     { label: "Rename", key: "R", run: () => quick("rename") }, { label: "Notes", key: "Space", run: () => { S.panel = "node"; renderPanel(); } },
     { label: "Link to…", key: "L", run: linkFrom }, { label: "Graft onto…", key: "G", run: graft },
     !top && { label: n.wasTree ? `Split ${n.wasTree.name} back out` : "Make its own graph", key: "X", run: () => splitOut(n) },
-    { label: "Colour", key: "C", run: () => cycleColour(n) },
+    { label: "Colour", key: "C", run: () => cycleColour(n) }, { label: "Add question", key: "Q", run: () => editQuestion(n, -1) },
     n.pin && { label: "Put back where it was", run: () => unpin(false) },
     { label: "On the board", key: "V", run: openOnBoard }, { label: "Tech tree", key: "K", run: openTech },
     !top && "-", !top && { label: "Delete", key: "Del", danger: true, run: () => removeNode(n.id) }];
@@ -1184,6 +1186,7 @@ function nodePanel(n) {
     el("input", { id: "nodeNote", class: "short", value: n.note || "", maxLength: 500, placeholder: "Short note", "aria-label": "Short note", onchange: (e) => save({ note: e.target.value }) }),
     bodyBox,
     el("div", { class: "swatches" }, SWATCHES.map(([name, hex]) => el("button", { class: "sw" + ((n.color || "") === hex ? " on" : "") + (hex ? "" : " none"), title: name, "aria-label": name, style: hex ? `background:${hex}` : "", onclick: () => save({ color: hex || null }, true) }))),
+    questionsBox(n),
     links.length && el("section", {}, el("h3", { text: "Links" }), links.map((l) => {
       const other = S.byId.get(l.fromId === n.id ? l.toId : l.fromId); if (!other) return null;
       return el("div", { class: "linkrow" }, el("button", { class: "chip", text: other.title, title: pathOf(other), onclick: () => jump(other.id) }),
@@ -1266,22 +1269,34 @@ async function passAll(ids) {
 function renderReview() {
   if (S.oral) return renderOral();
   const box = $("#review"), r = S.review, n = r && S.byId.get(r.ids[r.i]);
-  box.classList.remove("oral");
+  box.classList.remove("oral"); unmaskBoard();
   if (!n) { box.hidden = true; box.replaceChildren(); return; }
-  const parent = S.byId.get(n.parentId), kids = kidsOf(n.id);
+  const parent = S.byId.get(n.parentId), kids = kidsOf(n.id), ask = reviewAsk(), qk = ask && !ask.fallback ? ask : null;
   box.hidden = false;
-  put(box, 
-    el("div", { class: "row" }, el("span", { class: "muted grow", text: [pathOf(n), parent?.title].filter(Boolean).join(" › ") }), el("span", { class: "muted", text: `${r.i + 1}/${r.ids.length}` }), el("button", { class: "link", id: "reviewAllGood", text: "All good", onclick: () => passAll(r.ids.slice(r.i)) }), desktop ? el("button", { class: "link", id: "reviewOral", onclick: () => startOral(n.treeId, r.ids.slice(r.i)) }, "Oral", el("kbd", { text: "E" })) : null, ib("reviewClose", "Stop", ICON.close, endReview)),
-    el("h2", { text: n.title }),
-    ...(r.shown ? [
+  const rateRow = () => el("div", { class: "row rate" }, srs.RATINGS.map((x, i) => el("button", { class: "btn", dataset: { rate: x }, onclick: () => rateNow(x) }, x[0].toUpperCase() + x.slice(1), el("kbd", { text: String(i + 1) }))));
+  const showB = () => el("button", { class: "btn primary", id: "showAnswer", onclick: () => { r.shown = true; renderReview(); } }, "Show", el("kbd", { text: "Space" }));
+  let body;
+  if (!qk) body = [el("h2", { text: n.title }), ...(r.shown ? [
       n.note && el("p", { class: "rv-note", text: n.note }), n.body && el("div", { class: "md", html: md(n.body) }),
-      kids.length && el("ul", { class: "rv-kids" }, kids.map((k) => el("li", { text: k.title }))),
-      el("div", { class: "row rate" }, srs.RATINGS.map((x, i) => el("button", { class: "btn", dataset: { rate: x }, onclick: () => rateNow(x) }, x[0].toUpperCase() + x.slice(1), el("kbd", { text: String(i + 1) })))),
-    ] : [el("button", { class: "btn primary", id: "showAnswer", onclick: () => { r.shown = true; renderReview(); } }, "Show", el("kbd", { text: "Space" }))]).filter(Boolean));
+      kids.length && el("ul", { class: "rv-kids" }, kids.map((k) => el("li", { text: k.title }))), rateRow(),
+    ] : [showB()])];
+  else if (qk.kind === "rebuild") {   // the idea with blanks where the hidden ideas hang
+    const hid = new Set(qk.hide);
+    body = [el("h2", { id: "reviewQ", text: n.title }), qk.q !== REBUILD_Q ? el("p", { class: "muted", text: qk.q }) : null,
+      el("ul", { class: "rv-kids rebuild", id: "rebuildList" }, kids.map((k) => hid.has(k.id) ? el("li", { class: r.shown ? "hid" : "blank", text: r.shown ? k.title : "" }) : el("li", { text: k.title }))),
+      r.shown ? rateRow() : showB()];
+  } else body = [el("h2", { id: "reviewQ", text: qk.q }), ...(r.shown ? [
+      el("div", { class: "rv-ans", id: "reviewAns" }, el("b", { text: n.title }), n.note ? el("span", { text: n.note }) : null, qk.a ? el("p", { text: qk.a }) : null),
+      n.body && el("div", { class: "md", html: md(n.body) }), rateRow(),
+    ] : [showB()])];
+  put(box,
+    el("div", { class: "row" }, qk ? el("span", { class: "qkind", id: "reviewKind", text: KIND_NAME[qk.kind] }) : null, el("span", { class: "muted grow", text: [pathOf(n), parent?.title].filter(Boolean).join(" › ") }), el("span", { class: "muted", text: `${r.i + 1}/${r.ids.length}` }), el("button", { class: "link", id: "reviewAllGood", text: "All good", onclick: () => passAll(r.ids.slice(r.i)) }), desktop ? el("button", { class: "link", id: "reviewOral", onclick: () => startOral(n.treeId, r.ids.slice(r.i)) }, "Oral", el("kbd", { text: "E" })) : null, ib("reviewClose", "Stop", ICON.close, endReview)),
+    ...body.filter(Boolean));
 }
 async function rateNow(rating) {
   const r = S.review; if (!r || r.busy) return; r.busy = true;
-  await safely(() => store.reviewNode(r.ids[r.i], rating));
+  const ask = reviewAsk();
+  await safely(() => store.reviewNode(r.ids[r.i], rating, { asked: ask && !ask.fallback ? ask.kind : "" }));
   r.n++; r.i++; r.shown = false; r.busy = false; await load();
   if (r.i >= r.ids.length) return endReview();
   stepReview();
@@ -1290,6 +1305,107 @@ async function endReview() {
   const n = S.review?.n; S.review = null;
   await refresh({ animate: true }); renderReview();
   if (n) toast(`Watered ${n}`);
+}
+
+// ---------- questions ----------
+// Watering asks a question instead of showing an idea's name (card "Questions of five kinds", questions.js): he
+// answers in his head, shows the answer and rates as before. Questions live on the idea (node.qs), so the phone
+// asks them without Claude. Q adds one on the picked idea; in Bonsai Desktop a graph's menu has Write questions,
+// where Claude writes them for ideas with none and he ticks which to keep. Grow writes them as it goes.
+const qctx = (n) => ({ kids: kidsOf(n.id), links: S.links.filter((l) => l.fromId === n.id || l.toId === n.id).map((l) => ({ id: l.id, label: l.label || "", other: S.byId.get(l.fromId === n.id ? l.toId : l.fromId) })).filter((l) => l.other) });
+// The question to ask today for an idea ({ kind: "name", fallback: true } when it has none it can use). For Morning recall too.
+const askFor = (n, day = dayNumber()) => questionFor(n, qctx(n), day);
+function reviewAsk() { const r = S.review, n = r && S.byId.get(r.ids[r.i]); if (!n) return null; r.asks ||= {}; return (r.asks[r.i] ||= askFor(n)); }
+// A name kept back while a question waits: the idea asked about, or a Rebuild's hidden ideas.
+function masked(id) {
+  const r = S.review; if (!r || r.shown || S.oral) return false;
+  const a = reviewAsk(); if (!a || a.fallback) return false;
+  return a.kind === "rebuild" ? a.hide.includes(id) : id === r.ids[r.i];
+}
+// the board, its foot and the idea card follow what's masked
+function unmaskBoard() {
+  if (S.view !== "notes" || !S.board) return;
+  S.board.redraw(); const tr = treeOf(S.boardTree); if (tr) drawGraphFoot($("#gfoot"), tr);
+  if (S.gpanes?.card) delete S.gpanes.card.dataset.id; drawIdeaCard();
+}
+const afterQuestion = () => (S.view === "notes" ? boardRedraw() : refresh());
+// The Questions section of the idea panel and the board's idea card: each question, + to add (Q), × to delete.
+function questionsBox(n) {
+  const qs = n.qs || [], ok = new Set(usableQs(n, qctx(n)).map((x) => x.i));
+  return el("section", { class: "qsec", id: "qsec" },
+    el("div", { class: "row" }, el("h3", { class: "grow", text: "Questions" }), el("button", { class: "btn small", type: "button", id: "qAdd", title: "Add a question (Q)", onclick: () => editQuestion(n, -1) }, "+", el("kbd", { text: "Q" }))),
+    qs.map((q, i) => el("div", { class: "qrow" + (ok.has(i) ? "" : " off"), dataset: { i } },
+      el("span", { class: "qkind", text: KIND_NAME[q.kind] || q.kind }),
+      el("button", { class: "qtext", type: "button", text: q.q, title: q.a || "", onclick: () => editQuestion(n, i) }),
+      ib(null, "Delete question", ICON.close, () => deleteQuestion(n, i)))));
+}
+// Writing or changing one question. i: its place in node.qs, -1 for a new one.
+async function editQuestion(n, i = -1) {
+  n = S.byId.get(n.id) || n;
+  const was = (n.qs || [])[i], c = qctx(n);
+  const kind = el("select", { id: "qKind", "aria-label": "Kind", onchange: () => show() }, KINDS.map((k) => el("option", { value: k, text: KIND_NAME[k], selected: k === (was?.kind || "recall"), disabled: (k === "connect" && !c.links.length) || (k === "rebuild" && !c.kids.length) })));
+  const q = el("textarea", { id: "qText", rows: 3, placeholder: "Question", "aria-label": "Question", value: was?.q || "" });
+  const a = el("textarea", { id: "qAnswer", rows: 2, placeholder: "Answer", "aria-label": "Answer", value: was?.a || "" });
+  const link = el("select", { id: "qLink", "aria-label": "Link" }, c.links.map((l) => el("option", { value: l.id, text: l.other.title + (l.label ? ` (${l.label})` : ""), selected: l.id === was?.linkId })));
+  const hide0 = new Set(was?.hide?.length ? was.hide : pickHide(c.kids, n.id));
+  const ticks = el("div", { class: "qticks", id: "qHide" }, c.kids.map((k) => el("label", { class: "qtick" }, el("input", { type: "checkbox", value: k.id, checked: hide0.has(k.id) }), el("span", { text: k.title }))));
+  const rows = { link: el("label", {}, el("span", { text: "Link" }), link), hide: el("div", { class: "qhide" }, el("span", { class: "meta", text: "Hidden" }), ticks) };
+  const show = () => { const k = kind.value; rows.link.hidden = k !== "connect"; rows.hide.hidden = k !== "rebuild"; q.placeholder = k === "rebuild" ? REBUILD_Q : "Question"; };
+  const body = el("div", { class: "qform" }, el("label", {}, el("span", { text: "Kind" }), kind), q, a, rows.link, rows.hide);
+  show(); setTimeout(() => q.focus(), 0);
+  q.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); q.form?.requestSubmit(); } });
+  const ok = await dialog({ title: `${n.title}`, ok: "Save", body });
+  if (!ok) return;
+  const entry = { kind: kind.value, q: q.value.trim(), a: a.value.trim(), by: was?.by || "you", at: was?.at };
+  if (entry.kind === "connect") entry.linkId = link.value;
+  if (entry.kind === "rebuild") { entry.hide = [...ticks.querySelectorAll("input:checked")].map((x) => x.value); if (!entry.hide.length) return toast("Tick what to hide"); }
+  else if (!entry.q) return toast("Write the question");
+  const list = [...(n.qs || [])]; if (i >= 0 && list[i]) list[i] = entry; else list.push(entry);
+  if (await safely(() => store.setQuestions(n.id, list))) afterQuestion();
+}
+async function deleteQuestion(n, i) {
+  const before = S.byId.get(n.id) || n, list = [...(before.qs || [])]; if (!list[i]) return;
+  list.splice(i, 1);
+  if (!(await safely(() => store.setQuestions(n.id, list)))) return;
+  await afterQuestion();
+  toast("Question deleted", { label: "Undo", run: async () => { await safely(() => store.restoreRows({ nodes: [before] })); afterQuestion(); } });
+}
+// Bonsai Desktop: Claude writes a question for each idea in a graph that has none; he ticks which to keep.
+const WRITE_MAX = 40;
+async function writeQuestions(treeId) {
+  const tree = treeOf(treeId); if (!tree) return;
+  if (!desktop) return toast("Writing questions runs in Bonsai Desktop");
+  const bad = liveProblem(await liveStatus()); if (bad) return toast(bad);
+  const all = (S.byTree.get(tree.id) || []).filter((n) => !n.ghost && !(n.qs || []).length);
+  if (!all.length) return toast("Every idea has a question");
+  const pick = all.slice(0, WRITE_MAX), zone = S.zones.find((z) => z.id === tree.zoneId);
+  const ideas = pick.map((n) => { const c = qctx(n); return { id: n.id, title: n.title, note: n.note || "", parent: S.byId.get(n.parentId)?.title || "", kids: c.kids.map((k) => ({ id: k.id, title: k.title })), links: c.links.map((l) => ({ id: l.id, other: l.other.title, label: l.label })) }; });
+  const status = el("p", { class: "muted", id: "wqStatus", text: "Claude is writing" }), list = el("div", { class: "wqlist", id: "wqList" });
+  let found = [];
+  const body = el("div", { class: "wq" }, status, list);
+  const job = askClaude(questionsPrompt({ topic: zone?.name || "", graph: tree.name, ideas })); let over = false;
+  const done = dialog({ title: `Questions for ${tree.name}`, ok: "Keep", body });
+  const okBtn = body.closest("form")?.querySelector("button.primary"); if (okBtn) okBtn.disabled = true;
+  job.done.then((r) => {
+    over = true; if (!body.isConnected) return;
+    if (!r.ok) { status.textContent = r.code === "cancelled" ? "Stopped" : r.message || "Claude didn't answer"; return; }
+    let read; try { read = readQuestions(r.text, ideas); } catch (e) { status.textContent = e.message; return; }
+    found = read.list;
+    status.textContent = "Nothing Bonsai could use"; status.hidden = !!found.length;
+    put(list, found.map((f, k) => { const n = S.byId.get(f.id); return el("label", { class: "wqrow" }, el("input", { type: "checkbox", checked: true, dataset: { k } }),
+      el("span", { class: "qkind", text: KIND_NAME[f.q.kind] }), el("span", { class: "wqbody" }, el("b", { text: f.q.q }), el("span", { class: "muted", text: [n?.title, f.q.kind === "rebuild" ? f.q.hide.map((id) => S.byId.get(id)?.title).join(", ") : f.q.a].filter(Boolean).join(" · ") }))); }));
+    if (okBtn) okBtn.disabled = !found.length;
+    okBtn?.focus();
+  });
+  const ok = await done;
+  if (!over) job.cancel();
+  if (!ok || !found.length) return;
+  const keep = [...list.querySelectorAll("input:checked")].map((x) => found[+x.dataset.k]).filter(Boolean);
+  if (!keep.length) return;
+  const by = new Map(); for (const f of keep) { if (!by.has(f.id)) by.set(f.id, []); by.get(f.id).push(f.q); }
+  const before = await safely(() => store.addQuestions([...by].map(([id, qs]) => ({ id, qs })))); if (!before) return;
+  await afterQuestion();
+  toast(`Kept ${keep.length} question${keep.length === 1 ? "" : "s"}`, { label: "Undo", run: async () => { await safely(() => store.restoreRows({ nodes: before })); afterQuestion(); } });
 }
 
 // ---------- oral ----------
@@ -1912,6 +2028,7 @@ function graphItems(t) {
     { label: "Open", key: "↵", run: () => openTree(t.id) }, { label: "On the board", run: () => { location.hash = notesHash(GP + t.id); } },
     ...(() => { const d = dueList(t.id); return d.length ? [{ label: `Water ${d.length}`, key: "W", run: () => water(null, t.id) }, { label: "All good", run: () => passAll(d.map((n) => n.id)) }] : []; })(),
     desktop && { label: "Oral", key: "E", run: () => startOral(t.id) },
+    desktop && { label: "Write questions", run: () => writeQuestions(t.id) },
     "-", { label: "Rename", run: () => renameThing(t, store.updateTree, "Knowledge graph") }, { label: "Colour", run: () => colourThing(t, store.updateTree) },
     S.zones.length > 1 && { label: "Move to topic", run: async () => {
       const v = await dialog({ title: `Move ${t.name}`, fields: [{ name: "zoneId", label: "Topic", type: "select", value: t.zoneId, options: S.zones.map((z) => [z.id, z.name]) }], ok: "Move" });
@@ -2029,6 +2146,7 @@ function onKey(e) {
   else if (k === "g") { stop(); graft(); }
   else if (k === "c") { if (n) cycleColour(n); }
   else if (k === "p") { stop(); togglePatches(); }
+  else if (k === "q") { stop(); if (n) editQuestion(n, -1); }
   else if (k.startsWith("Arrow")) { stop(); nav(k); }
 }
 
@@ -2226,7 +2344,7 @@ function graphBoard(tr) {
   const pick = (id) => { S.gsel = id || null; S.glink = null; board.selectLink(null); board.select(S.gsel); S.g3?.select(S.gsel); drawGraphFoot(info, tr); drawIdeaCard(); };
   const pickLink = (id) => { S.glink = id; S.gsel = null; board.select(null); board.selectLink(id); S.g3?.select(null); drawGraphFoot(info, tr); drawIdeaCard(); };
   const board = createMiniWeb({ host, edit: true, onPick: pick, onOpen: (id) => openIdea(tr, id), num: (id) => S.num.get(id),
-    ring: (id) => { const n = S.byId.get(id); return n && !n.ghost && thirst(n) !== "ok" ? T.link : null; },
+    ring: (id) => { const n = S.byId.get(id); return n && !n.ghost && thirst(n) !== "ok" ? T.link : null; }, mask: (id) => (masked(id) ? "?" : null),
     onMove: (list) => { for (const [id, x, y] of list) { const n = S.byId.get(id); if (n) n.xy = [x, y]; } safely(() => store.placeNodes(list)); S.g3?.rebuild(); },
     onDrop: (id, to) => boardGraft(id, to),
     onNew: (pid, x, y) => boardAsk({ parentId: pid, at: { x, y } }),
@@ -2283,7 +2401,7 @@ function pipDrag(grip, side) {
 // the picked idea: its name, short note, notes and colour, under the little window
 function drawIdeaCard() {
   const c = S.gpanes?.card; if (!c?.isConnected) return;
-  const n = S.gsel && S.byId.get(S.gsel); c.hidden = !n; if (!n) return c.replaceChildren();
+  const n = S.gsel && S.byId.get(S.gsel); c.hidden = !n || masked(n.id); if (c.hidden) { delete c.dataset.id; return c.replaceChildren(); }
   if (c.dataset.id === n.id && c.contains(document.activeElement)) return;   // don't redraw under the typing
   c.dataset.id = n.id;
   const save = async (patch) => { await safely(() => store.updateNode(n.id, patch)); boardRedraw(); };
@@ -2299,7 +2417,8 @@ function drawIdeaCard() {
     el("div", { class: "swatches" }, SWATCHES.map(([name, hex]) => el("button", { class: "sw" + ((n.color || "") === hex ? " on" : "") + (hex ? "" : " none"), type: "button", title: name, "aria-label": name, style: hex ? `background:${hex}` : "", onclick: () => save({ color: hex || null }) }))),
     ...S.links.filter((l) => l.fromId === n.id || l.toId === n.id).map((l) => { const o = S.byId.get(l.fromId === n.id ? l.toId : l.fromId); if (!o) return null;
       return el("div", { class: "linkrow" }, el("button", { class: "chip", type: "button", text: o.title, onclick: () => S.boardLink?.(l.id) }), l.label ? el("span", { class: "muted", text: l.label }) : null, el("span", { class: "grow" }),
-        ib(null, "Delete link", ICON.close, () => removeLink(l.id))); }));
+        ib(null, "Delete link", ICON.close, () => removeLink(l.id))); }),
+    questionsBox(n));
 }
 function flipBoard() { setPref("g3d", g3On() ? "" : "1"); placePanes(); }
 function toggleDock() { setPref("gdock", dockOn() ? "" : "1"); placePanes(); }
@@ -2308,7 +2427,7 @@ function graph3D(tr) {
   const box = el("div", { class: "stage3", id: "stage3" }, el("canvas"), el("div", { class: "labels" }));
   const st = new Stage(box); st.setTheme(T); st.isPaused = () => true;   // no flying here: the keys are the board's
   let flora = null, decor3 = [], els = new Map(), framed = false;
-  st.labelRank = (L) => (L.id === S.gsel ? 0 : 2 + (L.depth || 0)); st.labelOpacity = () => 1;
+  st.labelRank = (L) => (L.id === S.gsel ? 0 : 2 + (L.depth || 0)); st.labelOpacity = (L) => (masked(L.id) ? 0 : 1);
   st.onTap = (hit) => S.boardPick?.(hit?.kind === "node" ? hit.id : null);
   function build() {
     const t = treeOf(tr.id); if (!t) return;
@@ -2343,6 +2462,7 @@ function drawGraphFoot(info, tr) {
   if (l) return put(info, el("b", { text: `${S.byId.get(l.fromId)?.title || "?"} — ${S.byId.get(l.toId)?.title || "?"}` }), l.label ? el("span", { class: "muted", text: l.label }) : null, el("span", { class: "grow" }),
     boardKey("Label", "R", () => labelLink(l), "gLinkLabel"), boardKey("Delete link", "Del", () => removeLink(l.id), "gLinkDel"));
   const n = S.gsel && S.byId.get(S.gsel);
+  if (n && masked(n.id)) return put(info, el("b", { text: "?" }));   // a question waits on this idea
   const dry = thirstyOf(tr), waterB = dry ? el("button", { class: "btn water", id: "gWater", onclick: () => water(null, tr.id) }, icon(ICON.drop), el("span", { text: "Water" }), el("span", { class: "thirst", text: String(dry) }), el("kbd", { text: "W" })) : null;
   if (!n) return put(info, el("span", { class: "muted", text: `${(S.byTree.get(tr.id) || []).length} ideas` }), el("span", { class: "grow" }), waterB,
     boardKey("Add", "Tab", () => boardAsk({ parentId: tr.rootId }), "gAdd"), boardKey("Open", "⇧↵", () => openIdea(tr, tr.rootId), "gOpen"));
@@ -2442,6 +2562,7 @@ function boardMenu(id, cx, cy, x, y) {
     { label: "Graft onto…", key: "G", run: () => boardGraftPick(n) },
     !top && { label: "Make its own graph", key: "X", run: () => boardSplit(n) },
     { label: "Colour", key: "C", run: async () => { await cycleColour(n); boardRedraw(); } },
+    { label: "Add question", key: "Q", run: () => editQuestion(n, -1) },
     { label: "Open in 3D", key: "⇧↵", run: () => openIdea(tr, n.id) },
     !top && { label: "Delete", key: "Del", danger: true, run: () => boardRemove(n.id) },
   ] : [{ label: `New idea here, under ${under.title}`, key: "", run: () => boardAsk({ parentId: under.id, at: { x, y } }) }]);
@@ -2861,6 +2982,7 @@ function notesKey(k, stop, e = {}) {
       if (k === "g") { stop(); return boardGraftPick(n); }
       if (k === "x" && !top) { stop(); return boardSplit(n); }
       if (k === "c") { stop(); return cycleColour(n).then(() => boardRedraw()); }
+      if (k === "q") { stop(); return editQuestion(n, -1); }
     }
     if (k === "0") { stop(); return S.board?.fit(); }
     if (k === "v" && !e.shiftKey) { stop(); return flipBoard(); }
