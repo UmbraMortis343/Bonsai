@@ -2,6 +2,12 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.34.0 — 2026-11-21
+- Focus levels: an island is Focus, Keep or Settled, and a topic follows it unless you set its own (the garden panel's foot, or ⇧1–3, ⇧0 to follow the island again). Keep waters about half as often and dries the island half as fast; Settled is four times as long, never withers and stays out of watering. Exam topics start at Keep.
+- Questions: an idea can carry questions of five kinds (Recall, Why, Connect, Rebuild, Apply). Watering asks one instead of showing the name, Space shows the answer, you rate as before. Q writes one on the picked idea; the idea panel and the board's card list them. In Bonsai Desktop, Write questions in a graph's menu has Claude write one for each idea without; tick which to keep. Grow writes them as it goes.
+- Sunday session (Bonsai Desktop): about ten minutes with Claude on your week. It asks one question at a time, read aloud; your answers are the patches. Then it proposes the stitch: links, note fixes, questions and ideas to bring back sooner. Tick what to keep, ↵ saves, Undo takes it back. Offered in the top bar on Sundays, U or the menu any day. The old Patches panel and P are gone.
+- Timelapse (T, in the garden and in Knowledge): a slider in the bottom bar takes you back through time. Topics come as they were made, plots grow and dry as they did. Space plays, ← → a day, ⇧← ⇧→ jump between Sundays and big days, Esc back to now, ⇧T saves the play-through as a video.
+
 ## 0.33.0 — 2026-11-21
 - Sync between devices: Menu → Sync devices, type your email, then the code it sends. Do it once on each device (laptop browser, Bonsai Desktop, phone) and they share the same garden, graphs, notes and log. Changes go up a few seconds after you make them and come down every minute, when you open Bonsai, and when you're back online; it works offline and catches up. If the same thing changed on two devices, the newer change wins. Bonsai Beta syncs separately, so the demo never mixes with your real garden. Sign out any time; everything stays on the device.
 

@@ -54,7 +54,8 @@ await page.screenshot({ path: "tests/shots/tree-phone.png" });
 
 await page.tap("#panelClose");
 await page.tap("#moreBtn"); await page.waitForSelector(".menu");
-await page.tap('.mi:has-text("Timeline")'); await page.waitForSelector("#timeRange");
+await page.tap('.mi:has-text("Timelapse")'); await page.waitForSelector("#timeline:not([hidden]) #timeRange");
+await page.tap("#timeClose");
 await page.tap("#backBtn");
 await page.waitForSelector('.lbl.tree:text-is("Op-amps")');
 await t.end();
