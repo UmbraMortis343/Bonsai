@@ -1,7 +1,7 @@
 // Library pages (w2-pages): undo in the block editor, tables, images, actions, and the half-screen layout.
 import { start, state } from "./lib.mjs";
 
-const t = await start("run38-pages", 4338, { channel: "beta" });
+const t = await start("run38-pages", 4340, { channel: "beta" });
 const page = await t.page({ permissions: ["clipboard-read", "clipboard-write"] }, "#/");
 await page.waitForFunction(() => bonsai.S.pages.length >= 6);
 const k = (key) => page.keyboard.press(key), type = (s) => page.keyboard.type(s);
@@ -166,7 +166,7 @@ await page.locator("#nedit .blk.t-image").focus();
 const w0 = p1.width;
 await k("Alt+Shift+ArrowLeft");
 t.eq((await pics())[0].width, w0 - 10, "Alt+Shift+← makes it narrower");
-const grip = await page.locator("#nedit .blk.t-image .igrip.r").boundingBox(), fig = await page.locator("#nedit .blk.t-image figure").boundingBox();
+const grip = await page.locator("#nedit .blk.t-image .imgrip.r").boundingBox(), fig = await page.locator("#nedit .blk.t-image figure").boundingBox();
 await page.locator("#nedit .blk.t-image").hover();
 await page.mouse.move(grip.x + 3, grip.y + 10); await page.mouse.down(); await page.mouse.move(grip.x - fig.width / 4, grip.y + 10, { steps: 5 }); await page.mouse.up();
 const w1 = (await pics())[0].width;

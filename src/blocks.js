@@ -552,7 +552,7 @@ export function createEditor(opts) {
     row.tabIndex = 0;
     const img = el("img", { alt: plain(b.caption) || "", draggable: false, onclick: () => viewImage(b) });
     if (b.w && b.h) img.style.aspectRatio = `${b.w} / ${b.h}`;
-    const grip = (side) => { const g = el("div", { class: "igrip " + side, title: `Drag to resize (${IKEYS.size})` }); g.addEventListener("pointerdown", (e) => resizeImage(e, b, row, fig)); return g; };
+    const grip = (side) => { const g = el("div", { class: "imgrip " + side, title: `Drag to resize (${IKEYS.size})` }); g.addEventListener("pointerdown", (e) => resizeImage(e, b, row, fig)); return g; };
     const cap = el("div", { class: "cap", contentEditable: opts.readOnly ? "false" : "true", html: b.caption || "", dataset: { ph: "Caption" }, role: "textbox", "aria-label": "Caption" });
     cap.addEventListener("input", (e) => { b.caption = cleanHtml(cleanInline(cap.innerHTML)); img.alt = plain(b.caption); changed(false, { id: b.id + ":cap", bid: b.id, kind: (e.inputType || "").startsWith("delete") ? "del" : "ins" }); });
     cap.addEventListener("keydown", (e) => capKey(e, b, cap));
