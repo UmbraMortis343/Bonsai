@@ -21,7 +21,7 @@ const ink = await state(page, () => bonsai.S.pages.find((p) => p.kind === "ink")
 await page.evaluate((id) => { location.hash = "#/notes/" + id; }, ink);
 await page.waitForSelector(".inkrail"); await page.waitForTimeout(500);
 await page.screenshot({ path: "tests/shots/ink-demo.png" });
-t.eq(await page.$$eval(".inkrail .ibtn kbd", (k) => k.map((x) => x.textContent)), ["P", "H", "E", "L", "S", "Ctrl+Z", "Ctrl+Y", "+", "−", "0", "B", "T"], "every tool on the rail shows its key");
+t.eq(await page.$$eval(".inkrail .ibtn kbd", (k) => k.map((x) => x.textContent)), ["P", "⇧P", "M", "H", "E", "L", "A", "⇧S", "S", "Ctrl+Z", "Ctrl+Y", "+", "−", "0", "B", "T"], "every tool on the rail shows its key");
 const box = await page.$eval(".inkrail", (r) => { const b = r.getBoundingClientRect(); return [Math.round(innerWidth - b.right), Math.round(b.bottom)]; });
 t.eq(box[0], 0, "the rail is docked to the right edge");
 const n0 = await state(page, () => bonsai.S.ed.ink.doc.strokes.length);
@@ -56,14 +56,15 @@ t.eq(await state(page, () => bonsai.S.ed.ink.doc.strokes.length), n1, "a finger 
 if (!((await state(page, () => bonsai.S.ed.ink.view.sy)) > sy0)) t.fail("a finger doesn't scroll the page");
 await draw("pen", [[150, 900], [300, 900]]);
 const sy1 = await state(page, () => bonsai.S.ed.ink.view.sy);
-{ // the pen hovering, then a palm landing, all at once so a slow machine can't put time between them
+{ // the pen lifting, then a palm landing, all at once so a slow machine can't put time between them
   const [a, b, c] = [await at(300, 950), await at(300, 600), await at(300, 400)];
   await page.evaluate(([a, b, c]) => {
     const cv = document.querySelector(".inkc"), ev = (type, kind, [x, y], buttons) => cv.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: kind === "pen" ? 3 : 7, pointerType: kind, clientX: x, clientY: y, buttons, pressure: buttons ? 0.5 : 0 }));
-    ev("pointermove", "pen", a, 0); ev("pointerdown", "touch", b, 1); ev("pointermove", "touch", c, 1); ev("pointerup", "touch", c, 0);
+    ev("pointerdown", "pen", a, 1); ev("pointerup", "pen", a, 0); ev("pointerdown", "touch", b, 1); ev("pointermove", "touch", c, 1); ev("pointerup", "touch", c, 0);
   }, [a, b, c]);
+  await page.keyboard.press("Control+z");   // the dot the pen made
 }
-t.eq(await state(page, () => bonsai.S.ed.ink.view.sy), sy1, "a palm on the screen right after the pen is ignored");
+t.eq(await state(page, () => bonsai.S.ed.ink.view.sy), sy1, "a palm on the screen right after the pen lifts is ignored");
 { // a palm that lands before the pen comes near: it's dropped when the pen shows up; a big contact patch never counts; a resting finger doesn't nudge
   await page.waitForTimeout(1600);
   const [a, b, c, d] = [await at(300, 950), await at(300, 600), await at(300, 400), await at(300, 606)];
