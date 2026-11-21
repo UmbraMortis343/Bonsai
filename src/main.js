@@ -2884,7 +2884,7 @@ function drawPageList() {
 // the bar over the page: where it sits, and its menu
 function drawPageBar() {
   const bar = $("#pbar"); if (!bar) return;
-  const off = document.body.dataset.nbar === "off", g = graphPage(S.npage);
+  const off = drawerMode() ? document.body.dataset.ndrawer !== "open" : document.body.dataset.nbar === "off", g = graphPage(S.npage);
   const hide = () => el("button", { class: "ib sidehide", id: "sideHide", type: "button", title: (off ? "Show" : "Hide") + " the sidebar ([)", "aria-label": (off ? "Show" : "Hide") + " the sidebar", onclick: () => sideKey(true) }, icon(off ? ICON.sideOn : ICON.sideOff), el("kbd", { text: "[" }));
   if (g) {
     const z = S.zones.find((x) => x.id === g.zoneId), isl = S.garden?.islands.find((q) => q.zoneIds.includes(g.zoneId));
@@ -2894,6 +2894,7 @@ function drawPageBar() {
       el("div", { class: "seg keys", role: "group", "aria-label": "View" }, seg("g2d", "2D", !k3, () => k3 && flipBoard()), seg("g3d", "3D", k3, () => !k3 && flipBoard()), el("kbd", { text: "V" })),
       el("button", { class: "btn" + (dockOn() ? " on" : ""), id: "gDock", "aria-pressed": String(dockOn()), title: "The other view in a little window (])", onclick: toggleDock }, k3 ? "Mini 2D" : "Mini 3D", el("kbd", { text: "]" })));
   }
+  if (S.npage === VOCAB || S.npage === ACTS) return put(bar, hide(), el("div", { class: "pcrumb" }, el("span", { class: "here", text: S.npage === VOCAB ? "Vocab" : "Actions" })));
   const p = pageOf(S.npage);
   if (!p) { bar.replaceChildren(); return; }
   put(bar, el("button", { class: "ib sidehide", id: "sideHide", type: "button", title: (off ? "Show" : "Hide") + " the sidebar ([)", "aria-label": (off ? "Show" : "Hide") + " the sidebar", onclick: () => sideKey(true) }, icon(off ? ICON.sideOn : ICON.sideOff), el("kbd", { text: "[" })),
@@ -3395,6 +3396,30 @@ function vocabCards() {
   return list.map((t) => card(t, seen.get(t.id)));
 }
 
+// ---------- half a screen: from a phone's width up to 760px the Library's sidebar is a drawer on the left, [ opens it ----------
+function drawerMode() { return matchMedia("(min-width:561px) and (max-width:759px)").matches; }
+function setDrawer(open) {
+  document.body.dataset.ndrawer = open ? "open" : "";
+  drawPageBar();
+  if (open) ($(".notes .nside-bar .nrow.on .nname") || $(".notes .nside-bar .nname") || $("#notesSearch"))?.focus({ preventScroll: true });
+}
+{
+  const shut = () => { if (document.body.dataset.ndrawer === "open") setDrawer(false); };
+  matchMedia("(min-width:561px) and (max-width:759px)").addEventListener("change", shut);
+  // a page picked in the drawer, a click beside it, or Esc puts it away
+  document.addEventListener("click", (e) => {
+    if (document.body.dataset.ndrawer !== "open" || !drawerMode()) return;
+    const t = e.target;
+    if (t.closest?.(".notes .nside-bar")) { if ((t.closest(".nname") && !t.closest(".nrow.shelf")) || t.closest(".nvocab")) setTimeout(shut, 0); }
+    else if (t.closest?.(".notes .nmain") && !t.closest("#sideHide")) shut();
+  }, true);
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || document.body.dataset.ndrawer !== "open" || !drawerMode() || overlayOpen()) return;
+    if (document.activeElement?.id === "notesSearch" && document.activeElement.value) return;
+    e.preventDefault(); e.stopPropagation(); shut();
+  }, true);
+}
+
 // ---------- actions: words in a page marked as something to do (Alt+5 on the quick panel), all listed on one page ----------
 // The marks live in the pages' text (<mark data-action="id">, blocks.js), so the list is read from the pages and an action
 // goes when its words do; whether each is done is kept in meta "actions" ({ done: { id: when } }), which syncs.
@@ -3501,6 +3526,7 @@ function sideKey(left) {
   if (S.view === "tree") { if (left) return toggleSide(); if (S.panel) { S.panel = null; return renderPanel(); } return togglePanel(); }
   if (S.view === "meaning" && !left) { if (S.panel) { S.panel = null; return renderPanel(); } return togglePanel(); }
   if (S.view === "notes" && !left && graphPage(S.npage)) return toggleDock();
+  if (S.view === "notes" && left && drawerMode()) return setDrawer(document.body.dataset.ndrawer !== "open");
   if (S.view === "notes" && left) { const off = document.body.dataset.nbar !== "off"; document.body.dataset.nbar = off ? "off" : ""; drawPageBar(); return; }
   if (S.view === "isles" && !left) { gfold = !gfold; renderGarden(); renderTop(); return; }
   if (S.panel && !left) { S.panel = null; renderPanel(); }

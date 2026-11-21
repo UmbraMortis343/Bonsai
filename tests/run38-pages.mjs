@@ -244,4 +244,34 @@ await page.mouse.click(box.x + 6, box.y + box.height / 2);
 await page.waitForFunction(() => Object.keys(bonsai.S.actDone).length === 2);
 t.eq(await page.textContent("#actsBtn .acount"), "", "ticking in the page counts too");
 
+// ---------- 5. half a screen ----------
+const fits = (p) => p.evaluate(() => { const top = document.querySelector(".top:not([hidden])") || document.querySelector(".top"); return [...top.querySelectorAll("*")].filter((x) => x.offsetParent && x.getBoundingClientRect().right > innerWidth + 1).map((x) => x.id || x.className).slice(0, 3); });
+for (const [w, h] of [[700, 900], [760, 900], [960, 1000]]) {
+  const p = await t.page({ viewport: { width: w, height: h } }, "#/");
+  await p.waitForFunction(() => bonsai.S.pages.length >= 6);
+  t.eq(await fits(p), [], `the garden's top bar fits at ${w}px`);
+  await p.evaluate(() => { location.hash = "#/forest"; }); await p.waitForFunction(() => bonsai.S.view === "forest");
+  t.eq(await fits(p), [], `the knowledge top bar fits at ${w}px`);
+  await p.evaluate(() => { location.hash = "#/notes"; }); await p.waitForSelector("#nlist", { state: "attached" });
+  t.eq(await fits(p), [], `the library's top bar fits at ${w}px`);
+  if (w < 760) {
+    t.eq(await p.isVisible("#nlist"), false, `at ${w}px the sidebar is a drawer, put away`);
+    await p.keyboard.press("["); await p.waitForSelector("#nlist .nrow");
+    t.eq(await p.evaluate(() => [document.querySelector(".notes .nside-bar").getBoundingClientRect().left, getComputedStyle(document.querySelector(".notes .nside-bar")).position]), [0, "absolute"], "[ opens it, docked on the left");
+    await p.click('#nlist .nrow:has-text("Physics") .chev'); await p.click('#nlist .nrow:has-text("Lecture 6") .nname');
+    await p.waitForFunction(() => document.querySelector("#pageTitle")?.value.startsWith("Lecture 6"));
+    t.eq(await p.isVisible("#nlist"), false, "picking a page puts the drawer away");
+    await p.click("#sideHide"); await p.waitForSelector("#nlist .nrow"); await p.keyboard.press("Escape");
+    t.eq(await p.isVisible("#nlist"), false, "Esc puts it away");
+  } else {
+    await p.click('#nlist .nrow:has-text("Physics") .chev'); await p.click('#nlist .nrow:has-text("Lecture 6") .nname');
+    await p.waitForFunction(() => document.querySelector("#pageTitle")?.value.startsWith("Lecture 6"));
+    t.eq(await p.evaluate(() => document.querySelector(".notes .nside-bar").getBoundingClientRect().right <= document.querySelector(".nmain").getBoundingClientRect().left + 1), true, `at ${w}px the sidebar and the page sit side by side`);
+  }
+  t.eq(await p.evaluate(() => { const r = document.querySelector("#pageMore").getBoundingClientRect(); return r.right <= innerWidth && r.top >= 0 && document.querySelector("#pbar").getBoundingClientRect().height < 60; }), true, `the page bar's menu is in reach at ${w}px, on one line`);
+  if (w !== 760) await p.screenshot({ path: `tests/shots/pages-${w}.png` });
+  if (w === 700) { await p.keyboard.press("["); await p.waitForSelector("#nlist .nrow"); await p.screenshot({ path: "tests/shots/pages-700-drawer.png" }); }
+  await p.context().close();
+}
+
 await t.end();

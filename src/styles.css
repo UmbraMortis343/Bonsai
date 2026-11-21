@@ -824,3 +824,20 @@ input.bask::placeholder{color:var(--muted)}
 .pipwin .lbl{display:none!important}
 #newPageBtn .caret{font-size:10px;color:var(--muted);margin-left:2px}
 @media (max-width:700px){ .timeline kbd{display:none} .timeline{gap:4px} }
+/* half a screen (a window snapped to one side): the Library's sidebar becomes a drawer below 760px, the top bars drop their extras */
+@media (min-width:561px) and (max-width:759px){
+  .notes{grid-template-columns:1fr;grid-template-rows:1fr}
+  .notes .nside-bar{position:absolute;left:0;top:0;bottom:0;z-index:20;width:min(300px,80vw);max-height:none;border-bottom:0;border-right:1px solid var(--line);box-shadow:var(--shadow);display:none}
+  body[data-ndrawer="open"] .notes .nside-bar{display:flex}
+  .notes .nfoot{display:flex}
+  .notes .nsearch kbd,.notes .nrow kbd{display:inline}
+  .nedit{padding:20px 20px 60px}
+}
+@media (min-width:760px) and (max-width:1020px){
+  .notes{grid-template-columns:clamp(210px,26vw,260px) 1fr}
+  .nedit{padding:24px 20px 60px}
+}
+@media (min-width:701px) and (max-width:1020px){
+  .tstats,.winseg .wsk,.top .btn.water .wl,.top .btn.water kbd{display:none}
+}
+@media (min-width:701px) and (max-width:900px){ .brand h1{display:none} }
