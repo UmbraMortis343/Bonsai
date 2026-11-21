@@ -78,4 +78,65 @@ t.eq((await htmls()).slice(0, 2), ["one", "two"], "after the page is drawn again
 await page.waitForTimeout(700);
 t.eq((await saved("Undo")).slice(0, 2).map((b) => b.html), ["one", "two"], "and what undo brought back is saved");
 
+// ---------- 2. tables ----------
+const cells = () => state(page, () => bonsai.S.ed.blocks.filter((b) => b.type === "table").map((b) => ({ rows: b.rows, head: b.head })));
+const paste = (sel, data) => state(page, ([sel, data]) => {
+  const dt = new DataTransfer(); for (const [k, v] of Object.entries(data)) dt.setData(k, v);
+  const n = document.querySelector(sel); n.focus(); getSelection().selectAllChildren(n); getSelection().collapseToEnd();
+  n.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+}, [sel, data]);
+await open("Tables", "Particles");
+await at(0).click(); await k("End"); await k("Enter"); await type("/table");
+await page.waitForSelector('.slash .si.on[data-type="table"]'); await k("Enter");
+await page.waitForSelector("#nedit .tbl .cell");
+t.eq(await cells(), [{ rows: [["", "", ""], ["", "", ""]], head: true }], "/table makes a table with a header row");
+await type("Name"); await k("Tab"); await type("Mass"); await k("Tab"); await type("Charge"); await k("Tab");
+await type("Proton"); await k("Tab"); await type("938"); await k("Tab"); await type("+1"); await k("Enter");
+await type("Electron"); await k("Shift+Tab"); await k("Tab"); await k("Tab"); await k("Tab"); await type("-1");
+t.eq((await cells())[0].rows, [["Name", "Mass", "Charge"], ["Proton", "938", "+1"], ["Electron", "", "-1"]], "Tab moves between cells, Enter in the last row adds one");
+await k("Alt+Shift+ArrowRight"); await type("Spin");
+t.eq((await cells())[0].rows.map((r) => r.length), [4, 4, 4], "Alt+Shift+→ adds a column");
+await k("Control+z");
+t.eq((await cells())[0].rows[2][3], "", "undo takes back typing in a cell");
+await k("Control+z");
+t.eq((await cells())[0].rows.map((r) => r.length), [3, 3, 3], "undo takes back the new column");
+await k("Control+Shift+z");
+t.eq((await cells())[0].rows.map((r) => r.length), [4, 4, 4], "redo puts it back");
+await k("Alt+Shift+Delete");
+t.eq((await cells())[0].rows.map((r) => r.length), [3, 3, 3], "Alt+Shift+Delete deletes the column");
+await page.locator("#nedit .cell").nth(3).click(); await k("Control+a"); await k("Control+b");
+t.eq((await cells())[0].rows[1][0], "<b>Proton</b>", "formatting in a cell");
+await k("Alt+Shift+h");
+t.eq((await cells())[0].head, false, "Alt+Shift+H turns the header row off");
+await k("Alt+Shift+h");
+const tb = page.locator("#nedit .blk.t-table"); await tb.hover(); await tb.locator(".hdl").click();
+t.eq((await page.$$eval(".menu .mi", (r) => r.map((x) => x.textContent).filter((x) => /row|column|Header/.test(x)))).length, 7, "the handle menu adds and deletes rows and columns");
+await page.click('.menu .mi:has-text("Add a row above")');
+t.eq((await cells())[0].rows.length, 4, "a row from the menu");
+await k("Alt+Shift+Backspace");
+t.eq((await cells())[0].rows.length, 3, "Alt+Shift+Backspace deletes the row");
+await page.waitForTimeout(700);
+t.eq((await saved("Tables")).find((b) => b.type === "table").rows[2], ["Electron", "", "-1"], "the table is saved as rows");
+await page.screenshot({ path: "tests/shots/pages-table.png" });
+// out to Markdown and back, so Grow and pastes read it
+const md = await state(page, async () => { const m = await import("./blocks.js"); const text = m.blocksToText(bonsai.S.ed.blocks); const back = m.textToBlocks(text).find((b) => b.type === "table"); return { text, back: back && { rows: back.rows, head: back.head } }; });
+t.eq(md.text.split("\n").slice(1, 4), ["| Name | Mass | Charge |", "| --- | --- | --- |", "| **Proton** | 938 | +1 |"], "a table goes out as a Markdown table");
+t.eq(md.back, { rows: [["Name", "Mass", "Charge"], ["<b>Proton</b>", "938", "+1"], ["Electron", "", "-1"]], head: true }, "and reads back the same");
+// typing a Markdown row and Enter makes a table
+await page.locator("#nedit .cell").last().click(); await k("Control+Enter");
+await type("| Quark | Charge |"); await k("Enter"); await type("up");
+t.eq((await cells())[1], { rows: [["Quark", "Charge"], ["up", ""]], head: true }, "| a | b | and Enter makes a table");
+// pasting a table from a web page, and from a spreadsheet
+await k("Control+Enter");
+await paste("#nedit .blk:last-child .tx", { "text/html": "<table><thead><tr><th>Planet</th><th>Moons</th></tr></thead><tbody><tr><td><b>Mars</b></td><td>2</td></tr></tbody></table>", "text/plain": "Planet\tMoons\nMars\t2" });
+t.eq((await cells())[2], { rows: [["Planet", "Moons"], ["<b>Mars</b>", "2"]], head: true }, "an HTML table pasted makes a table block");
+await k("Control+Enter");
+await paste("#nedit .blk:last-child .tx", { "text/plain": "a\tb\tc\n1\t2\t3\n" });
+t.eq((await cells())[3], { rows: [["a", "b", "c"], ["1", "2", "3"]], head: false }, "tab-separated lines from a spreadsheet make a table");
+await k("Control+z");
+t.eq((await cells()).length, 3, "undo takes the pasted table back");
+// a grid pasted into a cell fills from there
+await state(page, () => { const dt = new DataTransfer(); dt.setData("text/plain", "x\ty\nz\tw"); const c = document.querySelectorAll("#nedit .blk.t-table")[2].querySelector('.cell[data-r="1"][data-c="1"]'); c.focus(); c.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true })); });
+t.eq((await cells())[2].rows, [["Planet", "Moons", ""], ["<b>Mars</b>", "x", "y"], ["", "z", "w"]], "a grid pasted into a cell fills the cells from there, growing the table");
+
 await t.end();
