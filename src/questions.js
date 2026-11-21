@@ -64,11 +64,12 @@ export function usableQs(node, ctx = {}) {
 
 // The question to ask for an idea today: kinds take turns from day to day (each idea starting at its own place),
 // and within a kind its questions do. None usable: the name is the cue ({ kind: "name", fallback: true }).
-export function questionFor(node, ctx = {}, day = dayNumber()) {
+// prefer: a kind to ask if the idea has one (the day's 10 spread the kinds, today.js); else the turn as usual.
+export function questionFor(node, ctx = {}, day = dayNumber(), prefer = null) {
   const qs = usableQs(node, ctx);
   if (!qs.length) return { kind: "name", q: node?.title || "", a: "", fallback: true, i: -1 };
   const kinds = KINDS.filter((k) => qs.some((x) => x.kind === k)), s = seed(node.id || node.title);
-  const kind = kinds[(day + s) % kinds.length], mine = qs.filter((x) => x.kind === kind);
+  const kind = prefer && kinds.includes(prefer) ? prefer : kinds[(day + s) % kinds.length], mine = qs.filter((x) => x.kind === kind);
   return mine[(Math.floor(day / kinds.length) + s) % mine.length];
 }
 

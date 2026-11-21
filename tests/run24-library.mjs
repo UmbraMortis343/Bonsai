@@ -1,14 +1,13 @@
-// The Library: the notes sidebar holds Notes, Graphs (island › topic › graph) and Watering, each folding away.
+// The Library: the notes sidebar holds Notes and Graphs (island › topic › graph), each folding away (Watering went: run37-today).
 // A graph opens on a 2D board in the main area: numbers pick, Shift+Enter or double-click opens it in its graph,
-// what needs water is ringed in ochre. Every idea is the same size. On the beta, H in the knowledge view marks
-// what needs water in ochre.
+// Every idea is the same size. H in the knowledge view marks what's due in ochre (off to start with).
 import { start, state } from "./lib.mjs";
 
 const t = await start("run24-library", 4324, { channel: "beta" });
 const page = await t.page({ viewport: { width: 1300, height: 860 } }, "#/notes");
 await page.waitForSelector("body[data-ready]"); await page.waitForTimeout(500);
 
-t.eq(await page.$$eval(".ltab", (h) => h.map((x) => x.firstChild.textContent)), ["Notes", "Graphs", "Watering"], "the Library has tabs for Notes, Graphs and Watering");
+t.eq(await page.$$eval(".ltab", (h) => h.map((x) => x.firstChild.textContent)), ["Notes", "Graphs"], "the Library has tabs for Notes and Graphs");
 t.eq(await page.$("#glist"), null, "it opens on Notes");
 // one + Page button that asks: page or pen page
 await page.click("#newPageBtn"); await page.waitForSelector(".menu .mi");
@@ -61,29 +60,13 @@ await page.mouse.dblclick(at.x, at.y);
 await page.waitForFunction((id) => bonsai.S.view === "tree" && bonsai.S.sel === id, picked);
 await page.evaluate(() => history.back()); await page.waitForSelector(".gboard canvas");
 
-// Graphs filter: only those waiting for water, or only those watered
-await page.click('.nfilter[data-f="g"] [data-v="wait"]');
-t.eq(await page.$$eval("#glist .nrow.graph", (r) => r.every((x) => x.querySelector(".thirst"))), true, "Waiting shows only graphs with ideas waiting");
-await page.click('.nfilter[data-f="g"] [data-v="ok"]');
-t.eq(await page.$$eval("#glist .nrow.graph", (r) => r.some((x) => x.querySelector(".thirst"))), false, "Watered shows only the rest");
-await page.click('.nfilter[data-f="g"] [data-v=""]');
-
-// Watering: island › topic › what needs water, open to start with, most first in each topic
-await page.click("#lib-water"); await page.waitForSelector("#wlist .nrow.graph");
-const water = await page.$$eval("#wlist .nrow.graph", (r) => r.map((x) => [x.dataset.tree, +x.querySelector(".thirst").textContent]));
-const want = await state(page, () => bonsai.S.trees.map((tr) => [tr.id, (bonsai.S.byTree.get(tr.id) || []).filter((n) => !n.ghost && bonsai.thirst(n) !== "ok").length]).filter(([, n]) => n));
-t.eq(water.map((w) => w[0]).sort(), want.map((w) => w[0]).sort(), "Watering lists every graph with ideas waiting");
-t.eq(await page.$$eval("#wlist .nrow.shelf", (r) => r.length > 0 && r.every((x) => x.getAttribute("aria-expanded") === "true")), true, "under its island and topic, open");
-await page.click('.nfilter[data-f="w"] [data-v="dry"]');
-const dry = await state(page, () => bonsai.S.trees.filter((tr) => (bonsai.S.byTree.get(tr.id) || []).some((n) => !n.ghost && bonsai.thirst(n) === "dry")).map((t) => t.id).sort());
-t.eq((await page.$$eval("#wlist .nrow.graph", (r) => r.map((x) => x.dataset.tree))).sort(), dry, "Dry shows only graphs with dried-out ideas");
-await page.click('.nfilter[data-f="w"] [data-v=""]');
+// no watering left in the Library: no filter by water, no counts, no water button
+t.eq(await page.$$eval('.nfilter[data-f="g"], #glist .thirst, #lib-water, #libWater, #gWater', (r) => r.length), 0, "no watering in the Library");
 await page.screenshot({ path: "tests/shots/library-water.png" });
 
 // the tab is remembered
-await page.reload(); await page.waitForSelector("#wlist");
-t.eq(await page.getAttribute("#lib-water", "aria-selected"), "true", "and the tab stays");
-await page.click("#lib-graphs"); await page.waitForSelector("#glist");
+await page.reload(); await page.waitForSelector("#glist");
+t.eq(await page.getAttribute("#lib-graphs", "aria-selected"), "true", "and the tab stays");
 
 // search finds graphs too
 await page.fill("#notesSearch", "newton");
@@ -95,10 +78,9 @@ t.eq(await state(page, async () => { const { nodeRadius } = await import("./layo
 
 // H shows or hides the ochre for what needs water in the knowledge view
 await page.evaluate(() => { location.hash = "#/forest"; }); await page.waitForFunction(() => bonsai.S.view === "forest");
-t.eq(await page.getAttribute("#viewThirsty", "aria-pressed"), "true", "Thirsty starts on");
+t.eq(await page.getAttribute("#viewThirsty", "aria-pressed"), "false", "Thirsty starts off");
 await page.keyboard.press("h");
-t.eq(await page.getAttribute("#viewThirsty", "aria-pressed"), "false", "H turns it off");
-t.eq(await state(page, () => localStorage.getItem("bonsai-beta.thirsty")), "0", "and it's remembered");
-await page.keyboard.press("h");
+t.eq(await page.getAttribute("#viewThirsty", "aria-pressed"), "true", "H turns it on");
+t.eq(await state(page, () => localStorage.getItem("bonsai-beta.thirsty")), "1", "and it's remembered");
 await page.screenshot({ path: "tests/shots/library-thirsty.png" });
 await t.end();

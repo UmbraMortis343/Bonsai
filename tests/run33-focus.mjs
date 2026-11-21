@@ -33,7 +33,7 @@ const look = () => state(page, ({ a, b }) => { const S = bonsai.S, z = (id) => S
     ha: topic(a).health, hb: topic(b).health, dueA: topic(a).due.length, dueB: topic(b).due.length, ta: bonsai.thirst(one(a)), tb: bonsai.thirst(one(b)) };
 }, where);
 const s0 = await look();
-t.eq([s0.la, s0.lb, s0.focus > 0, s0.keep, s0.ha < 1, s0.ta], ["focus", "focus", true, 0, true, "thirsty"], "with no level set everything is Focus, and what came due is thirsty");
+t.eq([s0.la, s0.lb, s0.focus > 0, s0.keep, s0.ha, s0.ta], ["focus", "focus", true, 0, 1, "thirsty"], "with no level set everything is Focus; what came due is thirsty, but nothing dries for being due");
 
 // The island to Keep with its panel's control: both topics follow, and a 4-day interval now comes due in 8.
 await page.$eval(`.tag.isle[data-isle="${where.i}"]`, (e) => e.click());
@@ -50,7 +50,13 @@ await page.evaluate(async ({ a, b }) => { const S = bonsai.S, now = Date.now(), 
   const nodes = S.nodes.filter((n) => zs.has(S.trees.find((x) => x.id === n.treeId)?.zoneId)).map((n) => ({ ...n, srs: { ...n.srs, due: new Date(now - 6 * 86400000).toISOString() } }));
   await bonsai.store.restoreRows({ nodes }); await bonsai.refresh(); }, where);
 const s2 = await look();
-t.eq([s2.keep > 0, s2.ta, Math.abs(s2.ha - 0.5) < 0.01], [true, "thirsty", true], "Keep: overdue ideas are waiting (not yet dry), and the topic only half withers");
+t.eq([s2.keep > 0, s2.ta, s2.ha], [true, "thirsty", 1], "Keep: overdue ideas are waiting, and a few days over is no dryness");
+// Left six weeks and more past due (Keep's dry is 42 days): now it dries, and weighs half on the garden.
+await page.evaluate(async ({ a, b }) => { const S = bonsai.S, now = Date.now(), zs = new Set([a, b]);
+  const nodes = S.nodes.filter((n) => zs.has(S.trees.find((x) => x.id === n.treeId)?.zoneId)).map((n) => ({ ...n, srs: { ...n.srs, due: new Date(now - 50 * 86400000).toISOString() } }));
+  await bonsai.store.restoreRows({ nodes }); await bonsai.refresh(); }, where);
+const s2b = await look();
+t.eq([s2b.ta, Math.abs(s2b.ha - 0.5) < 0.01], ["dry", true], "Keep: long neglected, it dries, and the topic only half withers");
 
 // Topic b to Settled with ⇧3 on its own: it never withers and leaves the watering round, but the bonus pool has it.
 await page.$eval(`.tag.topic[data-isle="${where.i}"][data-topic="${where.kb}"]`, (e) => e.click());
@@ -67,9 +73,9 @@ const s3 = await look();
 t.eq([s3.lb, s3.hb, s3.dueB, s3.tb], ["settled", 1, 0, "ok"], "Settled: no withering, nothing to water, no ochre");
 const inRound = await state(page, (b) => { const S = bonsai.S, z = S.trees.filter((x) => x.zoneId === b).map((x) => x.id), d = bonsai.dueByLevel(); return [d.settled.filter((n) => z.includes(n.treeId)).length > 0, d.focus.concat(d.keep).some((n) => z.includes(n.treeId))]; }, where.b);
 t.eq(inRound, [true, false], "a Settled topic's overdue ideas are kept apart, for a bonus question");
-// the round W starts leaves Settled ideas out
+// a round of everything due leaves Settled ideas out
 await page.keyboard.press("Escape");
-await page.keyboard.press("w"); await page.waitForSelector("#review:not([hidden])");
+await page.evaluate(() => bonsai.water(null)); await page.waitForSelector("#review:not([hidden])");
 t.eq(await state(page, (b) => { const S = bonsai.S, z = S.trees.filter((x) => x.zoneId === b).map((x) => x.id); return S.review.ids.some((id) => z.includes(S.byId.get(id).treeId)); }, where.b), false, "watering everything skips Settled");
 await page.click("#reviewClose"); await page.waitForSelector("#review[hidden]", { state: "attached" });
 

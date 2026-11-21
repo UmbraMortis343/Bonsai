@@ -16,17 +16,19 @@ t.eq(await state(page, () => document.querySelector("#top").scrollWidth <= 390),
 await page.tap("#winGarden"); await page.waitForSelector("body[data-isles=ready]");
 await page.waitForSelector(".tag.isle"); await page.waitForTimeout(600); await page.screenshot({ path: "tests/shots/isles-phone.png" });
 t.eq(await state(page, () => document.querySelector("#top").scrollWidth <= 390), true, "garden top bar fits the phone");
-// watering happens where you are: the water button in the Knowledge bar fits the phone
-await state(page, async () => { const old = new Date(Date.now() - 3 * 864e5).toISOString(); await bonsai.store.restoreRows({ nodes: bonsai.S.nodes.map((n) => ({ ...n, createdAt: old })) }); await bonsai.refresh(); });   // three days on: ideas are waiting for water
+// the day's questions come from Today (Y) on the phone too: the screen and the round fit it
+await state(page, async () => { const old = new Date(Date.now() - 3 * 864e5).toISOString(); await bonsai.store.restoreRows({ nodes: bonsai.S.nodes.map((n) => ({ ...n, createdAt: old })) }); await bonsai.refresh(); });   // three days on: ideas are due
 await page.tap("#winKnowledge"); await page.waitForSelector(".lbl.tree");
-await page.waitForSelector("#waterAll, #waterTree");
+await page.waitForSelector("#todayBtn #todayDot");
 const card = await page.locator("#actions").boundingBox();
 if (card.x < 0 || card.x + card.width > 390) t.fail("action bar wider than the screen");
-await page.tap("#waterAll, #waterTree"); await page.waitForSelector("#review:not([hidden]) #showAnswer");
+await page.tap("#todayBtn"); await page.waitForSelector("#today #todayGo");
+t.eq(await state(page, () => document.querySelector("#today").scrollWidth <= 390), true, "Today fits the phone");
+await page.tap("#todayGo"); await page.waitForSelector("#review:not([hidden]) #showAnswer");
 const rv = await page.locator("#review").boundingBox();
-if (rv.x < 0 || rv.x + rv.width > 390) t.fail("watering card wider than the screen");
+if (rv.x < 0 || rv.x + rv.width > 390) t.fail("question card wider than the screen");
 await page.waitForTimeout(500); await page.screenshot({ path: "tests/shots/water-phone.png" });
-await page.tap("#review .ib >> nth=0").catch(() => {}); await page.keyboard.press("Escape");
+await page.tap("#reviewClose").catch(() => {}); await page.waitForSelector("#review", { state: "hidden" }); await page.keyboard.press("Escape");
 await page.tap("#winKnowledge"); await page.waitForSelector("#addBtn");
 await page.waitForSelector('.lbl.tree:text-is("Basic electronics")');
 await page.tap('.lbl.tree:text-is("Basic electronics")'); await page.waitForTimeout(250); await page.tap('.lbl.tree:text-is("Basic electronics")');   // a tap picks, a second opens
