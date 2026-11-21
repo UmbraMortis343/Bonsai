@@ -73,15 +73,101 @@ const atLine = (node, top) => {   // is the caret on the first (top) or last lin
   return top ? r.top - box.top < lh * 0.8 : box.bottom - r.bottom < lh * 0.8;
 };
 
+// ---------- undo ----------
+// The editor keeps its own history: each step is the whole list of blocks plus where the caret was. The browser's
+// own undo can't be used, since every structural change draws the blocks afresh and its history points at gone nodes.
+// Histories outlive the editor (keyed by page), so a page drawn again, or opened again, can still be undone.
+const HIST = new Map(), HIST_MAX = 200, BURST_MS = 1000;
+const clone = (x) => (typeof structuredClone === "function" ? structuredClone(x) : JSON.parse(JSON.stringify(x)));
+
 // ---------- the editor ----------
-// opts: { host, blocks, onChange(blocks), pageTitle(id), openPage(id), newSubpage() -> id, readOnly }
+// opts: { host, blocks, onChange(blocks), pageTitle(id), openPage(id), newSubpage() -> id, readOnly, key (for the history) }
 export function createEditor(opts) {
-  let B = (opts.blocks || []).map((b) => ({ ...b }));
+  let B = (opts.blocks || []).map((b) => clone(b));
   if (!B.length) B = [newBlock()];
   const root = el("div", { class: "blocks", role: "textbox", "aria-multiline": "true", "aria-label": "Page" });
   opts.host.append(root);
-  let slash = null, drag = null;
-  const changed = () => opts.onChange?.(B.map((b) => ({ ...b })));   // the page saves shortly after typing stops
+  let slash = null, drag = null, quiet = false;
+  let H = opts.key != null ? HIST.get(opts.key) : null;
+  if (!H || JSON.stringify(H.cur.blocks) !== JSON.stringify(B)) H = { undo: [], redo: [], cur: { blocks: clone(B), focus: null }, burst: null };
+  H.burst = null; if (opts.key != null) HIST.set(opts.key, H);
+  const save = () => opts.onChange?.(B.map((b) => clone(b)));   // the page saves shortly after typing stops
+  // every change comes through here once it's made: a step of its own, or (typing) part of a burst in one block
+  const changed = (step = true, typed = null) => {
+    const now = Date.now(), bu = H.burst;
+    if (step && JSON.stringify(B) === JSON.stringify(H.cur.blocks)) { H.burst = null; return save(); }   // nothing new (a format command's own input event)
+    if (step || !typed || !bu || bu.id !== typed.id || bu.kind !== typed.kind || now - bu.at > BURST_MS) {
+      H.undo.push(H.cur); if (H.undo.length > HIST_MAX) H.undo.shift();
+      H.cur = { blocks: clone(B), focus: H.cur.focus };
+    } else {   // still typing in the same block: the step's end moves on
+      const i = H.cur.blocks.findIndex((x) => x.id === typed.id), b = B[idx(typed.id)];
+      if (i >= 0 && b) { H.cur.blocks = H.cur.blocks.slice(); H.cur.blocks[i] = clone(b); } else H.cur = { blocks: clone(B), focus: H.cur.focus };
+    }
+    H.redo = []; H.burst = typed ? { ...typed, at: now } : null;
+    save();
+  };
+  function travel(from, to) {
+    closeSlash();
+    const s = from.pop(); if (!s) return false;
+    to.push(H.cur); H.cur = s; H.burst = null;
+    B = clone(s.blocks); save();
+    render(s.focus && B.some((b) => b.id === s.focus.id) ? s.focus : { id: B[0].id, at: 0 });
+    return true;
+  }
+  const undo = () => travel(H.undo, H.redo), redo = () => travel(H.redo, H.undo);
+  const caretNow = () => {   // where the caret is, as a block and an offset into its text
+    const s = getSelection(); if (!s.rangeCount) return null;
+    const tx = (s.anchorNode?.nodeType === 1 ? s.anchorNode : s.anchorNode?.parentElement)?.closest?.(".tx"), row = tx?.closest(".blk");
+    if (!tx || !root.contains(tx)) return null;
+    return { id: row.dataset.id, at: caretOffset(tx) };
+  };
+  const undoKey = (e) => {
+    const k = e.key.toLowerCase(); if (!(e.ctrlKey || e.metaKey) || e.altKey || !(k === "z" || k === "y")) return false;
+    e.preventDefault(); e.stopPropagation();
+    if (k === "y" || e.shiftKey) redo(); else undo();
+    return true;
+  };
+  root.addEventListener("keydown", (e) => {
+    if (e.isComposing || undoKey(e)) return;
+    const x = crossSel(); if (!x) return;   // words selected across blocks: the editor deletes them itself
+    const mod = e.ctrlKey || e.metaKey, ch = e.key.length === 1 && !mod && !e.altKey;
+    if (e.key === "Backspace" || e.key === "Delete" || e.key === "Enter" || ch) {
+      e.preventDefault(); e.stopPropagation();
+      const at = cutAcross(x);
+      if (ch) { quiet = true; document.execCommand("insertText", false, e.key); quiet = false; const b = B[idx(at.id)], tx = txOf(at.id); if (b && tx) { sync(b, tx); changed(false, { id: b.id, kind: "ins" }); } }
+    }
+  }, true);
+  root.addEventListener("cut", (e) => { const x = crossSel(); if (!x) return; e.preventDefault(); e.clipboardData?.setData("text/plain", getSelection().toString()); cutAcross(x); }, true);
+  // a selection that starts in one block and ends in another
+  function crossSel() {
+    const s = getSelection(); if (!s.rangeCount || s.isCollapsed) return null;
+    const r = s.getRangeAt(0), rowAt = (n) => (n.nodeType === 1 ? n : n.parentElement)?.closest?.(".blk");
+    const a = rowAt(r.startContainer), z = rowAt(r.endContainer);
+    if (!a || !z || a === z || !root.contains(a) || !root.contains(z)) return null;
+    return { r, a, z };
+  }
+  // deletes what's selected across blocks: the first block keeps its words before the selection and takes the last one's after it
+  function cutAcross({ r, a, z }) {
+    const i = idx(a.dataset.id), j = idx(z.dataset.id), first = B[i], last = B[j];
+    const part = (tx, fromStart) => {
+      if (!tx) return "";
+      const q = document.createRange(); q.selectNodeContents(tx);
+      if (fromStart) { if (tx.contains(r.startContainer)) q.setEnd(r.startContainer, r.startOffset); }
+      else if (tx.contains(r.endContainer)) q.setStart(r.endContainer, r.endOffset); else return tx.innerHTML;
+      const d = document.createElement("div"); d.append(q.cloneContents()); return first.type === "code" ? d.textContent : d.innerHTML;
+    };
+    const atx = a.querySelector(".tx"), ztx = z.querySelector(".tx");
+    const head = TEXTY.has(first.type) ? part(atx, true) : "", tail = TEXTY.has(last.type) && ztx && ztx.contains(r.endContainer) ? part(ztx, false) : "";
+    const keep = TEXTY.has(first.type) ? first : newBlock("text", { indent: first.indent });
+    keep.html = keep.type === "code" ? head + tail : cleanHtml(head + tail);
+    const at = keep.type === "code" ? head.length : plain(head).length;
+    B.splice(i, j - i + 1, keep);
+    changed(true); render({ id: keep.id, at });
+    return { id: keep.id, at };
+  }
+  root.addEventListener("beforeinput", (e) => {   // Undo from the browser's own menu
+    if (e.inputType === "historyUndo" || e.inputType === "historyRedo") { e.preventDefault(); e.inputType === "historyUndo" ? undo() : redo(); }
+  }, true);
   const idx = (id) => B.findIndex((b) => b.id === id);
   const kidsEnd = (i) => { let j = i + 1; while (j < B.length && B[j].indent > B[i].indent) j++; return j; };   // end of a block's group
   const rowOf = (id) => root.querySelector(`.blk[data-id="${id}"]`);
@@ -104,7 +190,7 @@ export function createEditor(opts) {
   function render(focus) {
     const hide = hidden();
     put(root, B.map((b, i) => rowFor(b, i, hide.has(b.id))));
-    if (focus) place(focus.id, focus.at);
+    if (focus) { place(focus.id, focus.at); H.cur.focus = { id: focus.id, at: focus.at }; }
   }
   function rowFor(b, i, isHidden) {
     const row = el("div", { class: `blk t-${b.type}` + (b.color ? ` c-${b.color}` : "") + (b.checked ? " done" : "") + (b.open ? " open" : ""), dataset: { id: b.id }, style: `--i:${b.indent}`, hidden: isHidden });
@@ -164,21 +250,25 @@ export function createEditor(opts) {
   }
   function onInput(e, b, tx) {
     sync(b, tx);
+    if (quiet) return;
     const t = tx.textContent;
     if (b.type !== "code" && t === "---") { b.type = "divider"; b.html = ""; const n = insertAfter(idx(b.id), newBlock("text", { indent: b.indent })); changed(); return render({ id: n.id }); }
     if (b.type !== "code" && t === "```") { b.type = "code"; b.html = ""; changed(); return render({ id: b.id }); }
     if (e.inputType === "insertText" && (e.data === "/" || e.data === "@")) { const at = caretOffset(tx); const prev = t[at - 2]; if (at === 1 || prev === " " || prev === "\u00a0") openSlash(b, tx, at - 1, e.data === "@" ? "date" : "block"); }
     else if (slash) updateSlash();
     tx.parentElement.classList.toggle("blank", !t);   // not "empty": that's the empty-garden box's class
-    changed();
+    const it = e.inputType || "";
+    if (/Paste|Drop|Cut|format|history/.test(it)) return changed(true);
+    changed(false, { id: b.id, kind: it.startsWith("delete") ? "del" : "ins" });
   }
   function onPaste(e, b, tx) {
     const text = e.clipboardData?.getData("text/plain"); if (text == null) return;
     e.preventDefault();
     const lines = text.replace(/\r/g, "").split("\n");
-    if (lines.length === 1 || b.type === "code") { document.execCommand("insertText", false, text); return; }
+    H.burst = null;   // a paste is a step of its own
+    if (lines.length === 1 || b.type === "code") { document.execCommand("insertText", false, text); H.burst = null; return; }
     // several lines: the first joins this block, the rest become blocks of their own, read like a Markdown outline
-    document.execCommand("insertText", false, lines[0]); sync(b, tx);
+    quiet = true; document.execCommand("insertText", false, lines[0]); quiet = false; sync(b, tx);
     const made = textToBlocks(lines.slice(1).join("\n")).map((x) => ({ ...x, indent: Math.min(MAX_INDENT, x.indent + b.indent) }));
     B.splice(idx(b.id) + 1, 0, ...made); changed(true); render({ id: made.at(-1)?.id || b.id });
   }
@@ -438,6 +528,7 @@ export function createEditor(opts) {
   document.body.append(bar);
   const onSel = () => {
     const s = getSelection(), tx = s.anchorNode && s.anchorNode.parentElement?.closest?.(".tx");
+    if (s.rangeCount && s.isCollapsed) { const c = caretNow(); if (c) H.cur.focus = c; }
     if (!s.rangeCount || s.isCollapsed || !tx || !root.contains(tx) || tx.closest(".t-code")) { bar.hidden = true; return; }
     const r = s.getRangeAt(0).getBoundingClientRect(); bar.hidden = false;
     bar.style.left = Math.max(8, Math.min(innerWidth - bar.offsetWidth - 8, r.left + r.width / 2 - bar.offsetWidth / 2)) + "px";
@@ -468,7 +559,8 @@ export function createEditor(opts) {
     get blocks() { return B.map((b) => ({ ...b })); },
     focus(at = "start") { const b = at === "end" ? B.at(-1) : B[0]; if (b) place(b.id, at === "end" ? "end" : 0); },
     refreshPages() { root.querySelectorAll(".t-page").forEach((r) => { const b = B[idx(r.dataset.id)]; const s = r.querySelector(".plink span:last-child"); if (b && s) s.textContent = opts.pageTitle?.(b.pageId) || "Untitled"; }); },
-    flush() { opts.onChange?.(B.map((b) => ({ ...b }))); },
+    flush() { save(); },
+    undo, redo,
     destroy() { closeSlash(); bar.remove(); document.removeEventListener("selectionchange", onSel); root.remove(); },
   };
 }
