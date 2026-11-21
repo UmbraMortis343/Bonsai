@@ -673,7 +673,7 @@ export function createInk(opts) {
       onclick: () => { setColour(c); canvas.focus({ preventScroll: true }); } }, el("span", { style: "background:" + (st.tool === "hl" ? HI : INK)[c][nt ? 1 : 0] }));
     const more = isHex(st.c) ? st.c : st.extra;
     rail.replaceChildren(
-      el("div", { class: "igroup tools" }, TOOLS.map(([id, label, key, d]) => btn("ink-" + id, label, key, d, st.tool === id, () => setTool(id)))),
+      el("div", { class: "igroup tools" }, TOOLS.map(([id, label, key, d]) => btn(id === "text" ? "ink-textbox" : "ink-" + id, label, key, d, st.tool === id, () => setTool(id)))),
       el("div", { class: "igroup" }, [0, 1, 2, 3].map(sw),
         el("button", { class: "iswatch more" + (isHex(st.c) ? " on" : "") + (palOpen ? " open" : ""), type: "button", id: "ink-more", title: "More colours (⇧C)", "aria-label": "More colours", "aria-expanded": String(palOpen), onclick: () => togglePal() },
           el("span", { style: more ? "background:" + more : "background:linear-gradient(90deg," + EXTRA.slice(0, 4).join(",") + ")" })),
