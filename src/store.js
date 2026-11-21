@@ -13,6 +13,7 @@
 // event {id, at, type, ref, data}  Append-only log for the growth timeline.
 // patch {id, treeId, text, nodeIds, createdAt}  A short reflection (Patchwork Text).
 // inbox {id, text, createdAt}  Quick-captured thoughts waiting to be filed.
+// meta "file:<id>" {type, data, w, h, at}  A picture in a typed page (putFile, getFile).
 // page  {id, kind, parentId, title, blocks, props, order, createdAt, updatedAt, grown: [{at, zoneId, treeIds, nodeIds, linkIds}]}
 //        Notes stand on their own, apart from topics and graphs. kind: "page" or "folder"; parentId: the folder or page it's in.
 //        blocks is the editor's content (blocks.js); props are Notion-style properties [{id, name, type, value}].
@@ -671,6 +672,10 @@ export const deleteInbox = (id) => tx(["inbox"], "readwrite", (s) => { s.inbox.d
 export const allVectors = () => tx(["vectors"], "readonly", (s) => reqP(s.vectors.getAll()));
 export const putVectors = (rows) => tx(["vectors"], "readwrite", (s) => { for (const r of rows) s.vectors.put(r); });
 export const deleteVectors = (ids) => tx(["vectors"], "readwrite", (s) => { for (const id of ids) s.vectors.delete(id); });
+// Pictures in typed pages (images.js): { type, data (base64), w, h, at } under meta key "file:<id>", so they sync and back up
+// like the rest while a page's blocks hold only the id. Kept when the block goes, so Undo can bring it back.
+export async function putFile(rec) { const id = uid(); await tx(["meta"], "readwrite", (s) => { s.meta.put({ key: "file:" + id, value: { ...rec, at: now() } }); }); return id; }
+export const getFile = async (id) => (await tx(["meta"], "readonly", (s) => reqP(s.meta.get("file:" + id))))?.value || null;
 export const getMeta = async (key) => (await tx(["meta"], "readonly", (s) => reqP(s.meta.get(key))))?.value;
 export const setMeta = (key, value) => tx(["meta"], "readwrite", (s) => { s.meta.put({ key, value }); });
 

@@ -2967,7 +2967,8 @@ function pageView(p, side) {
   if (p.kind === "ink") return inkView(p, side);
   const body = el("div", { class: "pbody" });
   const blocks = (p.blocks || []).filter((b) => b.type !== "page" || pageOf(b.pageId));
-  S.ed = createEditor({ host: body, blocks, key: p.id, onChange: (bl) => queuePage(p.id, { blocks: bl }), pageTitle,
+  S.ed = createEditor({ host: body, blocks, key: p.id, onChange: (bl) => queuePage(p.id, { blocks: bl }), pageTitle, notify: (m) => toast(m),
+    files: { save: (rec) => store.putFile(rec), load: (id) => store.getFile(id) },
     openPage: (id) => (S.view === "notes" ? pickPage(id) : (location.hash = notesHash(id))),
     newSubpage: async () => { const c = await safely(() => store.addPage({ parentId: p.id })); if (!c) return null; S.pages.push(c); setOpen(p.id, true); return c.id; } });
   vocab?.watch(body);

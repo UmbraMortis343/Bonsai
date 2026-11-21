@@ -4,8 +4,10 @@
 // block {id, type, html, indent, checked, open, color, pageId, icon}
 //   type: text h1 h2 h3 bullet number todo toggle quote callout code divider page table
 //   a table keeps its cells as rows: [[html, …], …] and head (the first row is a header)
+//   an image keeps fileId (the picture, saved apart: opts.files), w and h (its pixels), width (% of the page) and caption
 import { el, put, menu, dialog } from "./dom.js";
 import { datePicker, isoDay, relDate, longDate } from "./datepick.js";
+import { shrinkImage, urlOf, pngOf, isImage } from "./images.js";
 
 export const TYPES = [
   ["text", "Text", "Aa"], ["h1", "Heading 1", "H1"], ["h2", "Heading 2", "H2"], ["h3", "Heading 3", "H3"],
@@ -87,7 +89,8 @@ const HIST = new Map(), HIST_MAX = 200, BURST_MS = 1000;
 const clone = (x) => (typeof structuredClone === "function" ? structuredClone(x) : JSON.parse(JSON.stringify(x)));
 
 // ---------- the editor ----------
-// opts: { host, blocks, onChange(blocks), pageTitle(id), openPage(id), newSubpage() -> id, readOnly, key (for the history) }
+// opts: { host, blocks, onChange(blocks), pageTitle(id), openPage(id), newSubpage() -> id, readOnly, key (for the history),
+//         files: { save(rec) -> id, load(id) -> rec } for pictures, notify(message) }
 export function createEditor(opts) {
   let B = (opts.blocks || []).map((b) => clone(b));
   if (!B.length) B = [newBlock()];
@@ -217,6 +220,7 @@ export function createEditor(opts) {
     else if (b.type === "toggle") row.append(el("button", { class: "mark tg", type: "button", "aria-label": b.open ? "Close" : "Open", "aria-expanded": String(!!b.open), onclick: () => { b.open = !b.open; changed(true); render({ id: b.id, at: "end" }); } }));
     else if (b.type === "callout") row.append(el("button", { class: "mark ico", type: "button", text: b.icon || "💡", "aria-label": "Icon", onclick: async () => { const v = await dialog({ title: "Icon", fields: [{ name: "i", label: "Emoji", value: b.icon || "💡", max: 4 }] }); if (v) { b.icon = v.i.trim() || "💡"; changed(true); render(); } } }));
     if (b.type === "table") { row.append(tableFor(b)); return row; }
+    if (b.type === "image") return imageRow(b, row);
     if (b.type === "divider") { row.tabIndex = 0; row.append(el("hr")); row.addEventListener("keydown", (e) => solidKey(e, b)); return row; }
     if (b.type === "page") {
       row.tabIndex = 0;
@@ -293,6 +297,8 @@ export function createEditor(opts) {
       if (!plain(b.html).trim() && TEXTY.has(b.type)) B.splice(i, 1, n); else B.splice(i + 1, 0, n);
       changed(true); return render({ id: n.id, cell: [grid.rows.length - 1, grid.rows.at(-1).length - 1], at: "end" });
     }
+    const pics = filesIn(e.clipboardData);
+    if (pics.length && opts.files) { e.preventDefault(); return addImages(pics, { id: b.id, replace: true }); }   // a screenshot: a picture block
     const text = e.clipboardData?.getData("text/plain"); if (text == null) return;
     e.preventDefault();
     const lines = text.replace(/\r/g, "").split("\n");
@@ -535,6 +541,103 @@ export function createEditor(opts) {
     changed(true); render({ id: b.id, cell: [r0 + grid.rows.length - 1, c0 + grid.rows.at(-1).length - 1], at: "end" });
   }
 
+  // ---------- pictures ----------
+  // A pasted screenshot or a dropped file becomes an image block; the picture itself is shrunk and saved apart (images.js).
+  const IKEYS = { view: "Space", copy: "Ctrl+C", size: "Alt+Shift+← →" };
+  function imageRow(b, row) {
+    row.tabIndex = 0;
+    const img = el("img", { alt: plain(b.caption) || "", draggable: false, onclick: () => viewImage(b) });
+    if (b.w && b.h) img.style.aspectRatio = `${b.w} / ${b.h}`;
+    const grip = (side) => { const g = el("div", { class: "igrip " + side, title: `Drag to resize (${IKEYS.size})` }); g.addEventListener("pointerdown", (e) => resizeImage(e, b, row, fig)); return g; };
+    const cap = el("div", { class: "cap", contentEditable: opts.readOnly ? "false" : "true", html: b.caption || "", dataset: { ph: "Caption" }, role: "textbox", "aria-label": "Caption" });
+    cap.addEventListener("input", (e) => { b.caption = cleanHtml(cleanInline(cap.innerHTML)); img.alt = plain(b.caption); changed(false, { id: b.id + ":cap", bid: b.id, kind: (e.inputType || "").startsWith("delete") ? "del" : "ins" }); });
+    cap.addEventListener("keydown", (e) => capKey(e, b, cap));
+    cap.addEventListener("paste", (e) => { const t = e.clipboardData?.getData("text/plain"); if (t == null) return; e.preventDefault(); document.execCommand("insertText", false, t.replace(/\s*\n\s*/g, " ")); });
+    const fig = el("figure", { class: "imgfig", style: `width:${b.width || 100}%` }, el("div", { class: "iframe" }, img, grip("l"), grip("r")), cap);
+    const shown = urlOf(b.fileId);
+    if (shown) img.src = shown;
+    else opts.files?.load(b.fileId).then((rec) => { const u = urlOf(b.fileId, rec); if (u) img.src = u; else fig.classList.add("missing"); }).catch(() => fig.classList.add("missing"));
+    row.append(fig);
+    row.addEventListener("keydown", (e) => { if (e.target === row) imageKey(e, b); });
+    row.addEventListener("contextmenu", (e) => { if (e.target.closest(".cap")) return; e.preventDefault(); row.focus(); blockMenu(b.id, { left: e.clientX, right: e.clientX + 1, top: e.clientY, bottom: e.clientY }); });
+    return row;
+  }
+  function imageKey(e, b) {
+    const i = idx(b.id), k = e.key, mod = e.ctrlKey || e.metaKey, stop = () => { e.preventDefault(); e.stopPropagation(); };
+    if (mod && !e.shiftKey && k.toLowerCase() === "c") { stop(); return copyImage(b); }
+    if (mod && !e.shiftKey && k.toLowerCase() === "d") { stop(); return duplicate(b); }
+    if (mod && e.shiftKey && (k === "ArrowUp" || k === "ArrowDown")) { stop(); return moveGroup(b.id, k === "ArrowUp" ? -1 : 1); }
+    if (e.altKey && e.shiftKey && (k === "ArrowLeft" || k === "ArrowRight")) { stop(); return sizeImage(b, (b.width || 100) + (k === "ArrowRight" ? 10 : -10)); }
+    if (mod || e.altKey) return;
+    if (k === "Backspace" || k === "Delete") { stop(); return remove(b); }
+    if (k === "Enter") { stop(); const n = insertAfter(i, newBlock("text", { indent: b.indent })); changed(true); return render({ id: n.id }); }
+    if (k === " ") { stop(); return viewImage(b); }
+    if (k === "ArrowDown" || k === "ArrowRight") { stop(); const c = rowOf(b.id)?.querySelector(".cap"); if (c) { c.focus(); setCaret(c, 0); } return; }
+    if (k === "ArrowUp" || k === "ArrowLeft") { const j = prevVisible(i); stop(); if (j >= 0) place(B[j].id, "end"); }
+  }
+  function capKey(e, b, cap) {
+    const i = idx(b.id), k = e.key, at = caretOffset(cap), mod = e.ctrlKey || e.metaKey;
+    if (mod || e.altKey) return;
+    if (k === "Enter") { e.preventDefault(); const n = insertAfter(i, newBlock("text", { indent: b.indent })); changed(true); return render({ id: n.id }); }
+    if ((k === "ArrowUp" && atLine(cap, true)) || ((k === "Backspace" || k === "ArrowLeft") && at === 0 && getSelection().isCollapsed)) { e.preventDefault(); return rowOf(b.id)?.focus(); }
+    if ((k === "ArrowDown" && atLine(cap, false)) || (k === "ArrowRight" && at === cap.textContent.length)) { const j = nextVisible(i); if (j >= 0) { e.preventDefault(); place(B[j].id, 0); } }
+  }
+  function sizeImage(b, w) { w = Math.max(15, Math.min(100, Math.round(w))); if (w === (b.width || 100)) return; b.width = w; changed(true); render({ id: b.id }); }
+  // drag either edge: the picture stays centred and grows or shrinks on both sides
+  function resizeImage(e, b, row, fig) {
+    if (e.button > 0) return;
+    e.preventDefault(); e.stopPropagation();
+    const g = e.currentTarget; g.setPointerCapture(e.pointerId);
+    const rr = row.getBoundingClientRect(), cs = getComputedStyle(row), left = rr.left + parseFloat(cs.paddingLeft), wide = rr.width - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight), mid = left + wide / 2;
+    let pct = b.width || 100;
+    const move = (ev) => { pct = Math.max(15, Math.min(100, Math.round((Math.abs(ev.clientX - mid) * 2) / wide * 100))); fig.style.width = pct + "%"; };
+    const up = () => { g.removeEventListener("pointermove", move); g.removeEventListener("pointerup", up); g.removeEventListener("pointercancel", up); if (pct !== (b.width || 100)) { b.width = pct; changed(true); render({ id: b.id }); } };
+    g.addEventListener("pointermove", move); g.addEventListener("pointerup", up); g.addEventListener("pointercancel", up);
+  }
+  function viewImage(b) {
+    const u = urlOf(b.fileId); if (!u) return;
+    const back = document.activeElement;
+    const box = el("div", { class: "imgview", role: "dialog", "aria-label": plain(b.caption) || "Picture" }, el("figure", {}, el("img", { src: u, alt: plain(b.caption) || "" }), b.caption ? el("figcaption", { html: b.caption }) : null));
+    const close = () => { box.remove(); document.removeEventListener("keydown", key, true); back?.focus?.(); };
+    const key = (e) => { if (e.key === "Escape" || e.key === " " || e.key === "Enter") { e.preventDefault(); e.stopPropagation(); close(); } };
+    box.addEventListener("click", close); document.addEventListener("keydown", key, true);
+    document.body.append(box);
+  }
+  async function copyImage(b) {
+    try {
+      const rec = await opts.files?.load(b.fileId); if (!rec) throw new Error();
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": await pngOf(rec) })]);
+      opts.notify?.("Picture copied");
+    } catch { opts.notify?.("The picture couldn't be copied"); }
+  }
+  // pictures in, after the block given (or in place of it, when it's an empty line)
+  async function addImages(files, at) {
+    if (!opts.files) return;
+    const made = [], wide = Math.max(300, root.clientWidth - 30), dpr = window.devicePixelRatio || 1;
+    for (const f of files) {
+      try {
+        const rec = await shrinkImage(f), id = await opts.files.save(rec); urlOf(id, rec);
+        made.push(newBlock("image", { fileId: id, w: rec.w, h: rec.h, width: Math.max(15, Math.min(100, Math.round((rec.w / dpr / wide) * 100))), caption: "" }));
+      } catch (e) { opts.notify?.(e.message || "That picture couldn't be read"); }
+    }
+    if (!made.length) return;
+    let i = idx(at.id); if (i < 0) i = B.length - 1;
+    const ref = B[i]; for (const m of made) m.indent = ref?.indent || 0;
+    if (at.replace && ref?.type === "text" && !plain(ref.html).trim()) B.splice(i, 1, ...made);
+    else B.splice(at.before ? i : i + 1, 0, ...made);
+    changed(true); render({ id: made.at(-1).id });
+  }
+  const filesIn = (dt) => [...(dt?.files || [])].filter(isImage);
+  root.addEventListener("dragover", (e) => { if ([...(e.dataTransfer?.items || [])].some((x) => x.kind === "file")) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } }, true);
+  root.addEventListener("drop", (e) => {
+    const fs = filesIn(e.dataTransfer); if (!fs.length) return;
+    e.preventDefault(); e.stopPropagation();
+    const rows = [...root.querySelectorAll(".blk:not([hidden])")];
+    let at = { id: B.at(-1).id };
+    for (const r of rows) { const bx = r.getBoundingClientRect(); if (e.clientY < bx.bottom) { at = { id: r.dataset.id, before: e.clientY < bx.top + bx.height / 2 }; break; } }
+    addImages(fs, at);
+  }, true);
+
   // ---------- the / menu ----------
   function openSlash(b, tx, start, kind = "block") {
     closeSlash();
@@ -635,8 +738,10 @@ export function createEditor(opts) {
     const b = B[idx(id)]; if (!b) return;
     menu(anchor, [
       ...(b.type === "table" ? tableItems(b) : []),
+      ...(b.type === "image" ? [{ label: "View larger", key: IKEYS.view, run: () => viewImage(b) }, { label: "Copy image", key: IKEYS.copy, run: () => copyImage(b) },
+        { label: "Caption", run: () => { const c = rowOf(b.id)?.querySelector(".cap"); c?.focus(); if (c) setCaret(c, "end"); } }, "-"] : []),
       TEXTY.has(b.type) && { label: "Turn into", run: () => menu(anchor, TYPES.filter(([t]) => t !== b.type && t !== "divider").map(([t, name]) => ({ label: name, run: () => turnInto(b, t) }))) },
-      { label: "Colour", run: () => menu(anchor, [{ label: (b.color ? "" : "✓ ") + "Default", run: () => { delete b.color; changed(true); render(); } },
+      b.type !== "image" && { label: "Colour", run: () => menu(anchor, [{ label: (b.color ? "" : "✓ ") + "Default", run: () => { delete b.color; changed(true); render(); } },
         ...COLORS.flatMap((c) => [{ label: (b.color === c ? "✓ " : "") + c[0].toUpperCase() + c.slice(1), run: () => { b.color = c; changed(true); render(); } }]),
         "-", ...COLORS.map((c) => ({ label: (b.color === c + "-bg" ? "✓ " : "") + c[0].toUpperCase() + c.slice(1) + " background", run: () => { b.color = c + "-bg"; changed(true); render(); } }))]) },
       { label: "Duplicate", key: "Ctrl+D", run: () => duplicate(b) },
@@ -763,6 +868,7 @@ export function blocksToText(blocks, pageTitle = () => "") {
     if (b.type === "divider") lines.push(pad + "---");
     else if (b.type === "page") lines.push(pad + `(page: ${pageTitle(b.pageId) || "Untitled"})`);
     else if (b.type === "code") lines.push(pad + "```", ...t.split("\n").map((l) => pad + l), pad + "```");
+    else if (b.type === "image") lines.push(pad + `(picture${b.caption ? ": " + md(b.caption) : ""})`);
     else if (b.type === "table") (b.rows || []).forEach((row, r) => {
       lines.push(pad + "| " + row.map((h) => md(h).replace(/\n/g, " ").replace(/\|/g, "\\|") || " ").join(" | ") + " |");
       if (r === 0 && b.head) lines.push(pad + "|" + row.map(() => " --- ").join("|") + "|");

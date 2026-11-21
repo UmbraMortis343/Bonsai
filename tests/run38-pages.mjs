@@ -139,4 +139,63 @@ t.eq((await cells()).length, 3, "undo takes the pasted table back");
 await state(page, () => { const dt = new DataTransfer(); dt.setData("text/plain", "x\ty\nz\tw"); const c = document.querySelectorAll("#nedit .blk.t-table")[2].querySelector('.cell[data-r="1"][data-c="1"]'); c.focus(); c.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true })); });
 t.eq((await cells())[2].rows, [["Planet", "Moons", ""], ["<b>Mars</b>", "x", "y"], ["", "z", "w"]], "a grid pasted into a cell fills the cells from there, growing the table");
 
+// ---------- 3. pictures ----------
+const pics = () => state(page, () => bonsai.S.ed.blocks.filter((b) => b.type === "image").map((b) => ({ fileId: b.fileId, w: b.w, h: b.h, width: b.width, caption: b.caption })));
+// a "screenshot": a big PNG made on a canvas, pasted from the clipboard
+const shot = (w, h, how, sel) => state(page, async ([w, h, how, sel]) => {
+  const c = document.createElement("canvas"); c.width = w; c.height = h; const g = c.getContext("2d");
+  g.fillStyle = "#f4f3ef"; g.fillRect(0, 0, w, h); g.fillStyle = "#3e7a4b"; g.fillRect(w * 0.1, h * 0.2, w * 0.5, h * 0.4); g.fillStyle = "#1d1d1b"; g.font = `${h / 8}px sans-serif`; g.fillText("Screenshot", w * 0.15, h * 0.85);
+  const blob = await new Promise((r) => c.toBlob(r, "image/png")), file = new File([blob], "shot.png", { type: "image/png" });
+  const dt = new DataTransfer(); dt.items.add(file);
+  const n = document.querySelector(sel);
+  if (how === "paste") { n.focus(); n.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true })); }
+  else { const r = n.getBoundingClientRect(); n.dispatchEvent(new DragEvent("drop", { dataTransfer: dt, bubbles: true, cancelable: true, clientX: r.left + 20, clientY: r.bottom - 2 })); }
+}, [w, h, how, sel]);
+await open("Pictures", "Before\n\nAfter");
+await at(1).click();
+await shot(3000, 1500, "paste", "#nedit .blk:nth-child(2) .tx");
+await page.waitForSelector("#nedit .blk.t-image img[src^=blob]");
+const p1 = (await pics())[0];
+t.eq([p1.w, p1.h, (await htmls()).length], [2000, 1000, 3], "a pasted screenshot is a picture block, shrunk to 2000 px on its long side");
+const file = await state(page, (id) => bonsai.store.getFile(id).then((f) => ({ type: f.type, kb: Math.round(f.data.length / 1024) })), p1.fileId);
+t.eq([file.type, file.kb < 600], ["image/webp", true], "kept as WebP, apart from the page");
+await page.waitForTimeout(700);
+t.eq(JSON.stringify(await saved("Pictures")).length < 2000, true, "the page's own save holds only the picture's id");
+// size: keys and dragging an edge
+await page.locator("#nedit .blk.t-image").focus();
+const w0 = p1.width;
+await k("Alt+Shift+ArrowLeft");
+t.eq((await pics())[0].width, w0 - 10, "Alt+Shift+← makes it narrower");
+const grip = await page.locator("#nedit .blk.t-image .igrip.r").boundingBox(), fig = await page.locator("#nedit .blk.t-image figure").boundingBox();
+await page.locator("#nedit .blk.t-image").hover();
+await page.mouse.move(grip.x + 3, grip.y + 10); await page.mouse.down(); await page.mouse.move(grip.x - fig.width / 4, grip.y + 10, { steps: 5 }); await page.mouse.up();
+const w1 = (await pics())[0].width;
+t.eq(w1 < w0 - 15 && w1 >= 15, true, "dragging its edge resizes it");
+// a caption
+await page.locator("#nedit .blk.t-image").focus(); await k("ArrowDown"); await type("A test card");
+t.eq((await pics())[0].caption, "A test card", "a caption under it");
+// bigger, then back
+await page.click("#nedit .blk.t-image img"); await page.waitForSelector(".imgview img");
+await page.screenshot({ path: "tests/shots/pages-image-view.png" });
+await k("Escape");
+t.eq([await page.isVisible(".imgview"), await state(page, () => bonsai.S.view)], [false, "notes"], "click shows it bigger, Esc closes only that");
+// copy it
+await page.locator("#nedit .blk.t-image").click({ button: "right", position: { x: 40, y: 40 } });
+await page.click('.menu .mi:has-text("Copy image")');
+await page.waitForFunction(() => document.querySelector("#toast")?.textContent.includes("copied"));
+t.eq(await state(page, async () => (await navigator.clipboard.read())[0].types.includes("image/png")), true, "Copy image puts a PNG on the clipboard");
+// delete and undo
+await page.locator("#nedit .blk.t-image").focus(); await k("Backspace");
+t.eq((await pics()).length, 0, "Backspace on a picked picture deletes it");
+await k("Control+z");
+await page.waitForSelector("#nedit .blk.t-image img[src^=blob]");
+t.eq((await pics())[0]?.caption, "A test card", "undo brings it back");
+// dropping a file onto the page
+await shot(400, 300, "drop", "#nedit .blk:last-child");
+await page.waitForFunction(() => document.querySelectorAll("#nedit .blk.t-image").length === 2);
+t.eq((await pics())[1].w, 400, "a dropped picture is kept at its own size when small");
+await page.waitForTimeout(700);
+await page.screenshot({ path: "tests/shots/pages-image.png" });
+t.eq(await state(page, async () => (await import("./blocks.js")).blocksToText(bonsai.S.ed.blocks).includes("(picture: A test card)")), true, "pictures show in the outline for Grow");
+
 await t.end();

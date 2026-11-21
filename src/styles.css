@@ -476,6 +476,24 @@ mark.vt{background:none;color:inherit;text-decoration:underline dotted var(--acc
 .blk.t-table:hover .tadd,.blk.t-table.focus .tadd{opacity:.6}
 .tadd:hover{opacity:1;background:var(--hover);color:var(--ink)}
 @media (pointer:coarse){ .tadd{opacity:.5} }
+/* pictures: centred, resized from either edge, a caption under */
+.blk.t-image{outline:none;padding-top:6px;padding-bottom:6px}
+.imgfig{margin:0 auto;max-width:100%;display:grid;gap:4px;flex:none}
+.imgfig .iframe{position:relative}
+.imgfig img{display:block;width:100%;height:auto;border-radius:4px;cursor:zoom-in;background:var(--well)}
+.blk.t-image:focus .imgfig img{box-shadow:0 0 0 2px var(--accent)}
+.imgfig.missing .iframe{min-height:80px;border-radius:4px;background:var(--well)}
+.igrip{position:absolute;top:50%;width:6px;height:44px;max-height:60%;transform:translateY(-50%);border-radius:3px;background:var(--ink);border:1px solid var(--card);opacity:0;cursor:ew-resize;touch-action:none}
+.igrip.l{left:6px}.igrip.r{right:6px}
+.blk.t-image:hover .igrip,.blk.t-image:focus .igrip{opacity:.5}
+.igrip:hover{opacity:.9!important}
+.imgfig .cap{font-size:13px;color:var(--muted);outline:none;text-align:center;min-height:1.3em;padding:1px 4px;white-space:pre-wrap;overflow-wrap:anywhere}
+.imgfig .cap:empty::before{content:attr(data-ph);opacity:0}
+.blk.t-image:hover .cap:empty::before,.blk.t-image:focus .cap:empty::before,.imgfig .cap:focus:empty::before{opacity:.5}
+.imgview{position:fixed;inset:0;z-index:80;background:rgb(20 20 18 / .86);display:grid;place-items:center;padding:24px;cursor:zoom-out}
+.imgview figure{margin:0;display:grid;gap:8px;justify-items:center;max-width:100%}
+.imgview img{max-width:100%;max-height:calc(100vh - 90px);object-fit:contain;border-radius:4px;background:#fff}
+.imgview figcaption{color:#eeece6;font-size:13px}
 .blk.lift{opacity:.35}
 .dropline{position:absolute;left:0;right:0;height:3px;border-radius:2px;background:var(--accent);pointer-events:none;opacity:.7}
 .blk.c-gray .tx,.blk.c-gray .mark{color:var(--c-gray)}.blk.c-brown .tx,.blk.c-brown .mark{color:var(--c-brown)}.blk.c-orange .tx,.blk.c-orange .mark{color:var(--c-orange)}

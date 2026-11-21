@@ -10,7 +10,7 @@ const PREF = CHANNEL ? `bonsai-${CHANNEL}.sync.` : "bonsai.sync.";
 const ls = { get: (k) => { try { return localStorage.getItem(PREF + k); } catch { return null; } }, set: (k, v) => { try { v == null ? localStorage.removeItem(PREF + k) : localStorage.setItem(PREF + k, v); } catch {} } };
 const URL0 = "https://afrejqhcfdqxrkxpqtla.supabase.co", KEY0 = "sb_publishable_dvXv8SVuOjNpiz6VBU3T6Q_Zn3-mpOB";
 const base = () => ls.get("url") || URL0, key = () => ls.get("key") || KEY0;   // tests point these at a stand-in
-const BATCH = 200, PAGE = 1000, OVERLAP = 5000;
+const BATCH = 200, PAGE = 1000, OVERLAP = 5000, BYTES = 4_000_000;
 
 const device = () => { let d = ls.get("device"); if (!d) { d = (navigator.userAgent.match(/Android|iPhone|iPad|Windows|Mac|Linux/)?.[0] || "device") + "-" + Math.random().toString(36).slice(2, 8); ls.set("device", d); } return d; };
 let session = (() => { try { return JSON.parse(ls.get("session") || "null"); } catch { return null; } })();
@@ -66,14 +66,22 @@ async function run() {
   for (let round = 0; round < 50; round++) {
     const list = await store.pending(BATCH); if (!list.length) break;
     const row = (o) => ({ channel: CHANNEL || "", store: o.store, id: o.id, data: o.data, deleted: o.data == null, client_at: o.at, device: device() });
-    try { await call("/rest/v1/rpc/push", { method: "POST", body: { items: list.map(row) } }); await store.sent(list); out.sent += list.length; }
-    catch (e) {
-      if (e.status === 401 || !navigator.onLine || e instanceof TypeError) throw e;
-      const ok = [];
-      for (const o of list) { try { await call("/rest/v1/rpc/push", { method: "POST", body: { items: [row(o)] } }); ok.push(o); } catch { out.skipped++; } }
-      await store.sent(ok); out.sent += ok.length;
-      if (!ok.length) break;   // nothing went: leave the rest for next time
+    // pictures (meta "file:…") are big: a request carries at most about BYTES
+    const parts = []; let part = [], size = 0;
+    for (const o of list) { const n = (JSON.stringify(o.data) || "").length + 200; if (part.length && size + n > BYTES) { parts.push(part); part = []; size = 0; } part.push(o); size += n; }
+    if (part.length) parts.push(part);
+    let stuck = false;
+    for (const items of parts) {
+      try { await call("/rest/v1/rpc/push", { method: "POST", body: { items: items.map(row) } }); await store.sent(items); out.sent += items.length; }
+      catch (e) {
+        if (e.status === 401 || !navigator.onLine || e instanceof TypeError) throw e;
+        const ok = [];
+        for (const o of items) { try { await call("/rest/v1/rpc/push", { method: "POST", body: { items: [row(o)] } }); ok.push(o); } catch { out.skipped++; } }
+        await store.sent(ok); out.sent += ok.length;
+        if (!ok.length) stuck = true;
+      }
     }
+    if (stuck) break;   // a part where nothing went: leave the rest for next time
     if (list.length < BATCH) break;
   }
   // pull what changed since last time (with a little overlap; applying twice changes nothing)
