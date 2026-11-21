@@ -646,12 +646,42 @@ body[data-nbar="off"] .notes .nside-bar{display:none}
 .inkfold svg{width:14px;height:14px;transform:rotate(-90deg);transition:transform .15s}
 .inkview.propsopen .inkfold svg{transform:none}
 .inkarea{flex:1;display:flex;min-height:0}
-.inkwrap{flex:1;position:relative;min-width:0;background:var(--well);touch-action:none;overscroll-behavior:contain}
+.inkwrap{flex:1;position:relative;min-width:0;background:var(--well);touch-action:none;overscroll-behavior:contain;overflow:hidden;user-select:none;-webkit-user-select:none}
 .inkc{position:absolute;inset:0;touch-action:none;outline:none;cursor:crosshair}
+.inkwrap[data-tool=text] .inkc{cursor:text}
+.inkwrap[data-tool=lasso] .inkc,.inkwrap[data-tool=snip] .inkc{cursor:cell}
+/* what sits on the page besides ink: text boxes over it, moved and scaled with the view (--s); never a touch gesture */
+.inkitems{position:absolute;left:0;top:0;width:1000px;height:0;transform-origin:0 0;pointer-events:none;touch-action:none;z-index:1}
+.inktext{position:absolute;min-height:36px;font:400 22px/36px var(--font);pointer-events:none;touch-action:none;overflow-wrap:anywhere}
+.inktext .itx{min-height:36px;outline:none;white-space:pre-wrap;touch-action:none}
+.inktext.edit{pointer-events:auto}
+.inktext.edit .itx{user-select:text;-webkit-user-select:text;cursor:text}
+.inktext.edit::before{content:"";position:absolute;inset:-4px -6px;border:calc(1px / var(--s)) solid var(--accent);border-radius:calc(4px / var(--s));pointer-events:none}
+.igrip,.iwid{display:none;position:absolute;background:var(--accent);opacity:.3;pointer-events:auto;touch-action:none}
+.igrip{left:-6px;right:-6px;top:calc(-4px - 12px / var(--s));height:calc(12px / var(--s));border-radius:calc(3px / var(--s)) calc(3px / var(--s)) 0 0;cursor:move}
+.iwid{top:-4px;bottom:-4px;right:calc(-6px - 9px / var(--s));width:calc(9px / var(--s));border-radius:0 calc(3px / var(--s)) calc(3px / var(--s)) 0;cursor:ew-resize}
+.inktext.edit .igrip,.inktext.edit .iwid{display:block}
+.igrip:hover,.iwid:hover{opacity:.6}
+.ihandle{position:absolute;width:calc(14px / var(--s));height:calc(14px / var(--s));transform:translate(-50%,-50%);background:var(--card);border:calc(1.5px / var(--s)) solid var(--accent);border-radius:calc(3px / var(--s));pointer-events:auto;touch-action:none;cursor:nwse-resize}
+/* a picture of an area: copied, with Save; docked along the page's foot */
+.inksnip{position:absolute;left:0;right:0;bottom:0;z-index:3;display:flex;align-items:center;gap:10px;padding:6px 12px;background:var(--card);border-top:1px solid var(--line);font-size:14px}
+.inksnip[hidden]{display:none}
+.inksnip img{height:36px;max-width:120px;object-fit:contain;border:1px solid var(--line);border-radius:3px;background:#fff}
+.inksnip .grow{flex:1}
+.inksnip .btn{gap:6px}
+/* more colours: docked against the rail */
+.inkpal{position:absolute;right:0;z-index:3;display:grid;grid-template-columns:repeat(5,34px);gap:4px;padding:8px;background:var(--card);border:1px solid var(--line);border-right:0;border-radius:4px 0 0 4px;box-shadow:var(--shadow)}
+.inkpal[hidden]{display:none}
+.inkpal .iswatch{position:relative;height:30px}
+.inkpal .iswatch kbd{position:absolute;right:1px;bottom:0;font-size:8px;line-height:1;border:0;background:none;padding:0;color:var(--muted)}
+.inkpal .own{cursor:pointer;color:var(--ink)}
+.inkpal .own input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer}
+.inkpal .own .plus{width:20px;height:14px;display:grid;place-items:center;box-shadow:inset 0 0 0 1px var(--line);font-size:13px;line-height:1}
+.iswatch.more.open{border-color:var(--accent)}
 .inkrail{width:58px;flex:none;display:flex;flex-direction:column;gap:2px;padding:6px 0;background:var(--card);border-left:1px solid var(--line);overflow-y:auto}
 .igroup{display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;border-bottom:1px solid var(--line)}
 .igroup:last-child{border-bottom:0}
-.ibtn{position:relative;width:46px;height:40px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;border-radius:5px;color:var(--ink)}
+.ibtn{position:relative;width:46px;height:38px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;border-radius:5px;color:var(--ink)}
 .ibtn:hover{background:var(--hover)}
 .ibtn.on{background:var(--accent);color:var(--accent-ink)}
 .ibtn:disabled{opacity:.35}
@@ -666,7 +696,9 @@ body[data-nbar="off"] .notes .nside-bar{display:none}
 .isize i.on{opacity:1}
 .pbar .sidehide{width:auto;padding:0 6px;gap:4px;display:inline-flex;align-items:center}
 .pbar .sidehide kbd{font-size:10px}
-@media (pointer:coarse){.ibtn kbd,.ikey,.pbar .sidehide kbd,.inkfold kbd{display:none}}
+@media (pointer:coarse){.ibtn kbd,.ikey,.pbar .sidehide kbd,.inkfold kbd,.inkpal kbd,.inksnip kbd{display:none}}
+/* a short screen: the tools sit two to a row so the rail needn't scroll */
+@media (max-height:940px){.inkrail{width:106px}.inkrail .igroup{flex-direction:row;flex-wrap:wrap;justify-content:center;padding:4px}.inkrail .ikey{width:100%;text-align:center;border-color:transparent;background:none}}
 .ibtn,.iswatch,.inkfold{border:0;background:none}
 .ibtn.on{background:var(--accent)}
 .iswatch.on{box-shadow:inset 0 0 0 1.5px var(--ink)}

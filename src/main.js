@@ -2932,7 +2932,7 @@ function foldInkProps() {
 }
 function inkView(p, side) {
   const area = el("div", { class: "inkarea" });
-  const ink = createInk({ host: area, el, store: PREF + "ink", global: !side, icon: (d) => icon(d), doc: p.ink, night: darkPage, onChange: (doc) => queuePage(p.id, { ink: doc }), toText: desktop ? () => inkToText(p, ink) : null });
+  const ink = createInk({ host: area, el, store: PREF + "ink", global: !side, icon: (d) => icon(d), doc: p.ink, night: darkPage, onChange: (doc) => queuePage(p.id, { ink: doc }), toText: desktop ? () => inkToText(p, ink) : null, name: () => pageOf(p.id)?.title || p.title });
   S.ed = { destroy: ink.destroy, flush: ink.flush, focus: ink.focus, redraw: ink.redraw, ink };
   const fold = el("button", { class: "inkfold", type: "button", "aria-expanded": String(inkPropsOpen()), title: "Properties (D)", onclick: foldInkProps }, icon(ICON.fold), el("span", { text: "Properties" }), el("kbd", { text: "D" }));
   return el("div", { class: "inkview" + (side ? " side" : "") + (inkPropsOpen() ? " propsopen" : "") }, el("article", { class: "page inkhead" + (side ? " side" : "") }, titleInput(p, side), fold, propsView(p)), area);
