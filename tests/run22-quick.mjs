@@ -31,7 +31,7 @@ const panel = async () => { await page.waitForSelector(".qpanel"); return page.$
 
 // Add to vocab
 await select("crumple zones");
-t.eq(await panel(), ["add", "context", "claude", "google"], "the quick panel on new words");
+t.eq(await panel(), ["add", "context", "claude", "google", "action"], "the quick panel on new words");
 await page.screenshot({ path: "tests/shots/vocab-quick.png" });
 const blocksBefore = await state(page, (id) => JSON.stringify(bonsai.S.pages.find((p) => p.id === id).blocks), lect);
 await page.keyboard.press("Alt+1");
@@ -39,6 +39,7 @@ await page.waitForFunction(() => bonsai.S.vocab.some((v) => v.term === "crumple 
 const cz = await state(page, () => bonsai.S.vocab.find((v) => v.term === "crumple zones"));
 t.eq([cz.quote, cz.source], ["crumple zones, airbags, bending knees when landing", "Lecture 6: Momentum"], "Add to vocab keeps the sentence and the page");
 if (await page.$(".qpanel")) t.fail("the panel stays after an action");
+await page.waitForFunction(() => document.querySelector("#vocabBtn .vcount")?.textContent === "7", null, { timeout: 3000 }).catch(() => {});
 t.eq(await page.textContent("#vocabBtn .vcount"), "7", "the Vocab row counts the new term");
 await page.waitForTimeout(400);
 t.eq(await state(page, (id) => JSON.stringify(bonsai.S.pages.find((p) => p.id === id).blocks), lect), blocksBefore, "the note's text is untouched");
@@ -63,7 +64,7 @@ t.eq(await state(page, () => bonsai.S.vocab.find((v) => v.term === "rockets").qu
 
 // Add context on a term already kept: the panel opens that term
 await select("Impulse");
-t.eq(await panel(), ["open", "context", "claude", "google"], "the quick panel on a kept term");
+t.eq(await panel(), ["open", "context", "claude", "google", "action"], "the quick panel on a kept term");
 t.eq(await page.textContent(".qpanel button"), "ImpulseAlt+1", "it names the term");
 await page.keyboard.press("Alt+2");
 await page.waitForSelector("#f-def");
@@ -80,6 +81,5 @@ await select("Impulse"); await panel(); await page.keyboard.press("Escape");
 if (await page.$(".qpanel")) t.fail("Esc doesn't close the quick panel");
 t.eq(await page.evaluate(() => getSelection().toString()), "Impulse", "Esc leaves the selection");
 await select("same change in momentum over longer time → smaller force");
-await page.waitForTimeout(400);
-if (await page.$(".qpanel")) t.fail("a whole sentence gets the quick panel");
+t.eq(await panel(), ["action"], "a whole sentence gets only Action (run38-pages)");
 await t.end();

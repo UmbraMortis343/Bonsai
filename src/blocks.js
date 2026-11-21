@@ -27,8 +27,11 @@ export const tableBlock = (rows = [["", "", ""], ["", "", ""]], head = true, ext
   return newBlock("table", { rows: rows.map((r) => [...r, ...Array(w - r.length).fill("")]), head, ...extra });
 };
 
-// Only simple inline formatting survives: bold, italic, underline, strike, code, links, line breaks.
-const KEEP = { B: "b", STRONG: "b", I: "i", EM: "i", U: "u", S: "s", STRIKE: "s", DEL: "s", CODE: "code", A: "a", BR: "br", TIME: "time" };
+// Only simple inline formatting survives: bold, italic, underline, strike, code, links, line breaks, date tags and
+// actions (<mark data-action="id">: words marked as something to do, listed on the Actions page).
+const KEEP = { B: "b", STRONG: "b", I: "i", EM: "i", U: "u", S: "s", STRIKE: "s", DEL: "s", CODE: "code", A: "a", BR: "br", TIME: "time", MARK: "mark" };
+export const ACTION_ID = /^a[a-z0-9]{4,30}$/;
+export const actionId = () => "a" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 export function cleanHtml(html) {
   const doc = new DOMParser().parseFromString(`<div>${html || ""}</div>`, "text/html"), out = document.createElement("div");
   const walk = (from, to) => {
@@ -40,6 +43,7 @@ export function cleanHtml(html) {
       if (!tag) { if (/^(DIV|P|LI)$/.test(n.tagName) && to.childNodes.length) to.append(document.createElement("br")); walk(n, to); continue; }
       const e = document.createElement(tag);
       if (tag === "a") { const h = n.getAttribute("href") || ""; if (!/^(https?:|mailto:)/i.test(h)) { walk(n, to); continue; } e.setAttribute("href", h); e.setAttribute("target", "_blank"); e.setAttribute("rel", "noopener"); }
+      if (tag === "mark") { const id = n.getAttribute("data-action") || ""; if (!ACTION_ID.test(id)) { walk(n, to); continue; } e.setAttribute("data-action", id); }
       if (tag === "time") { const d = n.getAttribute("datetime") || ""; if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) { walk(n, to); continue; } e.setAttribute("datetime", d); e.setAttribute("contenteditable", "false"); e.textContent = relDate(d); to.append(e); continue; }
       if (tag !== "br") walk(n, e);
       to.append(e);
@@ -58,7 +62,7 @@ function caretOffset(node) {
 }
 function setCaret(node, at) {
   const s = getSelection(), r = document.createRange();
-  if (at === "end" || at == null) { r.selectNodeContents(node); r.collapse(false); }
+  if (at === "end" || at == null || at < 0) { r.selectNodeContents(node); r.collapse(false); }
   else {
     let left = at, done = false;
     const walk = (n) => {
@@ -769,6 +773,11 @@ export function createEditor(opts) {
   };
   document.addEventListener("selectionchange", onSel);
 
+  // the box before an action ticks it
+  root.addEventListener("click", (e) => {
+    const m = e.target.closest?.("mark[data-action]"); if (!m || !opts.onTick) return;
+    const r = m.getClientRects()[0]; if (r && e.clientX < r.left + 18) { e.preventDefault(); opts.onTick(m.dataset.action); }
+  });
   // clicking a date tag picks another day
   root.addEventListener("click", (e) => {
     const t = e.target.closest?.("time[datetime]"), tx = t?.closest(".tx"); if (!t || !tx || opts.readOnly) return;
@@ -794,6 +803,25 @@ export function createEditor(opts) {
     refreshPages() { root.querySelectorAll(".t-page").forEach((r) => { const b = B[idx(r.dataset.id)]; const s = r.querySelector(".plink span:last-child"); if (b && s) s.textContent = opts.pageTitle?.(b.pageId) || "Untitled"; }); },
     flush() { save(); },
     undo, redo,
+    // words in one block marked as an action (or, inside one already, unmarked); returns the action's id, "" when unmarked, null when it can't
+    markAction(range, id = actionId()) {
+      const r = range || (getSelection().rangeCount ? getSelection().getRangeAt(0) : null); if (!r) return null;
+      const host = (n) => (n.nodeType === 1 ? n : n.parentElement)?.closest?.(".tx, .cell, .cap");
+      const tx = host(r.startContainer); if (!tx || tx !== host(r.endContainer) || !root.contains(tx) || tx.closest(".t-code")) return null;
+      const b = B[idx(tx.closest(".blk").dataset.id)]; if (!b) return null;
+      const inMark = (r.commonAncestorContainer.nodeType === 1 ? r.commonAncestorContainer : r.commonAncestorContainer.parentElement).closest("mark[data-action]");
+      if (inMark && tx.contains(inMark)) { inMark.replaceWith(...inMark.childNodes); id = ""; }
+      else {
+        if (r.collapsed) return null;
+        const m = document.createElement("mark"); m.dataset.action = id;
+        m.append(r.extractContents()); m.querySelectorAll("mark[data-action]").forEach((x) => x.replaceWith(...x.childNodes));
+        r.insertNode(m); const after = document.createRange(); after.setStartAfter(m); after.collapse(true); getSelection().removeAllRanges(); getSelection().addRange(after);
+      }
+      if (tx.classList.contains("cap")) b.caption = cleanHtml(cleanInline(tx.innerHTML)); else sync(b, tx);
+      if (b.type !== "code" && !tx.classList.contains("cell") && !tx.classList.contains("cap")) b.html = cleanHtml(b.html);
+      changed(true); const at = caretOffset(tx); if (!tx.classList.contains("cap")) H.cur.focus = { id: b.id, at: at < 0 ? "end" : at, ...(tx.classList.contains("cell") ? { cell: [+tx.dataset.r, +tx.dataset.c] } : {}) };
+      return id;
+    },
     destroy() { closeSlash(); bar.remove(); document.removeEventListener("selectionchange", onSel); root.remove(); },
   };
 }

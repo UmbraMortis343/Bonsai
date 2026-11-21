@@ -370,6 +370,27 @@ mark.vt{background:none;color:inherit;text-decoration:underline dotted var(--acc
 .vdef p{margin:0 0 6px;line-height:1.5}.vdef p:last-child{margin:0}
 .vseen{display:flex;flex-wrap:wrap;gap:4px}
 .vgroup{display:grid;gap:8px;margin-bottom:12px}.vgroup h3{margin:6px 0 0;font-size:13px;color:var(--muted);font-weight:600}
+/* actions: words marked in a page, with a small box before them that ticks; one list of them all */
+mark[data-action]{background:none;color:inherit;text-decoration:underline 2px var(--sap);text-underline-offset:3px;text-decoration-skip-ink:none}
+mark[data-action]::before{content:"";display:inline-block;box-sizing:border-box;width:12px;height:12px;margin:0 5px 0 1px;border:1.5px solid var(--sap);border-radius:3px;vertical-align:-1px;font:700 9px/9px var(--font);text-align:center;cursor:pointer;user-select:none}
+.alist{display:grid;gap:14px;margin-top:14px}
+.agroup{display:grid;gap:2px}
+.apage{justify-self:start;border:0;background:none;padding:2px 0;margin-bottom:2px;font:600 13px/1.3 var(--font);color:var(--muted);cursor:pointer}
+.apage:hover{color:var(--ink);text-decoration:underline}
+.arow{display:flex;align-items:center;gap:8px;padding:2px 4px;border-radius:4px}
+.arow:hover,.arow:focus-within{background:var(--well)}
+.arow input{width:15px;height:15px;flex:none;margin:0;accent-color:var(--sap);cursor:pointer}
+.atext{flex:1;min-width:0;border:0;background:none;padding:4px 0;text-align:left;font:inherit;color:var(--ink);cursor:pointer;overflow-wrap:anywhere}
+.atext:focus-visible{outline:none;text-decoration:underline 2px var(--accent);text-underline-offset:3px}
+.akeys{display:none;gap:4px}.arow:focus-within .akeys{display:flex}
+@media (pointer:coarse){.arow:focus-within .akeys{display:none}}
+.adone summary{cursor:pointer;display:flex;gap:8px;align-items:center;padding:4px 0;font:600 13px/1.3 var(--font);color:var(--muted);list-style:none}
+.adone summary::before{content:"";border-left:5px solid currentColor;border-top:4px solid transparent;border-bottom:4px solid transparent;transition:transform .12s}
+.adone[open] summary::before{transform:rotate(90deg)}
+.adone .atext{color:var(--muted);text-decoration:line-through}
+.adone .agroup{margin:6px 0 0 14px}
+.actflash{position:fixed;z-index:70;pointer-events:none;border-radius:4px;background:var(--sap);opacity:.35;animation:actflash 1.4s ease-out forwards}
+@keyframes actflash{0%{opacity:.45}70%{opacity:.25}100%{opacity:0}}
 .vpanel{position:fixed;width:min(360px,calc(100vw - 20px));max-height:min(420px,calc(100vh - 20px));display:flex;flex-direction:column;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:6px;box-shadow:var(--shadow);font-size:14px}
 .vpanel.locked{border-color:var(--accent)}
 .vhead{display:flex;align-items:center;gap:4px;padding:4px 6px 4px 10px;border-bottom:1px solid var(--line);cursor:grab;user-select:none}

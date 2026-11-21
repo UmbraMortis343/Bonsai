@@ -76,6 +76,7 @@ async function load() {
   S.allZones = zones; S.allTrees = trees; S.nodes = nodes; S.links = links; S.inbox = inbox; S.patches = patches; S.sundays = sundays;
   S.pages = pages.map((p) => { const kind = p.kind || "page"; return { ...p, kind, parentId: p.parentId || null, props: kind === "page" ? withStd(p.props) : p.props || [], blocks: p.blocks || textToBlocks(p.text || "") }; });   // early beta pages were plain text in a topic
   S.vocab = (await store.getMeta("vocab").catch(() => null)) || []; vocab?.reindex();
+  S.actDone = (await store.getMeta("actions").catch(() => null))?.done || {}; actStyle();
   S.zones = zones.filter((z) => !z.archived).sort(byOrder);
   const ok = new Set(S.zones.map((z) => z.id));
   S.trees = trees.filter((t) => !t.archived && ok.has(t.zoneId)).sort(byOrder);
@@ -2482,7 +2483,7 @@ function openNotes() {
 }
 function showNotes(id) {
   S.view = "notes"; S.tree = null; S.sel = null; S.lay = null; S.panel = null; clearScene(); hideHover();
-  S.npage = id === VOCAB || pageOf(id) || graphPage(id) ? id : S.npage === VOCAB || pageOf(S.npage) || graphPage(S.npage) ? S.npage : noteRows()[0]?.p.id || null;
+  S.npage = id === VOCAB || id === ACTS || pageOf(id) || graphPage(id) ? id : S.npage === VOCAB || S.npage === ACTS || pageOf(S.npage) || graphPage(S.npage) ? S.npage : noteRows()[0]?.p.id || null;
   for (const q of pagePath(pageOf(S.npage))) setOpen(q.id, true);   // show the way down to it
   put($("#notes"), notesSidebar(), el("section", { class: "nmain" }, el("div", { class: "pbar", id: "pbar" }), el("div", { class: "nedit", id: "nedit" })));
   setNotesHash(); drawPageList(); drawEditor(); renderChrome();
@@ -2502,6 +2503,8 @@ function notesSidebar(close) {
     ondrop: (e) => { if (e.target !== tree) return; e.preventDefault(); tree.classList.remove("drop"); movePage(S.ndrag, null); } });
   const vrow = el("button", { class: "nvocab" + (S.view === "notes" && S.npage === VOCAB ? " on" : ""), id: "vocabBtn", type: "button", onclick: openVocab }, icon(ICON.book), el("span", { class: "nt", text: "Vocab" }),
     el("span", { class: "muted vcount", text: String((S.vocab || []).length || "") }), el("kbd", { text: "⇧V" }));
+  const arow = el("button", { class: "nvocab nacts" + (S.view === "notes" && S.npage === ACTS ? " on" : ""), id: "actsBtn", type: "button", onclick: openActs }, icon(TICK_ICON), el("span", { class: "nt", text: "Actions" }),
+    el("span", { class: "muted acount", text: actOpenCount() }), el("kbd", { text: "⇧A" }));
   const foot = el("div", { class: "nfoot" },
     el("button", { class: "btn", id: "newPageBtn", "aria-haspopup": "menu", onclick: (e) => menu(e.currentTarget, [
       { label: "Page", key: "N", run: () => newPage() }, { label: "Pen page", key: "W", run: () => newPage(null, "ink") }]) }, "+ Page", el("span", { class: "caret" }, "▾")),
@@ -2520,7 +2523,7 @@ function notesSidebar(close) {
   const body = tab === "graphs" ? el("div", {}, chip("g", [["", "All"], ["wait", "Waiting"], ["ok", "Watered"]], S.gf || "", (v) => { S.gf = v; }), glist)
     : tab === "water" ? el("div", {}, chip("w", [["", "All"], ["thirsty", "Thirsty"], ["dry", "Dry"]], S.wf || "", (v) => { S.wf = v; }), wlist)
     : el("div", {}, filter, tree);
-  const tail = tab === "notes" ? [vrow, foot]
+  const tail = tab === "notes" ? [vrow, arow, foot]
     : tab === "graphs" ? [el("div", { class: "nfoot" }, el("button", { class: "btn", id: "newGraphBtn", onclick: () => newGraph() }, "+ Graph", el("kbd", { text: "N" })))]
     : thirstyGraphs().length ? [el("div", { class: "nfoot" }, el("button", { class: "btn water", id: "libWater", onclick: () => water(null) }, icon(ICON.drop), "Water all", el("kbd", { text: "W" })))] : [];
   return el("nav", { class: "nside-bar", "aria-label": "Library", dataset: { tab } }, el("div", { class: "nsearch" }, search, close ? null : el("kbd", { text: "/" }), close), tabs, el("div", { class: "nlib" }, body), ...tail);
@@ -2904,7 +2907,9 @@ function drawEditor() {
   const host = $("#nedit"); if (!host) return;
   S.ed?.destroy(); S.ed = null;
   drawPageBar();
+  for (const [c, id] of [[".nvocab:not(.nacts)", VOCAB], [".nacts", ACTS]]) for (const b of document.querySelectorAll(c)) b.classList.toggle("on", S.view === "notes" && S.npage === id);
   if (S.npage === VOCAB) return put(host, vocabView());
+  if (S.npage === ACTS) return put(host, actsView());
   const g = graphPage(S.npage); if (g) return put(host, graphBoard(g));
   const p = pageOf(S.npage);
   if (!p) { put(host, el("div", { class: "page none" }, el("button", { class: "btn", id: "firstPage", onclick: () => newPage() }, "New page", el("kbd", { text: "N" })))); return; }
@@ -2967,7 +2972,7 @@ function pageView(p, side) {
   if (p.kind === "ink") return inkView(p, side);
   const body = el("div", { class: "pbody" });
   const blocks = (p.blocks || []).filter((b) => b.type !== "page" || pageOf(b.pageId));
-  S.ed = createEditor({ host: body, blocks, key: p.id, onChange: (bl) => queuePage(p.id, { blocks: bl }), pageTitle, notify: (m) => toast(m),
+  S.ed = createEditor({ host: body, blocks, key: p.id, onChange: (bl) => queuePage(p.id, { blocks: bl }), pageTitle, notify: (m) => toast(m), onTick: (id) => tickAct(id),
     files: { save: (rec) => store.putFile(rec), load: (id) => store.getFile(id) },
     openPage: (id) => (S.view === "notes" ? pickPage(id) : (location.hash = notesHash(id))),
     newSubpage: async () => { const c = await safely(() => store.addPage({ parentId: p.id })); if (!c) return null; S.pages.push(c); setOpen(p.id, true); return c.id; } });
@@ -3238,6 +3243,8 @@ function notesKey(k, stop, e = {}) {
   if (e.shiftKey && /^Digit[123]$/.test(e.code || "")) { stop(); return setLibTab(LIBTABS[+e.code.slice(5) - 1][0]); }
   const rows = noteRows().map((r) => r.p), i = rows.findIndex((p) => p.id === S.npage), p = pageOf(S.npage);
   if (k === "v" && e.shiftKey) { stop(); return openVocab(); }
+  if (k === "a" && e.shiftKey) { stop(); return openActs(); }
+  if (S.npage === ACTS && (k === "ArrowDown" || k === "ArrowUp")) { stop(); return $("#alist .atext")?.focus(); }
   if (S.npage === VOCAB) {
     if (k === "n") { stop(); return editTerm({}); }
     if (k === "f") { stop(); return $("#vocabSearch")?.focus(); }
@@ -3289,8 +3296,10 @@ const google = (q) => window.open("https://www.google.com/search?q=" + encodeURI
 const notePageTitle = () => (S.view === "notes" ? pageOf(S.npage) : pageOf(S.sp))?.title || "";
 // The quick panel on words selected in a note (Alt+1… while it shows). Over a term already kept, it opens that term instead of adding.
 function selActions(sel) {
+  const a = actAt(sel.range), act = { id: "action", label: a ? "Not an action" : "Action", run: () => markAct(sel) };
+  if (sel.long) return [act];   // a sentence: only an action
   const id = vocab.termFor(sel.text), g = id && S.vocab.find((t) => t.id === id);
-  return g ? [
+  return (g ? [
     { id: "open", label: g.term, run: () => { getSelection()?.collapseToEnd(); vocab.open(g.id, { range: sel.range }, { locked: true }); } },
     { id: "context", label: "Add context", run: () => editTerm({ id: g.id, focus: "def" }) },
     { id: "claude", label: "Flesh out", run: () => fleshOut({ termId: g.id }) },
@@ -3300,7 +3309,7 @@ function selActions(sel) {
     { id: "context", label: "Add context", run: () => editTerm({ term: sel.text, quote: sel.quote, source: notePageTitle(), focus: "def" }) },
     { id: "claude", label: "Flesh out", run: () => fleshOut({ term: sel.text, quote: sel.quote, source: notePageTitle() }) },
     { id: "google", label: "Google", run: () => google(sel.text) },
-  ];
+  ]).concat(act);
 }
 async function quickAdd(sel) {
   const term = sel.text.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
@@ -3384,6 +3393,87 @@ function vocabCards() {
   }
   const list = [...all].sort(sort === "new" ? (a, b) => (b.at || "").localeCompare(a.at || "") : (a, b) => a.term.localeCompare(b.term, undefined, { sensitivity: "base" }));
   return list.map((t) => card(t, seen.get(t.id)));
+}
+
+// ---------- actions: words in a page marked as something to do (Alt+5 on the quick panel), all listed on one page ----------
+// The marks live in the pages' text (<mark data-action="id">, blocks.js), so the list is read from the pages and an action
+// goes when its words do; whether each is done is kept in meta "actions" ({ done: { id: when } }), which syncs.
+const ACTS = "actions", TICK_ICON = "M4 4h16v16H4zM8 12.5l3 3 5-6.5";
+const actTime = (id) => parseInt(String(id).slice(1, 9), 36) || 0;   // ids start with the time they were made
+function actList() {
+  const out = [], seen = new Set();
+  for (const p of S.pages || []) {
+    if (isFolder(p) || p.kind === "ink") continue;
+    for (const b of p.blocks || []) {
+      const htmls = b.type === "table" ? (b.rows || []).flat() : b.type === "image" ? [b.caption || ""] : [b.html || ""];
+      for (const h of htmls) {
+        if (!h || !h.includes("data-action")) continue;
+        const d = document.createElement("div"); d.innerHTML = h;
+        for (const m of d.querySelectorAll("mark[data-action]")) { const id = m.dataset.action; if (seen.has(id)) continue; seen.add(id); out.push({ id, text: m.textContent.trim() || "…", pageId: p.id, at: actTime(id) }); }
+      }
+    }
+  }
+  return out;
+}
+const actOpenCount = () => String(actList().filter((a) => !S.actDone?.[a.id]).length || "");
+function actCount() { const n = actOpenCount(); for (const c of document.querySelectorAll(".acount")) c.textContent = n; }
+// a done action looks done wherever its words are: one style rule for all of them, so the pages' own text never changes
+function actStyle() {
+  let st = document.getElementById("actDone"); if (!st) { st = el("style", { id: "actDone" }); document.head.append(st); }
+  const ids = Object.keys(S.actDone || {}).filter((id) => /^a[a-z0-9]+$/.test(id)), sel = (x) => ids.map((id) => `mark[data-action="${id}"]${x}`).join(",");
+  st.textContent = ids.length ? `${sel("")}{color:var(--muted);text-decoration-color:var(--line)}${sel("::before")}{content:"✓";background:var(--sap);color:var(--card)}` : "";
+}
+const actAt = (range) => { const n = range?.commonAncestorContainer; return (n?.nodeType === 1 ? n : n?.parentElement)?.closest?.("mark[data-action]") || null; };
+function markAct(sel) {
+  const id = S.ed?.markAction?.(sel.range);
+  if (id == null) return toast("Pick words in one line");
+  actCount(); if (S.npage === ACTS) drawActs();
+  if (id) toast("Action", { label: "Actions", run: openActs });
+}
+async function tickAct(id, refocus) {
+  const d = { ...(S.actDone || {}) }; if (d[id]) delete d[id]; else d[id] = new Date().toISOString();
+  S.actDone = d; actStyle(); actCount();
+  await safely(() => store.setMeta("actions", { done: d }));
+  if (S.view === "notes" && S.npage === ACTS) drawActs(refocus);
+}
+async function openActs() {
+  if (S.view !== "notes") { location.hash = notesHash(ACTS); return; }
+  await flushPage(); S.npage = ACTS; setNotesHash(); drawPageList(); drawEditor(); renderActions();
+}
+// to where it was written: the page, scrolled to the words, which flash
+async function jumpAct(a) {
+  await pickPage(a.pageId);
+  const m = document.querySelector(`#nedit mark[data-action="${a.id}"]`); if (!m) return;
+  m.scrollIntoView({ block: "center" });
+  const host = m.closest(".tx, .cell, .cap"); host?.focus({ preventScroll: true });
+  const r = document.createRange(); r.setStartAfter(m); r.collapse(true); const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+  const b = m.getBoundingClientRect(), f = el("div", { class: "actflash", style: `left:${b.left - 3}px;top:${b.top - 2}px;width:${b.width + 6}px;height:${b.height + 4}px` });
+  document.body.append(f); f.addEventListener("animationend", () => f.remove()); setTimeout(() => f.remove(), 2000);
+}
+function actsView() {
+  return el("article", { class: "page acts" }, el("h1", { class: "ptitle", text: "Actions" }), el("div", { class: "alist", id: "alist", onkeydown: actKey }, actGroups()));
+}
+function drawActs(refocus) {
+  const host = $("#alist"); if (!host) return;
+  put(host, actGroups());
+  if (refocus != null) { const rows = [...host.querySelectorAll(".atext")]; (rows[Math.min(refocus, rows.length - 1)] || null)?.focus(); }
+}
+function actGroups() {
+  const all = actList().sort((a, b) => b.at - a.at), open = all.filter((a) => !S.actDone?.[a.id]), done = all.filter((a) => S.actDone?.[a.id]);
+  const row = (a) => el("div", { class: "arow", dataset: { id: a.id } },
+    el("input", { type: "checkbox", checked: !!S.actDone?.[a.id], tabIndex: -1, "aria-label": "Done", title: "Done (Space)", onchange: () => tickAct(a.id) }),
+    el("button", { class: "atext", type: "button", title: "Go to it (↵)", text: a.text, onclick: () => jumpAct(a) }),
+    el("span", { class: "akeys" }, el("kbd", { text: "Space" }), el("kbd", { text: "↵" })));
+  const byPage = (list) => { const g = new Map(); for (const a of list) { if (!g.has(a.pageId)) g.set(a.pageId, []); g.get(a.pageId).push(a); } return [...g].map(([id, xs]) =>   // newest first, pages by their newest
+    el("section", { class: "agroup" }, el("button", { class: "apage", type: "button", tabIndex: -1, text: pageOf(id)?.title || "Untitled", onclick: () => pickPage(id) }), xs.map(row))); };
+  if (!all.length) return [el("p", { class: "muted", text: "No actions yet" })];
+  return [open.length ? byPage(open) : el("p", { class: "muted", text: "All done" }),
+    done.length ? el("details", { class: "adone", open: !!S.actsDoneOpen, ontoggle: (e) => { S.actsDoneOpen = e.currentTarget.open; } }, el("summary", {}, el("span", { text: "Done" }), el("span", { class: "muted", text: String(done.length) })), byPage(done)) : null];
+}
+function actKey(e) {
+  const rows = [...document.querySelectorAll("#alist .atext")].filter((x) => x.offsetParent), i = rows.indexOf(document.activeElement);
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); e.stopPropagation(); rows[Math.max(0, Math.min(rows.length - 1, i + (e.key === "ArrowDown" ? 1 : -1)))]?.focus(); }
+  else if (e.key === " " && i >= 0) { e.preventDefault(); e.stopPropagation(); tickAct(rows[i].closest(".arow").dataset.id, i); }
 }
 
 // In a knowledge graph, O pulls notes up beside it: the same sidebar as the notes window, and a page beside it once one is picked.

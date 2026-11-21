@@ -198,4 +198,50 @@ await page.waitForTimeout(700);
 await page.screenshot({ path: "tests/shots/pages-image.png" });
 t.eq(await state(page, async () => (await import("./blocks.js")).blocksToText(bonsai.S.ed.blocks).includes("(picture: A test card)")), true, "pictures show in the outline for Grow");
 
+// ---------- 4. actions ----------
+const pick = (n, a, b) => state(page, ([n, a, b]) => { const t = [...document.querySelectorAll("#nedit .blk .tx")][n], tn = t.firstChild; t.focus(); getSelection().setBaseAndExtent(tn, a, tn, b ?? tn.length); }, [n, a, b]);
+const quick = async () => { await page.waitForSelector(".qpanel"); return page.$$eval(".qpanel button", (b) => b.map((x) => x.dataset.act)); };
+await open("Errands", "Email the lab about the report by Friday and ask whether the deadline can move\nThen buy a notebook\nNothing here");
+await pick(1, 5);
+t.eq(await quick(), ["add", "context", "claude", "google", "action"], "the quick panel has Action last");
+t.eq(await page.textContent('.qpanel button[data-act="action"] kbd'), "Alt+5", "with its key");
+await k("Alt+5");
+t.eq((await htmls())[1].replace(/a[a-z0-9]+"/, 'ID"'), 'Then <mark data-action="ID">buy a notebook</mark>', "Alt+5 marks the words as an action");
+await page.waitForTimeout(300);
+await pick(0, 0);
+t.eq(await quick(), ["action"], "a whole sentence gets only Action");
+await page.click('.qpanel button[data-act="action"]');
+t.eq((await htmls())[0].startsWith("<mark data-action="), true, "the sentence is an action too");
+t.eq(await page.textContent("#actsBtn .acount"), "2", "the Actions row counts what's open");
+// Ctrl+Z takes a mark back, Ctrl+Shift+Z puts it back
+await k("Control+z"); t.eq((await htmls())[0].includes("<mark"), false, "undo takes the mark off");
+await k("Control+Shift+z"); t.eq((await htmls())[0].includes("<mark"), true, "redo puts it back");
+await page.waitForTimeout(700);
+await page.screenshot({ path: "tests/shots/pages-action-marks.png" });
+// the list: Shift+A, grouped by page, newest first
+await state(page, () => document.activeElement?.blur());
+await k("Shift+A");
+await page.waitForSelector("#alist .arow");
+t.eq(await state(page, () => [location.hash, [...document.querySelectorAll("#alist .agroup")].map((g) => [g.querySelector(".apage").textContent, [...g.querySelectorAll(".atext")].map((x) => x.textContent)])]),
+  ["#/notes/actions", [["Errands", ["Email the lab about the report by Friday and ask whether the deadline can move", "buy a notebook"]]]], "Shift+A lists every action by page, newest first");
+await k("ArrowDown"); await k("ArrowDown");
+t.eq(await state(page, () => document.activeElement?.textContent), "buy a notebook", "↓ moves down the list");
+await k(" ");
+await page.waitForSelector("#alist .adone");
+t.eq(await state(page, () => [[...document.querySelectorAll("#alist > .agroup .atext")].map((x) => x.textContent).length, document.querySelector("#alist .adone summary").textContent]), [1, "Done1"], "Space ticks it: it folds into Done");
+await page.waitForTimeout(300);
+t.eq(Object.keys((await state(page, () => bonsai.store.getMeta("actions"))).done).length, 1, "done is kept (in meta, which syncs)");
+await page.click("#alist .adone summary");
+await page.screenshot({ path: "tests/shots/pages-actions.png" });
+// to where it was written
+await page.click("#alist > .agroup .atext");
+await page.waitForFunction(() => document.querySelector("#pageTitle")?.value === "Errands");
+t.eq(await state(page, () => [!!document.querySelector(".actflash"), document.activeElement?.closest(".blk") === document.querySelector("#nedit .blk")]), [true, true], "a click goes to it, with a flash");
+t.eq(await state(page, () => getComputedStyle(document.querySelectorAll("#nedit mark[data-action]")[1], "::before").content), '"✓"', "a done action shows ticked in the page");
+// the box before an action ticks it there too
+const box = await page.locator("#nedit mark[data-action]").first().boundingBox();
+await page.mouse.click(box.x + 6, box.y + box.height / 2);
+await page.waitForFunction(() => Object.keys(bonsai.S.actDone).length === 2);
+t.eq(await page.textContent("#actsBtn .acount"), "", "ticking in the page counts too");
+
 await t.end();

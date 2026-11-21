@@ -212,18 +212,19 @@ export function readFlesh(text, term = "") {
 
 // ---------- the quick panel on selected words ----------
 // opts: { el, roots() → elements the panel works in, actions(sel) → [{ id, label, key, run }] }, where sel is
-// { text, quote, termId, rect }. Alt+1… run them while the panel shows, so typing over the selection still works.
+// { text, quote, long (more than a term could be), range, rect }. Alt+1… run them while the panel shows, so typing over the selection still works.
 export function createQuick(opts) {
   const el = opts.el; let box = null, sel = null, timer = 0, acts = [];
   const inside = (node) => { const e = node?.nodeType === 1 ? node : node?.parentElement; return e && opts.roots().some((r) => r.contains(e)); };
   function read() {
     const s = getSelection(); if (!s || s.isCollapsed || !s.rangeCount) return null;
     const r = s.getRangeAt(0); if (!inside(r.commonAncestorContainer)) return null;
-    const text = s.toString().replace(/\s+/g, " ").trim(); if (!text || text.length > 120 || text.split(" ").length > 8) return null;
+    const text = s.toString().replace(/\s+/g, " ").trim(); if (!text || text.length > 600) return null;
+    const long = text.length > 120 || text.split(" ").length > 8;   // a sentence or more: no use as a term, but it can be an action
     const blk = (r.startContainer.nodeType === 1 ? r.startContainer : r.startContainer.parentElement).closest(".tx") || r.startContainer.parentElement;
     let quote = "";
     if (blk) { const pre = document.createRange(); pre.selectNodeContents(blk); pre.setEnd(r.startContainer, r.startOffset); const a = pre.toString().length, full = blk.textContent; quote = sentenceAround(full, a, a + s.toString().length); }
-    return { text, quote, range: r.cloneRange(), rect: r.getBoundingClientRect() };
+    return { text, quote, long, range: r.cloneRange(), rect: r.getBoundingClientRect() };
   }
   function show() {
     sel = read(); if (!sel) return hide();
