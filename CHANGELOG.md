@@ -2,6 +2,15 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.35.0 — 2026-11-21
+- Today (Y), in every window: your streak, the day's 10 questions and the month. The 10 are due ideas only, longest waiting first and spread across topics, mostly Focus, some Keep, now and then a bonus from Settled. ↵ starts them and they come back with the score. Each day in the calendar shows its score; click one for what was added, reviewed and stitched that day. An ochre mark on the button means today's aren't done, or it's Sunday and the session hasn't been held.
+- Watering as something to click is gone: no water buttons, no W, no Watering tab, and Thirsty (H) starts off. A topic only dries after about three weeks of neglect on Focus, six on Keep.
+- Library pages: undo now brings back anything deleted (blocks, joins, the handle menu, selections across blocks, cuts), even after the page is drawn again. Tables (/table or `| a | b |`; Tab between cells, Enter adds a row, rows and columns from the handle or Alt+Shift+arrows, a header row; Markdown and pasted tables). Screenshots and pictures paste or drop in, shrunk to 2000 px, resized from either edge, captioned, shown larger on a click, copied as PNG.
+- Actions: mark words with Alt+5 on the quick bar; ⇧A lists them all by page, tick them off, click to go back to where they were written.
+- At half a screen the Library's sidebar becomes a drawer ([) and the top bars fit.
+- Pen pages are canvases. Click (or A) to type in a text box; paste pictures and text; Shift+S copies a sharp picture of any area you drag over, with Save. New pencil (Shift+P), marker (M) and more colours (Shift+C).
+- The pen always draws: a lift off the page, a lost lift or another finger no longer stops it. Touch pans while the pen hovers; it is ignored only while the pen is down and just after.
+
 ## 0.34.0 — 2026-11-21
 - Focus levels: an island is Focus, Keep or Settled, and a topic follows it unless you set its own (the garden panel's foot, or ⇧1–3, ⇧0 to follow the island again). Keep waters about half as often and dries the island half as fast; Settled is four times as long, never withers and stays out of watering. Exam topics start at Keep.
 - Questions: an idea can carry questions of five kinds (Recall, Why, Connect, Rebuild, Apply). Watering asks one instead of showing the name, Space shows the answer, you rate as before. Q writes one on the picked idea; the idea panel and the board's card list them. In Bonsai Desktop, Write questions in a graph's menu has Claude write one for each idea without; tick which to keep. Grow writes them as it goes.
