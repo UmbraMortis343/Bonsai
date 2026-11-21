@@ -93,7 +93,7 @@ t.eq(true, true, "an idea opens in its graph, picked");
 
 // the shortcuts list is grouped
 await page.keyboard.press("?"); await page.waitForSelector(".keygroups");
-t.eq(await page.$$eval(".keygroups h3", (h) => h.map((x) => x.textContent)), ["Everywhere", "Building a graph", "Garden", "Timelapse", "Tech tree", "Library"], "one list of rules, grouped");
+t.eq(await page.$$eval(".keygroups h3", (h) => h.map((x) => x.textContent)), ["Everywhere", "Building a graph", "Today", "Garden", "Timelapse", "Tech tree", "Library"], "one list of rules, grouped");
 await page.screenshot({ path: "tests/shots/controls-keys.png" });
 await page.keyboard.press("Escape");
 

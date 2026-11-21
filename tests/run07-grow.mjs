@@ -7,38 +7,31 @@ const page = await t.page();
 const ids = await seed(page);
 const key = (k) => page.keyboard.press(k);
 
-// Nothing is thirsty on day one; a few days later the garden shows what is.
-if (await page.isVisible("#winGarden .thirst")) t.fail("something thirsty on the first day");
+// Nothing is due on day one; a few days later Today's mark shows it (watering went: run37-today).
+if (await page.isVisible("#todayDot")) t.fail("something due on the first day");
 await page.evaluate(async () => {
   const b = await bonsai.store.exportAll(), old = new Date(Date.now() - 3 * 86400000).toISOString();
   b.nodes.forEach((n, i) => { n.createdAt = new Date(Date.parse(old) + (n.parentId === null ? 0 : (i + 1) * 60000)).toISOString(); });
   await bonsai.store.importAll(b); await bonsai.refresh();
 });
-t.eq(await page.textContent("#winGarden .thirst"), "5", "thirsty count on the Garden button");   // 3 trunks, Resistors, Capacitors
+await page.waitForSelector("#todayDot");
+t.eq(await state(page, () => bonsai.today.left), 5, "five due, so Today is marked");   // 3 first ideas, Resistors, Capacitors
+if (await page.$("#winGarden .thirst")) t.fail("the Garden button still counts what's thirsty");
 await page.click("#winGarden");
-await page.waitForFunction(() => bonsai.S.view === "isles"); await page.waitForSelector("#waterAll");
+await page.waitForFunction(() => bonsai.S.view === "isles");
 t.eq(await state(page, () => location.hash), "#/", "the switch opens the garden");
-await page.click("#waterAll"); await page.waitForSelector("#showAnswer");
-t.eq(await state(page, () => [bonsai.S.view, bonsai.S.review.ids.length]), ["isles", 5], "Water starts a round where you are");
-await key("Escape"); await page.waitForSelector("#review", { state: "hidden" });
+if (await page.$("#waterAll")) t.fail("a water button in the garden");
 
-// a graph waters from its own bar (W), and its menu has All good
-await openTree(page, ids.basic); await page.waitForSelector("#waterTree");
-t.eq(await page.textContent("#waterTree .thirst"), "3", "thirsty in this graph");
-await key("w"); await page.waitForSelector("#showAnswer");
+// a round in a graph (as the day's 10 run): each rating counts
+await openTree(page, ids.basic);
+if (await page.$("#waterTree")) t.fail("a water button in a graph");
+await state(page, (id) => bonsai.water(null, id), ids.basic); await page.waitForSelector("#showAnswer");
 for (let i = 0; i < 3; i++) { await key(" "); await page.waitForSelector(".rate"); await key("3"); await page.waitForFunction((n) => !bonsai.S.review || bonsai.S.review.i === n, i + 1); }
 await page.waitForSelector("#review", { state: "hidden" });
 const passes = () => state(page, () => bonsai.S.nodes.reduce((a, n) => a + (n.srs?.passes || 0), 0));
-t.eq(await passes(), 3, "passes after watering");
-if (await page.$("#waterTree")) t.fail("graph still thirsty after watering");
-await state(page, (id) => bonsai.openTree(id), ids.op); await page.waitForSelector("#waterTree");
+t.eq(await passes(), 3, "passes after the round");
 const opItems = await state(page, (id) => bonsai.graphItems(bonsai.S.trees.find((x) => x.id === id)).filter(Boolean).map((x) => x.label), ids.op);
-if (!opItems.includes("All good")) t.fail("All good not in the graph's menu");
-await state(page, (id) => bonsai.graphItems(bonsai.S.trees.find((x) => x.id === id)).find((x) => x?.label === "All good").run(), ids.op);
-await page.waitForFunction(() => !document.querySelector("#waterTree"));
-t.eq(await passes(), 4, "passes after All good");
-await page.click("#toast .link"); await page.waitForSelector("#waterTree");
-t.eq(await passes(), 3, "passes after undo");
+if (opItems.some((x) => /^Water|All good/.test(x))) t.fail("Water or All good still in the graph's menu");
 await page.keyboard.press("Escape");
 
 // a graph carries no roots or fading

@@ -28,6 +28,7 @@ import { KINDS, KIND_NAME, REBUILD_Q, questionFor, usableQs, pickHide, questions
 import { createInk } from "./ink.js";
 import * as focus from "./focus.js";
 import { createHistory } from "./history.js";
+import { pickToday, recordOf, streak, monthGrid, dayLog, addDays } from "./today.js";
 
 const PALETTE = [["Blue", "#3b82f6"], ["Violet", "#8b5cf6"], ["Pink", "#ec4899"], ["Red", "#ef4444"], ["Orange", "#f97316"], ["Amber", "#f59e0b"], ["Green", "#22c55e"], ["Teal", "#14b8a6"], ["Cyan", "#06b6d4"]];
 const SWATCHES = [["Auto", ""], ...PALETTE];
@@ -35,8 +36,8 @@ const DAY = 86400000;
 const ICON = {
   pin: "M9 3h6l-1 7 3 3H7l3-3zM12 13v8", swap: "M4 8h13l-3-3M20 16H7l3 3", ink: "M6 3h9l4 4v14H6zM9 16c1.5-3 3-1 4-2.5s1-2.5 2-2.5", sideOff: "M4 4h16v16H4zM9 4v16M15 9l-3 3 3 3", sideOn: "M4 4h16v16H4zM9 4v16M12 9l3 3-3 3",
   book: "M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3zM5 17a3 3 0 0 1 3-3h11",
-  back: "M15 5l-7 7 7 7", fold: "M6 9l6 6 6-6", unfold: "M6 15l6-6 6 6", close: "M6 6l12 12M18 6L6 18", plus: "M12 5v14M5 12h14", more: "M5 12h.01M12 12h.01M19 12h.01",
-  search: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4", panel: "M4 5h16v14H4zM15 5v14", side: "M4 5h16v14H4zM9 5v14", drop: "M12 3c3 4.5 6 7.6 6 11a6 6 0 0 1-12 0c0-3.4 3-6.5 6-11z", page: "M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h5", folder: "M3 6h6l2 2h10v11H3z", graph: "M7 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM21 8a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM6.3 7.6l4.7 8.6M17.6 9.6l-4.6 6.8M7 6.2l10 1.6", sprout: "M12 21v-8M12 13c0-4 3-6 7-6 0 4-3 6-7 6zM12 15c0-3-2-5-6-5 0 3 2 5 6 5z", inbox: "M4 13l3-8h10l3 8v6H4zM4 13h5a3 3 0 0 0 6 0h5", play: "M8 5l11 7-11 7z", video: "M3 7h12v10H3zM15 11l6-3v8l-6-3", pause: "M8 5v14M16 5v14",
+  back: "M15 5l-7 7 7 7", fwd: "M9 5l7 7-7 7", fold: "M6 9l6 6 6-6", unfold: "M6 15l6-6 6 6", close: "M6 6l12 12M18 6L6 18", plus: "M12 5v14M5 12h14", more: "M5 12h.01M12 12h.01M19 12h.01",
+  search: "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4", panel: "M4 5h16v14H4zM15 5v14", side: "M4 5h16v14H4zM9 5v14", drop: "M12 3c3 4.5 6 7.6 6 11a6 6 0 0 1-12 0c0-3.4 3-6.5 6-11z", page: "M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h5", folder: "M3 6h6l2 2h10v11H3z", graph: "M7 6a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM21 8a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM14 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0zM6.3 7.6l4.7 8.6M17.6 9.6l-4.6 6.8M7 6.2l10 1.6", day: "M4 6h16v14H4zM4 10h16M8 3v5M16 3v5M8 14h3v3H8z", sprout: "M12 21v-8M12 13c0-4 3-6 7-6 0 4-3 6-7 6zM12 15c0-3-2-5-6-5 0 3 2 5 6 5z", inbox: "M4 13l3-8h10l3 8v6H4zM4 13h5a3 3 0 0 0 6 0h5", play: "M8 5l11 7-11 7z", video: "M3 7h12v10H3zM15 11l6-3v8l-6-3", pause: "M8 5v14M16 5v14",
 };
 const icon = (d) => el("span", { class: "ic", html: `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>` });
 const ib = (id, label, d, onclick) => el("button", { class: "ib", id, title: label, "aria-label": label, onclick }, icon(d));
@@ -76,6 +77,7 @@ async function load() {
   S.allZones = zones; S.allTrees = trees; S.nodes = nodes; S.links = links; S.inbox = inbox; S.patches = patches; S.sundays = sundays;
   S.pages = pages.map((p) => { const kind = p.kind || "page"; return { ...p, kind, parentId: p.parentId || null, props: kind === "page" ? withStd(p.props) : p.props || [], blocks: p.blocks || textToBlocks(p.text || "") }; });   // early beta pages were plain text in a topic
   S.vocab = (await store.getMeta("vocab").catch(() => null)) || []; vocab?.reindex();
+  await todayLoad();
   S.zones = zones.filter((z) => !z.archived).sort(byOrder);
   const ok = new Set(S.zones.map((z) => z.id));
   S.trees = trees.filter((t) => !t.archived && ok.has(t.zoneId)).sort(byOrder);
@@ -537,7 +539,7 @@ function labelOpacity(L, dist) {
 
 // ---------- views ----------
 async function go() {
-  await flushPage(); closeAll(); S.pick?.finish(null); tlClose(true);
+  await flushPage(); closeAll(); S.pick?.finish(null); tlClose(true); todayClose(true);
   if (!/^#\/notes/.test(location.hash)) { S.ed?.destroy(); S.ed = null; }
   S.quick = null; S.review = null; S.cutoff = null; endJump(); if (S.move) toggleMove(false);
   await load();
@@ -688,43 +690,42 @@ function showHover(id, x, y) {
 // ---------- top bar and menus ----------
 function renderTop() {
   S.backTo = null;   // set by back() when this screen has a back arrow
-  const due = dueList(null).length;
+  if (S.todayOpen) renderToday();
+  const day = todayBtn();
   const search = ib("searchBtn", "Go to (/)", ICON.search, () => find());
   const swap = winSwitch(), beta = CHANNEL ? el("span", { class: "channel", text: CHANNEL }) : null;
   const brand = el("div", { class: "brand" }, el("img", { src: "icons/icon-192.png", alt: "", width: 24, height: 24 }), el("h1", { text: "Bonsai" }));
   const more = (run = appMenu) => ib("moreBtn", "Menu", ICON.more, (e) => run(e.currentTarget));
-  const waterBtn = (run) => (due ? el("button", { class: "btn water", id: "waterAll", title: "Water", onclick: run }, icon(ICON.drop), el("span", { class: "wl", text: "Water" }), el("span", { class: "thirst", text: String(due) }), el("kbd", { text: "W" })) : null);
   const add = (items) => ib("addBtn", "Add", ICON.plus, (e) => menu(e.currentTarget, items));
   const back = (to, label = "Back") => { S.backTo = to; return el("button", { class: "ib keyed", id: "backBtn", type: "button", title: `${label} (Esc; Shift+Esc goes straight back)`, "aria-label": label, onclick: () => { location.hash = to; } }, icon(ICON.back), el("kbd", { text: "Esc" })); };
   if (S.view === "notes") {
-    put($("#top"), brand, beta, el("div", { class: "crumb sub" }, el("h1", { text: "Library" })), el("span", { class: "grow" }), swap, search,
+    put($("#top"), brand, beta, el("div", { class: "crumb sub" }, el("h1", { text: "Library" })), el("span", { class: "grow" }), day, swap, search,
       add([{ label: "New page", key: "N", run: () => newPage() }, { label: "New folder", key: "F", run: () => newPage(null, "folder") }]), more());
   } else if (S.view === "tech") {
-    put($("#top"), back(S.techBack), el("div", { class: "crumb" }, el("h1", { text: "Tech tree" })), beta, el("span", { class: "grow" }), swap, search);
+    put($("#top"), back(S.techBack), el("div", { class: "crumb" }, el("h1", { text: "Tech tree" })), beta, el("span", { class: "grow" }), day, swap, search);
   } else if (S.view === "tree") {
     const zone = S.zones.find((z) => z.id === S.tree.zoneId);
     put($("#top"), back(S.treeBack), el("div", { class: "crumb" }, el("h1", { text: S.tree.name }), el("span", { text: zone?.name || "" })), beta,
       el("span", { class: "grow" }), el("button", { class: "btn" + (S.nside ? " on" : ""), id: "notesBtn", title: "Notes beside the graph (O or [)", "aria-label": "Notes beside the graph", "aria-pressed": String(!!S.nside), onclick: toggleSide }, icon(ICON.side), el("kbd", { text: "O" })),
-      (() => { const d = dueList(S.tree.id).length; return d ? el("button", { class: "btn water", id: "waterTree", title: "Water this graph", onclick: () => water(null, S.tree.id) }, icon(ICON.drop), el("span", { class: "wl", text: "Water" }), el("span", { class: "thirst", text: String(d) }), el("kbd", { text: "W" })) : null; })(),
-      swap, search, more(treeMenu));
+      day, swap, search, more(treeMenu));
   } else if (S.view === "isles") {
     const all = S.model.flatMap((q) => q.topics).filter((q) => q.id), ideas = S.nodes.filter((n) => treeOf(n.treeId)).length;
     put($("#top"), brand, beta,
       el("div", { class: "tstats", id: "gstats" }, el("span", {}, el("b", { text: String(ideas) }), " ideas"), el("span", {}, el("b", { text: String(S.trees.length) }), " graphs"), el("span", {}, el("b", { text: String(all.length) }), " topics")),
-      el("span", { class: "grow" }), sunBtn(), waterBtn(() => water(null)),
+      el("span", { class: "grow" }), sunBtn(), day,
       swap, search, add([{ label: "New knowledge graph", key: "N", run: () => newGraph() }, { label: "New topic", key: "Z", run: newZone }, { label: "Capture a thought", key: "I", run: capture }]),
       ib("gFold", (gfold ? "Show the panel" : "Hide the panel") + " (])", ICON.panel, () => { gfold = !gfold; renderGarden(); renderTop(); }), more());
   } else if (S.view === "garden") {
     put($("#top"), back("#/", "Garden"), el("div", { class: "crumb" }, el("h1", { text: "Watering" })), beta, el("span", { class: "grow" }),
-      waterBtn(() => startReview(null)), swap, more());
+      day, swap, more());
   } else if (S.fscope) {
     const m = S.view === "meaning";
     put($("#top"), back(m ? S.meanBack : S.forestBack || "#/"), el("div", { class: "crumb" }, el("h1", { text: S.fscope.name }), el("button", { class: "link", id: "scopeAll", type: "button", text: "Show all", onclick: () => (m ? goMeaning() : openScope()) })), beta, el("span", { class: "grow" }),
-      sunBtn(), waterBtn(() => water(null)), swap, search, add([{ label: "New knowledge graph", key: "N", run: () => newGraph() }, { label: "New topic", key: "Z", run: newZone }, { label: "Capture a thought", key: "I", run: capture }]), more());
+      sunBtn(), day, swap, search, add([{ label: "New knowledge graph", key: "N", run: () => newGraph() }, { label: "New topic", key: "Z", run: newZone }, { label: "Capture a thought", key: "I", run: capture }]), more());
   } else {
     put($("#top"), brand, beta, el("span", { class: "grow" }),
       S.inbox.length ? el("button", { class: "btn", id: "inboxBtn", onclick: () => { S.panel = S.panel === "inbox" ? null : "inbox"; renderPanel(); } }, "Inbox", el("span", { class: "thirst", text: String(S.inbox.length) })) : null,
-      sunBtn(), waterBtn(() => water(null)), swap, search, add([{ label: "New knowledge graph", key: "N", run: () => newGraph() }, { label: "New topic", key: "Z", run: newZone }, { label: "Capture a thought", key: "I", run: capture }]), more());
+      sunBtn(), day, swap, search, add([{ label: "New knowledge graph", key: "N", run: () => newGraph() }, { label: "New topic", key: "Z", run: newZone }, { label: "Capture a thought", key: "I", run: capture }]), more());
   }
 }
 // Beta only: put the demo islands back, as they were when the beta first opened.
@@ -836,10 +837,11 @@ function shortcuts() {
   const groups = [
     ["Everywhere", [["Click", "Pick"], ["Double-click  ↵", "Go in, open"], ["Right-click", "Its menu (tech tree: open or close what's under it)"], ["Drag", "Move what you hold; on empty space, turn or pan"],
       ["Wheel", "Zoom"], ["1–9  ← ↑ ↓ →", "Pick by number, or the next one"], ["Esc", "Let go, then step back out"], ["⇧Esc", "Straight back"], ["0", "Fit"], ["V", "The other view: board and 3D, separate and joined, tree and web"], ["M", "Meaning: ideas arranged by what they mean"],
-      ["⇧Tab", "Garden, Knowledge, Library (Knowledge shows what's picked; Tab alone in the garden)"], ["[  ]", "The panel on the left, on the right"], ["/", "Search"], ["I", "Capture a thought"], ["K", "Tech tree"], ["O", "Notes beside a graph"], ["U", "Sunday session (Bonsai Desktop)"], ["?", "These keys"]]],
+      ["⇧Tab", "Garden, Knowledge, Library (Knowledge shows what's picked; Tab alone in the garden)"], ["[  ]", "The panel on the left, on the right"], ["/", "Search"], ["I", "Capture a thought"], ["K", "Tech tree"], ["O", "Notes beside a graph"], ["Y", "Today: the day's questions, streak, calendar"], ["U", "Sunday session (Bonsai Desktop)"], ["?", "These keys"]]],
     ["Building a graph", [["Tab", "Add under"], ["↵", "Add beside"], ["R", "Rename"], ["Del", "Delete (a picked link too)"], ["L", "Link"], ["G", "Graft"], ["X", "Make its own graph"], ["C", "Colour"], ["Q", "Add a question"], ["Space", "Notes"], ["⇧↵", "Open the board's graph in 3D"],
       ["Drag", "Move an idea; drop it on another to graft"], ["+ or Alt-drag", "Pull out a new idea, or a link"]]],
-    ["Garden", [["W", "Water"], ["D", "Day or night"], ["N  Z", "New graph, new topic"], ["S", "Split a full topic"], ["⇧1–3  ⇧0", "Focus, Keep, Settled; a topic back to its island's"]]],
+    ["Today", [["↵", "Start the day's questions"], ["Space  1–4", "Show the answer, rate it"], ["← →", "A month back or on"], ["↑ ↓", "A day back or on"], ["0", "Back to today"], ["Esc", "Close"]]],
+    ["Garden", [["D", "Day or night"], ["N  Z", "New graph, new topic"], ["S", "Split a full topic"], ["⇧1–3  ⇧0", "Focus, Keep, Settled; a topic back to its island's"]]],
     ["Timelapse", [["T", "Open or close"], ["Space", "Play or pause"], ["← →", "A day back or on"], ["⇧← ⇧→", "The marks: Sundays and big days"], ["⇧T", "Save as video"], ["Esc", "Back to now"]]],
     ["Tech tree", [["Space", "Open or close"], ["↵", "Put in the middle; again to open"], ["H  A", "Whole tree, everything open"], ["B", "What an island grows from"]]],
     ["Library", [["N  F  W", "New page, folder, pen page"], ["⇧V", "Vocab"], ["P H E L", "Pen page: pen, highlighter, eraser, lasso"], ["C  S  B  T", "Pen page: colour, size, paper, touch"]]],
@@ -1223,7 +1225,7 @@ function inboxPanel() {
 }
 
 // ---------- review ----------
-// Watering is review. treeId: one plant; null: everything that's thirsty.
+// Review: the day's 10 (Today, Y) run through here; reviewIds is also bonsai.water for tests. treeId: one graph; null: everything due.
 function startReview(treeId) {
   let q = dueList(treeId);
   if (!q.length && treeId) q = (S.byTree.get(treeId) || []).filter((n) => srs.reviewable(n, kidsOf(n.id).length));
@@ -1232,7 +1234,7 @@ function startReview(treeId) {
   stepReview();
 }
 function reviewIds(ids) {
-  if (!ids.length) return toast("Nothing to water");
+  if (!ids.length) return toast("Nothing due");
   S.review = { ids, i: 0, shown: false, n: 0 }; S.panel = null; S.quick = null;
   stepReview();
 }
@@ -1277,21 +1279,23 @@ function renderReview() {
       n.body && el("div", { class: "md", html: md(n.body) }), rateRow(),
     ] : [showB()])];
   put(box,
-    el("div", { class: "row" }, qk ? el("span", { class: "qkind", id: "reviewKind", text: KIND_NAME[qk.kind] }) : null, el("span", { class: "muted grow", text: [pathOf(n), parent?.title].filter(Boolean).join(" › ") }), el("span", { class: "muted", text: `${r.i + 1}/${r.ids.length}` }), el("button", { class: "link", id: "reviewAllGood", text: "All good", onclick: () => passAll(r.ids.slice(r.i)) }), desktop ? el("button", { class: "link", id: "reviewOral", onclick: () => startOral(n.treeId, r.ids.slice(r.i)) }, "Oral", el("kbd", { text: "E" })) : null, ib("reviewClose", "Stop", ICON.close, endReview)),
+    el("div", { class: "row" }, qk ? el("span", { class: "qkind", id: "reviewKind", text: KIND_NAME[qk.kind] }) : null, el("span", { class: "muted grow", text: [pathOf(n), parent?.title].filter(Boolean).join(" › ") }), el("span", { class: "muted", text: `${r.i + 1}/${r.ids.length}` }), desktop && !r.today ? el("button", { class: "link", id: "reviewOral", onclick: () => startOral(n.treeId, r.ids.slice(r.i)) }, "Oral", el("kbd", { text: "E" })) : null, ib("reviewClose", "Stop", ICON.close, endReview)),
     ...body.filter(Boolean));
 }
 async function rateNow(rating) {
   const r = S.review; if (!r || r.busy) return; r.busy = true;
   const ask = reviewAsk();
   await safely(() => store.reviewNode(r.ids[r.i], rating, { asked: ask && !ask.fallback ? ask.kind : "" }));
+  if (r.today) await todayRated(r.ids[r.i], rating);   // the day's 10 keep their score
   r.n++; r.i++; r.shown = false; r.busy = false; await load();
   if (r.i >= r.ids.length) return endReview();
   stepReview();
 }
 async function endReview() {
-  const n = S.review?.n; S.review = null;
+  const n = S.review?.n, today = S.review?.today; S.review = null;
   await refresh({ animate: true }); renderReview();
-  if (n) toast(`Watered ${n}`);
+  if (today) return todayShow();   // back to Today, with the score
+  if (n) toast(`Reviewed ${n}`);
 }
 
 // ---------- questions ----------
@@ -1301,8 +1305,8 @@ async function endReview() {
 // where Claude writes them for ideas with none and he ticks which to keep. Grow writes them as it goes.
 const qctx = (n) => ({ kids: kidsOf(n.id), links: S.links.filter((l) => l.fromId === n.id || l.toId === n.id).map((l) => ({ id: l.id, label: l.label || "", other: S.byId.get(l.fromId === n.id ? l.toId : l.fromId) })).filter((l) => l.other) });
 // The question to ask today for an idea ({ kind: "name", fallback: true } when it has none it can use). For Morning recall too.
-const askFor = (n, day = dayNumber()) => questionFor(n, qctx(n), day);
-function reviewAsk() { const r = S.review, n = r && S.byId.get(r.ids[r.i]); if (!n) return null; r.asks ||= {}; return (r.asks[r.i] ||= askFor(n)); }
+const askFor = (n, day = dayNumber(), prefer = null) => questionFor(n, qctx(n), day, prefer);
+function reviewAsk() { const r = S.review, n = r && S.byId.get(r.ids[r.i]); if (!n) return null; r.asks ||= {}; return (r.asks[r.i] ||= askFor(n, r.day ?? dayNumber(), r.prefer?.[n.id])); }
 // A name kept back while a question waits: the idea asked about, or a Rebuild's hidden ideas.
 function masked(id) {
   const r = S.review; if (!r || r.shown || S.oral) return false;
@@ -1605,6 +1609,158 @@ function renderSunday() {
       u.turns.length ? b("sunFinish", "Stitch", "F", stitchSunday) : null, el("span", { class: "grow" }), el("span", { class: "muted", text: `${u.turns.length + 1} / ${SUNDAY_MAX}` })));
 }
 
+// ---------- today: the day's 10, the streak and the calendar (today.js) ----------
+// Watering as something to click went on 2026-11-21 (his call): the questions do the reviewing. Y opens Today from
+// any window: the streak, the day's 10 (↵ runs them through the review box, then comes back here with the score),
+// and the month with each day's score; a day opens its log (from the event log and meta `sundays`). The pick is made
+// the first time it's needed each day and kept in meta `today` ({ day, ids, kinds, bonus, rated }); each day's score
+// in meta `days` ({ "YYYY-MM-DD": { n, asked, good, done } }); both sync like the rest of meta. The button's ochre
+// mark shows while today's aren't done, or on a Sunday until the session is held (Bonsai Desktop). The clock is the
+// Sunday session's (`clockNow`), so tests can move both.
+const dayKey = () => dayOf(clockNow());
+const monthOf = (key) => { const [y, m] = key.split("-").map(Number); return [y, m - 1]; };
+const RATED = { good: "ok", easy: "ok", hard: "hard", again: "miss" };
+async function todayLoad() {
+  const [t, d] = await Promise.all([store.getMeta("today").catch(() => null), store.getMeta("days").catch(() => null)]);
+  S.todayPick = t || null; S.days = d || {}; S.tdLog = null;
+}
+const liveIds = () => new Set(S.nodes.filter((n) => treeOf(n.treeId)).map((n) => n.id));
+// Every idea due now (on the clock above), by level, with its topic and (kinds) the kinds of question it can be asked.
+function todayPool(kinds = true, now = clockNow()) {
+  const live = new Set(S.trees.map((t) => t.id)), pool = { focus: [], keep: [], settled: [] };
+  for (const n of S.nodes) {
+    if (!live.has(n.treeId) || !srs.reviewable(n, kidsOf(n.id).length)) continue;
+    const level = levelOfNode(n), due = Date.parse(srs.dueAt(n, focus.multOf(level)));
+    if (due <= now) pool[level]?.push({ id: n.id, zone: treeOf(n.treeId)?.zoneId, due, kinds: kinds ? [...new Set(usableQs(n, qctx(n)).map((q) => q.kind))] : [] });
+  }
+  return pool;
+}
+const todayRecord = () => (S.todayPick?.day === dayKey() ? recordOf(S.todayPick, liveIds()) : null);
+// What's left of today's: the pick's unrated ideas, or before the pick is made, what it would take.
+function todayLeft() {
+  const r = todayRecord(); if (r) return r.n - r.asked;
+  const p = todayPool(false); return Math.min(10, p.focus.length + p.keep.length);
+}
+const todayDue = () => todayLeft() > 0 || sundayDue();
+async function todaySaveDay() {
+  const r = todayRecord(); if (!r) return;
+  const day = dayKey(), days = { ...((await store.getMeta("days").catch(() => null)) || S.days || {}) }, was = days[day];
+  if (was && was.n === r.n && was.asked === r.asked && was.good === r.good && was.done === r.done) { S.days = days; return; }
+  days[day] = r; S.days = days;
+  await safely(() => store.setMeta("days", days));
+}
+// The day's pick: made once a day and kept, so every device asks the same.
+async function todayEnsure() {
+  const day = dayKey();
+  if (S.todayPick?.day !== day) { S.todayPick = pickToday(todayPool(), day); await safely(() => store.setMeta("today", S.todayPick)); }
+  await todaySaveDay();
+  return S.todayPick;
+}
+async function todayRated(id, rating) {
+  const p = S.todayPick; if (!p || p.day !== dayKey() || !p.ids.includes(id)) return;
+  p.rated = { ...(p.rated || {}), [id]: rating };
+  await safely(() => store.setMeta("today", p)); await todaySaveDay();
+}
+function todayBtn() {
+  return el("button", { class: "btn tdbtn" + (S.todayOpen ? " on" : ""), id: "todayBtn", type: "button", title: "Today (Y)", "aria-label": "Today", "aria-pressed": String(!!S.todayOpen), onclick: todayToggle },
+    icon(ICON.day), todayDue() ? el("i", { class: "tddot", id: "todayDot" }) : null, el("kbd", { text: "Y" }));
+}
+const todayToggle = () => (S.todayOpen ? todayClose() : todayShow());
+async function todayShow() {
+  if (S.review || S.sun || S.oral || S.pick) return;
+  closeAll(); S.todayOpen = true; S.tdSel = dayKey(); S.tdMonth = monthOf(S.tdSel); S.tdLog = null;
+  if (S.view === "isles") isles?.setActive(false);   // nothing to draw under it
+  await todayEnsure();
+  if (S.todayOpen) renderTop();
+}
+function todayClose(quiet = false) {
+  if (!S.todayOpen) return; S.todayOpen = false;
+  const box = $("#today"); if (box) { box.hidden = true; box.replaceChildren(); }
+  if (quiet) return;
+  if (S.view === "isles") isles?.setActive(true);
+  renderTop();
+}
+function todayStart() {
+  const p = S.todayPick, live = liveIds(); if (!p || p.day !== dayKey()) return;
+  const ids = p.ids.filter((id) => live.has(id) && !p.rated?.[id]); if (!ids.length) return;
+  todayClose();
+  S.review = { ids, i: 0, shown: false, n: 0, today: true, prefer: p.kinds || {}, day: dayNumber(clockNow()) }; S.panel = null; S.quick = null;
+  stepReview();
+}
+function todayMonth(d) { const [y, m] = S.tdMonth; S.tdMonth = monthOf(dayOf(new Date(y, m + d, 1, 12))); renderToday(); }
+function todayPickDay(key) { S.tdSel = key; const [y, m] = monthOf(key); if (S.tdMonth[0] !== y || S.tdMonth[1] !== m) S.tdMonth = [y, m]; renderToday(); }
+function todayKey(k, stop) {
+  const go = (fn) => { stop(); fn(); return true; };
+  if (k === "y") return go(todayClose);
+  if (k === "Enter") return go(todayStart);
+  if (k === "ArrowLeft" || k === "ArrowRight") return go(() => todayMonth(k === "ArrowRight" ? 1 : -1));
+  if (k === "ArrowUp" || k === "ArrowDown") return go(() => todayPickDay(addDays(S.tdSel, k === "ArrowDown" ? 1 : -1)));
+  if (k === "0") return go(() => todayPickDay(dayKey()));
+  if (k === "u" && sundayDue()) return go(() => { todayClose(); startSunday(); });
+  return false;
+}
+async function todayLogLoad(day) {
+  if (S.tdLoading === day) return; S.tdLoading = day;
+  const [y, m, d] = day.split("-").map(Number), from = new Date(y, m - 1, d).toISOString(), to = new Date(y, m - 1, d + 1).toISOString();
+  const events = (await store.eventsSince(from).catch(() => [])).filter((e) => e.at < to);
+  S.tdLoading = null; if (S.tdSel !== day) return;
+  S.tdLog = dayLog(day, { events, nodes: S.nodes, trees: S.allTrees, pages: S.pages, sundays: S.sundays, record: S.days[day] || null });
+  if (S.todayOpen) renderToday();
+}
+function renderToday() {
+  let box = $("#today");
+  if (!box) { box = el("section", { class: "tdview", id: "today", "aria-label": "Today" }); $("#app").append(box); }
+  box.hidden = false;
+  const day = dayKey(), p = S.todayPick?.day === day ? S.todayPick : null, live = liveIds(), rec = p ? recordOf(p, live) : null;
+  const key = (k) => el("kbd", { text: k }), held = new Set(S.sundays.map((r) => r.day));
+  // the day's 10: a square each, filled as they're rated; the score once all are
+  const ids = p ? p.ids.filter((id) => live.has(id)) : [];
+  const squares = el("div", { class: "tdqs", id: "todayQs" }, ids.map((id) => { const r = p.rated?.[id], n = S.byId.get(id);
+    return el("span", { class: "tdq" + (r ? " " + RATED[r] : "") + (id === p.bonus ? " bonus" : ""), dataset: { id, rated: r || "" }, title: r ? `${n?.title || ""} · ${r}` : "" }); }));
+  const ten = el("section", { class: "tdten", id: "todayTen" },
+    !rec || !rec.n ? el("p", { class: "muted", id: "todayNone", text: "Nothing due" })
+      : rec.done ? el("div", { class: "row" }, el("b", { class: "tdscore", id: "todayScore", text: `${rec.good}/${rec.n}` }), el("span", { class: "grow" }), squares)
+      : el("div", { class: "row" }, el("button", { class: "btn primary", id: "todayGo", onclick: todayStart }, "Start", key("↵")), el("span", { class: "muted", id: "todayProgress", text: `${rec.asked}/${rec.n}` }), el("span", { class: "grow" }), squares),
+    sundayDue() ? el("div", { class: "row" }, el("button", { class: "btn", id: "todaySunday", onclick: () => { todayClose(); startSunday(); } }, "Sunday", key("U"))) : null);
+  const run = streak(S.days, day);
+  const top = el("div", { class: "tdstreak", id: "todayStreak" }, el("b", { text: String(run) }), el("span", { class: "muted", text: run === 1 ? "day" : "days" }));
+  // the month
+  const [y, m] = S.tdMonth || monthOf(day), weeks = monthGrid(y, m);
+  const nav = el("div", { class: "tdnav" }, el("button", { class: "ib keyed", id: "todayPrev", type: "button", title: "Month before (←)", "aria-label": "Month before", onclick: () => todayMonth(-1) }, icon(ICON.back), key("←")),
+    el("h3", { id: "todayMonth", text: new Date(y, m, 1, 12).toLocaleDateString(undefined, { month: "long", year: "numeric" }) }),
+    el("button", { class: "ib keyed", id: "todayNext", type: "button", title: "Month after (→)", "aria-label": "Month after", onclick: () => todayMonth(1) }, icon(ICON.fwd), key("→")),
+    el("span", { class: "grow" }), S.tdSel !== day ? el("button", { class: "btn small", id: "todayBack", type: "button", title: "Back to today (0)", onclick: () => todayPickDay(day) }, "Today", key("0")) : null);
+  const wd = [1, 2, 3, 4, 5, 6, 0].map((d) => new Date(2026, 10, 15 + d, 12).toLocaleDateString(undefined, { weekday: "narrow" }));
+  const cal = el("div", { class: "tdcal", id: "todayCal", role: "grid" }, wd.map((t) => el("span", { class: "tdwd", text: t })),
+    weeks.flat().map((c) => { const r = S.days[c.key];
+      return el("button", { type: "button", class: "tdday" + (c.inMonth ? "" : " out") + (c.key === day ? " today" : "") + (c.key === S.tdSel ? " pick" : "") + (held.has(c.key) ? " held" : "") + (r?.done && r.n ? " done" : ""), dataset: { day: c.key }, "aria-pressed": String(c.key === S.tdSel), onclick: () => todayPickDay(c.key) },
+        el("span", { class: "d", text: String(c.d) }), r?.n ? el("span", { class: "s", text: `${r.good}/${r.n}` }) : null); }));
+  // the picked day's log
+  const L = S.tdLog?.day === S.tdSel ? S.tdLog : null; if (!L) todayLogLoad(S.tdSel);
+  const list = (rows) => el("ul", {}, rows);
+  const item = (text, run, extra) => el("li", {}, el("button", { type: "button", class: "tdrow", onclick: run }, el("span", { class: "grow", text }), extra));
+  const sec = (id, h, n, body) => el("section", { id }, el("h3", {}, h, n != null ? el("span", { class: "muted", text: " " + n }) : null), body);
+  const MAX = 12, cut = (xs) => xs.slice(0, MAX), more = (xs) => (xs.length > MAX ? el("p", { class: "muted", text: `+${xs.length - MAX}` }) : null);
+  const go = (fn) => () => { todayClose(true); fn(); };
+  let logBody = [];
+  if (L) {
+    const r = L.record, sun = L.sunday, k = sun?.kept || {};
+    logBody = [
+      r?.asked ? el("p", { class: "tdlscore", id: "logScore" }, el("b", { text: `${r.good}/${r.n}` }), r.done ? null : el("span", { class: "muted", text: ` · ${r.asked} asked` })) : null,
+      L.reviewed.length ? sec("logReviewed", "Reviewed", L.reviewed.length, el("div", {}, list(cut(L.reviewed).map((x) => item(x.title, go(() => jump(x.id)), el("span", { class: "tdrate " + (RATED[x.rating] || ""), text: x.rating ? x.rating[0].toUpperCase() + x.rating.slice(1) : "" })))), more(L.reviewed))) : null,
+      L.added.length || L.graphs.length ? sec("logAdded", "Added", L.added.length, el("div", {}, list([...L.graphs.map((t) => item(t.name, go(() => goTree(t.id)), icon(ICON.graph))), ...cut(L.added).map((n) => item(n.title, go(() => jump(n.id))))]), more(L.added))) : null,
+      L.notes.length ? sec("logNotes", "Notes", L.notes.length, el("div", {}, list(cut(L.notes).map((pg) => item(pg.title || "Untitled", go(() => { location.hash = notesHash(pg.id); }), icon(pg.kind === "ink" ? ICON.ink : ICON.page)))), more(L.notes))) : null,
+      sun ? sec("logSunday", "Sunday", null, el("p", { class: "muted", text: [k.links && `${k.links} link${k.links === 1 ? "" : "s"}`, k.notes && `${k.notes} note${k.notes === 1 ? "" : "s"}`, k.questions && `${k.questions} question${k.questions === 1 ? "" : "s"}`, k.fuzzy && `${k.fuzzy} sooner`].filter(Boolean).join(" · ") || (sun.undone ? "Undone" : "Held") })) : null,
+    ].filter(Boolean);
+    if (!logBody.length) logBody = [el("p", { class: "muted", id: "logNone", text: "Nothing" })];
+  }
+  const log = el("section", { class: "tdlog", id: "todayLog", dataset: { day: S.tdSel } },
+    el("div", { class: "tdnav" }, el("h3", { id: "todayLogDay", text: S.tdSel === day ? "Today" : longDate(S.tdSel) }), el("span", { class: "grow" }), key("↑ ↓")), ...logBody);
+  put(box,
+    el("div", { class: "tdhead" }, top, el("span", { class: "grow" }), closeBtn("todayClose", "Close", "Esc", () => todayClose())),
+    el("div", { class: "tdmain" }, ten, el("section", { class: "tdmonth" }, nav, cal)), log);
+}
+
 // ---------- timelapse ----------
 // One slider for the past (T), in the garden and in Knowledge, docked in the bottom bar. The garden is drawn from
 // history.at(t) (src/history.js): topics come as they were made, plots grow and dry as they did; nothing is written.
@@ -1794,7 +1950,7 @@ async function loadGarden() {
   if (dirty) await store.setMeta("garden", g).catch(() => {});
 }
 const saveGarden = async () => { await safely(() => store.setMeta("garden", S.garden)); await refresh(); };
-// What the garden draws: growth is how full a topic's plot is, health is the share of its ideas not waiting to be watered.
+// What the garden draws: growth is how full a topic's plot is, health is the share of its ideas not left long past due.
 // A topic with no ideas yet is uncharted, and lies under mist.
 // (o.fill, beta only: the demo's Workshop topics count as fuller than they are, to show every landmark tier)
 function gardenModel(past = null) {
@@ -1805,10 +1961,12 @@ function gardenModel(past = null) {
   const model = S.garden.islands.map((isl, i) => {
     const topics = isl.zoneIds.map((id) => zone.get(id)).filter(Boolean).map((z, k) => [z, k]).filter(([z]) => !past || past.zones.has(z.id)).map(([z, k]) => {
       const trees = S.trees.filter((t) => t.zoneId === z.id && (!past || past.trees.has(t.id))), nodes = trees.flatMap(ideasOf), rev = nodes.filter((n) => srs.reviewable(n, kidN(n))), o = S.garden.zone[z.id] || {};
-      const level = zoneLevel(z.id), due = level === "settled" ? [] : rev.filter((n) => srs.isDue(n, now, focus.multOf(level)));   // Settled never withers; Keep's waiting ideas weigh half
+      const level = zoneLevel(z.id), mult = focus.multOf(level), due = level === "settled" ? [] : rev.filter((n) => srs.isDue(n, now, mult));   // Settled never withers
+      // only long neglect dries a topic: ideas past due by focus.js's `dry` days (about 3 weeks on Focus, 6 on Keep, where they weigh half); merely due is fine
+      const dry = due.filter((n) => Date.parse(srs.dueAt(n, mult)) + focus.dryAfter(level) * DAY <= now);
       // the demo's pretend ideas grow in step with the real ones
       const fill = CHANNEL && o.fill ? (past ? Math.round(o.fill * nodes.length / Math.max(1, S.trees.filter((t) => t.zoneId === z.id).flatMap((t) => S.byTree.get(t.id) || []).filter((n) => !n.ghost).length)) : o.fill) : 0;
-      return { id: z.id, name: z.name, level, biome: o.biome || BIOMES[k % 6][0], mark: marks.get(z.id), growth: Math.min(2, Math.pow((nodes.length + fill) / FULL_PLOT, 0.6)), health: rev.length ? 1 - (focus.weightOf(level) * due.length) / rev.length : 1, ideas: nodes.length, mist: !nodes.length && charted(), due: past ? [] : due.map((n) => n.id), trees };
+      return { id: z.id, name: z.name, level, biome: o.biome || BIOMES[k % 6][0], mark: marks.get(z.id), growth: Math.min(2, Math.pow((nodes.length + fill) / FULL_PLOT, 0.6)), health: rev.length ? 1 - (focus.weightOf(level) * dry.length) / rev.length : 1, ideas: nodes.length, mist: !nodes.length && charted(), due: past ? [] : due.map((n) => n.id), trees };
     });
     if (!topics.length) topics.push({ id: null, name: "", biome: "bloom", mark: "kit", growth: 0.04, health: 1, ideas: 0, mist: !past && charted(), due: [], trees: [] });
     return { id: isl.id, name: isl.name, hub: at.get(hubKey(isl)) || 0, landmark: isl.landmark, patron: i === 0 && isl.landmark === "arches" ? S.garden.patron || "none" : undefined, mountain: isl.landmark === "arches" || !!isl.mountain, topics };
@@ -1952,19 +2110,19 @@ function renderGarden() {
   const head = (back, h, more) => el("div", { class: "ph gph" }, back ? el("button", { class: "ib keyed", id: "gBack", type: "button", title: "Back (Esc)", "aria-label": "Back", onclick: back }, icon(ICON.back), el("kbd", { text: "Esc" })) : null, h, more);
   const pickRow = (id, label, opts, now, set) => el("label", { class: "gsrow" }, el("span", { text: label }), el("select", { id, onchange: (e) => set(e.target.value) }, opts.map(([v, text]) => el("option", { value: v, text, selected: v === now }))));
   if (t) {
-    const due = t.due.length, o = (S.garden.zone[t.id] ||= {});
+    const o = (S.garden.zone[t.id] ||= {});
     put(box, head(() => pickTopic(-1), name(t.name, async (v) => { if (await safely(() => store.updateZone(t.id, { name: v }))) refresh(); }), ib("topicMore", "Move to island", ICON.more, (e) => topicMenu(t, e.currentTarget))),
-      el("div", { class: "gtop" }, ctl, el("div", { class: "gacts" }, due ? act("waterTopic", `Water ${due}`, "W", () => water(t.due), true) : null, act("newGraph", "New knowledge graph", "N", () => newGraph(t.id), !due), act("scopeGraphs", "Knowledge graphs", "⇧Tab", () => openScope(t.id)), act("topicMap", "Meaning map", "M", () => goMeaning(t.id)), act("techBtn", "Tech tree", "K", openTech), t.growth >= 2 ? act("splitTopic", "Split", "S", () => splitTopic(t)) : null)),
+      el("div", { class: "gtop" }, ctl, el("div", { class: "gacts" }, act("newGraph", "New knowledge graph", "N", () => newGraph(t.id), true), act("scopeGraphs", "Knowledge graphs", "⇧Tab", () => openScope(t.id)), act("topicMap", "Meaning map", "M", () => goMeaning(t.id)), act("techBtn", "Tech tree", "K", openTech), t.growth >= 2 ? act("splitTopic", "Split", "S", () => splitTopic(t)) : null)),
       el("div", { class: "stats" }, el("span", {}, el("b", { text: String(t.ideas) }), ` idea${t.ideas === 1 ? "" : "s"}`), el("span", {}, el("b", { text: pct(t.growth) }), " grown"), el("span", {}, el("b", { text: pct(t.health) }), " healthy")),
       el("h3", { text: "Knowledge graphs" }),
-      t.trees.length ? el("div", { class: "rows" }, t.trees.map((tr, k) => { const n = (S.byTree.get(tr.id) || []).length; return row(k < 9 ? String(k + 1) : "", tr.name, `${n} idea${n === 1 ? "" : "s"}`, dueList(tr.id).length, () => goTree(tr.id)); })) : el("p", { class: "muted", text: "None yet." }),
+      t.trees.length ? el("div", { class: "rows" }, t.trees.map((tr, k) => { const n = (S.byTree.get(tr.id) || []).length; return row(k < 9 ? String(k + 1) : "", tr.name, `${n} idea${n === 1 ? "" : "s"}`, 0, () => goTree(tr.id)); })) : el("p", { class: "muted", text: "None yet." }),
       el("div", { class: "gset" }, levelRow(S.garden.islands[S.isle], t), pickRow("topicBiome", "Biome", BIOMES, t.biome, (v) => { o.biome = v; saveGarden(); }), pickRow("topicMark", "Landmark", MARKS, t.mark, (v) => { o.mark = v; saveGarden(); })));
   } else if (isl) {
     const rec = S.garden.islands[S.isle], items = isleItems(S.isle);
     put(box, head(() => pickIsle(-1), name(isl.name, rec.mapId ? null : (v) => { rec.name = v; saveGarden(); }), items.length ? ib("isleMore", "Island menu", ICON.more, (e) => isleMenu(S.isle, e.currentTarget)) : null),
       el("div", { class: "gtop" }, ctl, el("div", { class: "gacts" }, act("newTopic", "New topic", "Z", newZone, true), act("scopeGraphs", "Knowledge graphs", "⇧Tab", () => openScope(isl.id)), act("isleTech", "Tech tree", "K", openTech))),
       el("h3", { text: "Topics" }),
-      isl.topics[0].id ? el("div", { class: "rows" }, isl.topics.map((q, k) => row(String(k + 1), q.name, pct(q.growth), q.due.length, () => pickTopic(k)))) : el("p", { class: "muted", text: "No topics here yet." }),
+      isl.topics[0].id ? el("div", { class: "rows" }, isl.topics.map((q, k) => row(String(k + 1), q.name, pct(q.growth), 0, () => pickTopic(k)))) : el("p", { class: "muted", text: "No topics here yet." }),
       el("div", { class: "gset" }, levelRow(rec, null),
         rec.mapId ? null : pickRow("isleCentre", "Centrepiece", CENTRES, rec.landmark, (v) => { rec.landmark = v; saveGarden(); }),
         S.isle === 0 && rec.landmark === "arches" ? pickRow("islePatron", "Figure", [["none", "None"], ["athena", "Athena"], ["saraswati", "Saraswati"]], S.garden.patron || "none", (v) => { S.garden.patron = v; saveGarden(); }) : null,
@@ -1974,13 +2132,11 @@ function renderGarden() {
     put(box, head(() => pickHub(-1), name(hub.name, null)),
       el("div", { class: "gtop" }, ctl, el("div", { class: "gacts" }, act("newTopic", "New topic", "Z", newZone, true), act("scopeGraphs", "Knowledge graphs", "⇧Tab", () => openScope(hub.id)), act("techBtn", "Tech tree", "K", openTech))),
       el("h3", { text: "Islands" }),
-      hub.isles.length ? el("div", { class: "rows" }, hub.isles.map((i, k) => { const q = S.model[i], n = q.topics.filter((x) => x.id).length; return row(k < 9 ? String(k + 1) : "", q.name, `${n} topic${n === 1 ? "" : "s"}`, q.topics.reduce((a, x) => a + x.due.length, 0), () => pickIsle(i)); })) : el("p", { class: "muted", text: "No islands yet." }));
+      hub.isles.length ? el("div", { class: "rows" }, hub.isles.map((i, k) => { const q = S.model[i], n = q.topics.filter((x) => x.id).length; return row(k < 9 ? String(k + 1) : "", q.name, `${n} topic${n === 1 ? "" : "s"}`, 0, () => pickIsle(i)); })) : el("p", { class: "muted", text: "No islands yet." }));
   } else {
-    const all = S.model.flatMap((q) => q.topics).filter((q) => q.id), thirsty = all.filter((q) => q.due.length).sort((a, b) => b.due.length - a.due.length), top = Math.max(1, ...all.map((q) => q.ideas));
+    const all = S.model.flatMap((q) => q.topics).filter((q) => q.id), top = Math.max(1, ...all.map((q) => q.ideas));
     put(box, head(null, name("Garden", null), S.garden.mapAt ? null : ib("isleAdd", "New island", ICON.plus, newIsle)),
       el("div", { class: "gtop" }, ctl, el("div", { class: "gacts" }, act("newGraph", "New knowledge graph", "N", () => newGraph(), true), act("scopeGraphs", "Knowledge graphs", "⇧Tab", () => openScope()), act("mapBtn", "Meaning map", "M", () => goMeaning()), act("techBtn", "Tech tree", "K", openTech))),
-      el("h3", { text: "Needs watering" }),
-      thirsty.length ? el("div", { class: "rows" }, thirsty.slice(0, 6).map((q) => row("", q.name, "", q.due.length, () => goTopic(q.id)))) : el("p", { class: "muted", text: "Nothing right now." }),
       all.length ? el("details", { class: "fold", id: "spread", open: pref("spread", "") === "1", ontoggle: (e) => setPref("spread", e.target.open ? "1" : "") }, el("summary", {}, el("h3", { text: "Knowledge spread" })), el("div", { class: "spread" }, all.map((q) => el("button", { class: "bar", title: `${q.name}: ${q.ideas}`, onclick: () => goTopic(q.id) }, el("span", { text: q.name }), el("i", {}, el("b", { style: `width:${Math.max(3, (100 * q.ideas) / top)}%` })))))) : null);
   }
 }
@@ -2036,7 +2192,6 @@ function islesKey(k, stop) {
   if (k === "z") { stop(); return newZone(); }
   if (k === "m") { stop(); return goMeaning(t?.id); }
   if (k === "s" && t && t.growth >= 2) { stop(); return splitTopic(t); }
-  if (k === "w") { stop(); return t ? (t.due.length ? water(t.due) : toast("Nothing to water")) : water(null); }
   if (k === "d") { stop(); $("#gpanel .seg[aria-label=Time] button[aria-pressed=false]")?.click(); }
 }
 
@@ -2294,7 +2449,6 @@ function onMenu(hit, e) {
 function graphItems(t) {
   return [
     { label: "Open", key: "↵", run: () => openTree(t.id) }, { label: "On the board", run: () => { location.hash = notesHash(GP + t.id); } },
-    ...(() => { const d = dueList(t.id); return d.length ? [{ label: `Water ${d.length}`, key: "W", run: () => water(null, t.id) }, { label: "All good", run: () => passAll(d.map((n) => n.id)) }] : []; })(),
     desktop && { label: "Oral", key: "E", run: () => startOral(t.id) },
     desktop && { label: "Write questions", run: () => writeQuestions(t.id) },
     "-", { label: "Rename", run: () => renameThing(t, store.updateTree, "Knowledge graph") }, { label: "Colour", run: () => colourThing(t, store.updateTree) },
@@ -2326,6 +2480,7 @@ function back() {
   if (closeTop()) return;
   if (vocab?.closeTop()) return;
   if (S.pick) return S.pick.finish(null);
+  if (S.todayOpen) return todayClose();
   if (S.quick) { S.quick = null; return renderActions(); }
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || document.activeElement?.isContentEditable) return document.activeElement.blur();
   if (S.move) return toggleMove(false);
@@ -2347,11 +2502,12 @@ function onKey(e) {
   if (e.key === "Escape") { e.preventDefault(); if (e.shiftKey && S.backTo && $("#backBtn") && !overlayOpen()) { location.hash = S.backTo; return; } return back(); }
   if (e.ctrlKey || e.metaKey || e.altKey || overlayOpen() || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName) || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || e.target?.isContentEditable || document.activeElement?.isContentEditable) return;
   const k = e.key.length === 1 ? e.key.toLowerCase() : e.key, stop = () => e.preventDefault();
+  if (S.todayOpen && !S.review && (todayKey(k, stop, e) || !["Tab", "/", "?"].includes(k))) return;   // Today takes the keys while it's open
   if (S.sun) return sunKey(k, stop);
   if (S.oral) return oralKey(k, stop);
   if (S.review) {
     const r = S.review;
-    if (k === "e" && desktop) { stop(); return startOral(S.byId.get(r.ids[r.i])?.treeId, r.ids.slice(r.i)); }
+    if (k === "e" && desktop && !r.today) { stop(); return startOral(S.byId.get(r.ids[r.i])?.treeId, r.ids.slice(r.i)); }
     if (k === " " || k === "Enter") { stop(); if (!r.shown) { r.shown = true; renderReview(); } }
     else if (r.shown && "1234".includes(k)) rateNow(srs.RATINGS[+k - 1]);
     return;
@@ -2365,6 +2521,7 @@ function onKey(e) {
   if (k === "k") { stop(); return openTech(); }
   if (k === "o") { stop(); return openNotes(); }
   if (k === "u") { stop(); return startSunday(); }
+  if (k === "y") { stop(); return todayToggle(); }
   if (k === "[" || k === "]") { stop(); return sideKey(k === "["); }
   if (S.view === "tech") return techKey(k, stop);
   if (S.view === "notes") return notesKey(k, stop, e);
@@ -2390,7 +2547,6 @@ function onKey(e) {
     if (k === "n") { stop(); return newGraph(); }
     if (k === "v") { stop(); return toggleJoined(); }
     if (k === "h") { stop(); return toggleThirsty(); }
-    if (k === "w") { stop(); return water(null); }
     if (k === "a" && S.fscope) { stop(); return openScope(); }
     if (k === "z") { stop(); return newZone(); }
     if (k.startsWith("Arrow")) { stop(); return stepForest(k === "ArrowRight" || k === "ArrowUp" ? 1 : -1); }
@@ -2409,7 +2565,6 @@ function onKey(e) {
     return;
   }
   if (k === "v") { stop(); return openOnBoard(); }
-  if (k === "w" && S.tree) { stop(); return dueList(S.tree.id).length ? water(null, S.tree.id) : toast("Nothing to water"); }
   if (k === "m") { stop(); S.pendingSel = S.sel; return goMeaning(S.tree.zoneId); }
   if (k === "Tab") { stop(); quick("child"); }
   else if (k === "Enter") { stop(); quick("sibling"); }
@@ -2509,37 +2664,30 @@ function notesSidebar(close) {
   const filter = el("div", { class: "nfilter", role: "group", "aria-label": "Status" }, [["", "All"], ...STATUSES.map(([v]) => [v, v])].map(([v, text]) =>
     el("button", { type: "button", class: "nf" + ((S.nf || "") === v ? " on" : ""), "aria-pressed": String((S.nf || "") === v), dataset: { status: v }, text,
       onclick: (e) => { S.nf = v; for (const b of e.currentTarget.parentElement.children) { const on = b.dataset.status === v; b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); } drawPageList(); } })));
-  // the Library: three tabs, Notes, Graphs (island › topic › graph) and Watering, each with its own filter and folds
-  const tab = libTab(), chip = (key, opts, cur, set) => el("div", { class: "nfilter", role: "group", "aria-label": "Filter", dataset: { f: key } }, opts.map(([v, text]) =>
-    el("button", { type: "button", class: "nf" + (cur === v ? " on" : ""), "aria-pressed": String(cur === v), dataset: { v }, text,
-      onclick: (e) => { set(v); for (const b of e.currentTarget.parentElement.children) { const on = b.dataset.v === v; b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); } drawPageList(); } })));
+  // the Library: two tabs, Notes and Graphs (island › topic › graph), each with its folds (Watering went with the day's 10, Today)
+  const tab = libTab();
   const tabs = el("div", { class: "ltabs", role: "tablist", "aria-label": "Library" }, LIBTABS.map(([id, label], k) =>
     el("button", { class: "ltab" + (tab === id ? " on" : ""), type: "button", role: "tab", id: "lib-" + id, "aria-selected": String(tab === id), title: `${label} (Shift+${k + 1})`, onclick: () => setLibTab(id) },
       el("span", { text: label }), el("span", { class: "muted lcount", id: "lcount-" + id, text: libCount(id) }), el("kbd", { text: "⇧" + (k + 1) }))));
-  const glist = el("div", { class: "ntree glist", id: "glist", role: "tree", "aria-label": "Graphs" }), wlist = el("div", { class: "ntree wlist", id: "wlist", role: "tree", "aria-label": "Needs water" });
-  const body = tab === "graphs" ? el("div", {}, chip("g", [["", "All"], ["wait", "Waiting"], ["ok", "Watered"]], S.gf || "", (v) => { S.gf = v; }), glist)
-    : tab === "water" ? el("div", {}, chip("w", [["", "All"], ["thirsty", "Thirsty"], ["dry", "Dry"]], S.wf || "", (v) => { S.wf = v; }), wlist)
-    : el("div", {}, filter, tree);
+  const glist = el("div", { class: "ntree glist", id: "glist", role: "tree", "aria-label": "Graphs" });
+  const body = tab === "graphs" ? el("div", {}, glist) : el("div", {}, filter, tree);
   const tail = tab === "notes" ? [vrow, foot]
-    : tab === "graphs" ? [el("div", { class: "nfoot" }, el("button", { class: "btn", id: "newGraphBtn", onclick: () => newGraph() }, "+ Graph", el("kbd", { text: "N" })))]
-    : thirstyGraphs().length ? [el("div", { class: "nfoot" }, el("button", { class: "btn water", id: "libWater", onclick: () => water(null) }, icon(ICON.drop), "Water all", el("kbd", { text: "W" })))] : [];
+    : [el("div", { class: "nfoot" }, el("button", { class: "btn", id: "newGraphBtn", onclick: () => newGraph() }, "+ Graph", el("kbd", { text: "N" })))];
   return el("nav", { class: "nside-bar", "aria-label": "Library", dataset: { tab } }, el("div", { class: "nsearch" }, search, close ? null : el("kbd", { text: "/" }), close), tabs, el("div", { class: "nlib" }, body), ...tail);
 }
 function setNotesHash() { const h = notesHash(); history.replaceState(null, "", h); S.hashNow = h; S.lastNotes = h; }
 // ---------- the Library's graphs and watering ----------
 const GP = "g:";   // a graph opened in the Library: S.npage is "g:<treeId>"
 const graphPage = (id) => (typeof id === "string" && id.startsWith(GP) ? treeOf(id.slice(GP.length)) || null : null);
-const LIBTABS = [["notes", "Notes"], ["graphs", "Graphs"], ["water", "Watering"]];
+const LIBTABS = [["notes", "Notes"], ["graphs", "Graphs"]];
 const libTab = () => { const t = pref("libtab", "notes"); return LIBTABS.some(([id]) => id === t) ? t : "notes"; };
-const libCount = (id) => String((id === "notes" ? (S.pages || []).filter((p) => !isFolder(p)).length : id === "graphs" ? S.trees.length : thirstyGraphs().length) || "");
+const libCount = (id) => String((id === "notes" ? (S.pages || []).filter((p) => !isFolder(p)).length : S.trees.length) || "");
 function setLibTab(id) {
   setPref("libtab", id);
   const nav = document.querySelector(".nside-bar"); if (!nav) return;
   const close = nav.querySelector(".nsearch .keyed"); nav.replaceWith(notesSidebar(close || undefined)); drawPageList();
   document.getElementById("lib-" + id)?.focus({ preventScroll: true });
 }
-const thirstyOf = (tr) => (S.byTree.get(tr.id) || []).filter((n) => !n.ghost && thirst(n) !== "ok").length;
-const thirstyGraphs = () => S.trees.map((tr) => [tr, thirstyOf(tr)]).filter(([, n]) => n).sort((a, b) => b[1] - a[1]);
 // islands, then their topics, then the graphs on each; topics on no island come last
 function graphShelves() {
   const isl = (S.garden?.islands || []).map((q) => ({ id: q.id, name: q.name, zones: q.zoneIds.map((z) => S.zones.find((x) => x.id === z)).filter(Boolean) }));
@@ -2552,7 +2700,7 @@ function openGraphPage(treeId) {
   flushPage().then(() => { S.npage = GP + treeId; S.gsel = null; setNotesHash(); drawPageList(); drawEditor(); renderActions(); });
 }
 function graphRow(tr, depth, extra) {
-  const on = S.view === "notes" && S.npage === GP + tr.id, dry = thirstyOf(tr);
+  const on = S.view === "notes" && S.npage === GP + tr.id;
   // drag a graph onto another to stitch it under that one's first idea, onto a topic to move it there, or onto the board
   return el("div", { class: "nrow graph" + (on ? " on" : ""), dataset: { tree: tr.id }, style: `--d:${depth}`, role: "treeitem", draggable: "true",
       ondragstart: (e) => { e.dataTransfer.setData("application/x-bonsai-tree", tr.id); e.dataTransfer.effectAllowed = "move"; },
@@ -2561,10 +2709,9 @@ function graphRow(tr, depth, extra) {
       ondrop: (e) => { e.preventDefault(); e.currentTarget.classList.remove("drop"); const from = e.dataTransfer.getData("application/x-bonsai-tree"); if (from && from !== tr.id) stitchGraphs(from, tr.id); },
       oncontextmenu: (e) => { e.preventDefault(); menu(atPointer(e), [{ label: "Open on the board", key: "↵", run: () => openGraphPage(tr.id) }, ...graphItems(tr).filter((x) => x && x.label !== "On the board").map((x) => (x.label === "Open" ? { ...x, label: "Open in 3D", key: "⇧↵" } : x))]); } },
     el("span", { class: "chev none" }),
-    el("button", { class: "nname", type: "button", onclick: () => openGraphPage(tr.id) }, icon(ICON.graph), el("span", { class: "nt", text: tr.name || "Untitled" }), extra ? el("span", { class: "npath", text: extra }) : null),
-    dry ? el("span", { class: "thirst", text: String(dry) }) : null);
+    el("button", { class: "nname", type: "button", onclick: () => openGraphPage(tr.id) }, icon(ICON.graph), el("span", { class: "nt", text: tr.name || "Untitled" }), extra ? el("span", { class: "npath", text: extra }) : null));
 }
-// islands › topics › graphs, folding; the Graphs tab keeps its folds open by choice, Watering open until closed
+// islands › topics › graphs, folding; the Graphs tab keeps its folds open by choice
 function drawShelves(host, keep, { pre = "", shut = false, order } = {}) {
   const q = (S.nq || "").trim().toLowerCase();
   if (q) {   // searching: every graph whose name matches, with where it sits
@@ -2588,20 +2735,11 @@ function drawShelves(host, keep, { pre = "", shut = false, order } = {}) {
     if (!fold("i:" + isl.id, 0, isl.name, zones.reduce((a, z) => a + z.trees.length, 0))) continue;
     for (const { z, trees } of zones) { if (fold("t:" + z.id, 1, z.name, trees.length)) for (const t of order ? order(trees) : trees) rows.push(graphRow(t, 2)); }
   }
-  put(host, rows, rows.length ? null : el("p", { class: "muted nnone", text: pre ? "Nothing waiting" : S.gf ? "None" : "No graphs yet" }));
+  put(host, rows, rows.length ? null : el("p", { class: "muted nnone", text: "No graphs yet" }));
 }
-const stateOf = (tr) => { let t = 0, d = 0; for (const n of S.byTree.get(tr.id) || []) { if (n.ghost) continue; const st = thirst(n); if (st === "dry") d++; else if (st === "thirsty") t++; } return { t, d }; };
 function drawGraphList() {
   const host = $("#glist"); if (!host) return;
-  const f = S.gf || "";
-  drawShelves(host, (tr) => !f || (f === "wait") === thirstyOf(tr) > 0);
-}
-function drawWaterList() {
-  const host = $("#wlist"), c = $("#lcount-water"); if (c) c.textContent = String(thirstyGraphs().length || "");
-  if (!host) return;
-  const f = S.wf || "";
-  drawShelves(host, (tr) => { const { t, d } = stateOf(tr); return f === "thirsty" ? t > 0 : f === "dry" ? d > 0 : t + d > 0; },
-    { pre: "w", shut: true, order: (ts) => [...ts].sort((a, b) => thirstyOf(b) - thirstyOf(a)) });
+  drawShelves(host, () => true);
 }
 // A graph on a 2D board in the Library, where you build it (0.24.0). Places are the ideas' own (node.xy).
 // Drag an idea to move it with what hangs from it; drop it on another to graft it there; pull the + knob (or Alt-drag)
@@ -2738,8 +2876,7 @@ function drawGraphFoot(info, tr) {
     boardKey("Label", "R", () => labelLink(l), "gLinkLabel"), boardKey("Delete link", "Del", () => removeLink(l.id), "gLinkDel"));
   const n = S.gsel && S.byId.get(S.gsel);
   if (n && masked(n.id)) return put(info, el("b", { text: "?" }));   // a question waits on this idea
-  const dry = thirstyOf(tr), waterB = dry ? el("button", { class: "btn water", id: "gWater", onclick: () => water(null, tr.id) }, icon(ICON.drop), el("span", { text: "Water" }), el("span", { class: "thirst", text: String(dry) }), el("kbd", { text: "W" })) : null;
-  if (!n) return put(info, el("span", { class: "muted", text: `${(S.byTree.get(tr.id) || []).length} ideas` }), el("span", { class: "grow" }), waterB,
+  if (!n) return put(info, el("span", { class: "muted", text: `${(S.byTree.get(tr.id) || []).length} ideas` }), el("span", { class: "grow" }),
     boardKey("Add", "Tab", () => boardAsk({ parentId: tr.rootId }), "gAdd"), boardKey("Open", "⇧↵", () => openIdea(tr, tr.rootId), "gOpen"));
   const top = n.parentId == null;
   put(info, el("b", { text: n.title }), n.note ? el("span", { class: "muted", text: n.note.split("\n")[0].slice(0, 120) }) : null, el("span", { class: "grow" }),
@@ -2749,7 +2886,7 @@ function drawGraphFoot(info, tr) {
     boardKey("Link", "L", () => boardLinkPick(n), "gLink"),
     boardKey("Graft", "G", () => boardGraftPick(n), "gGraft"),
     top ? null : boardKey("Delete", "Del", () => boardRemove(n.id), "gDel"),
-    boardKey("Open", "⇧↵", () => openIdea(tr, n.id), "gOpen"), waterB);
+    boardKey("Open", "⇧↵", () => openIdea(tr, n.id), "gOpen"));
 }
 // a name typed straight onto the board, where the idea will sit
 function boardAsk({ parentId, id, at }) {
@@ -2859,7 +2996,7 @@ async function moveGraph(treeId, zoneId) {
 }
 function openIdea(tr, id) { S.pendingSel = id; goTree(tr.id); }
 function drawPageList() {
-  drawGraphList(); drawWaterList();
+  drawGraphList();
   const host = $("#nlist"); if (!host) return;
   const rows = noteRows(), open = notesOpen();
   put(host, rows.map(({ p, depth, hit }, i) => {
@@ -3137,8 +3274,8 @@ function pageRowMenu(p, e) {
 function shelfMenu(key, e) {
   e.preventDefault(); const k = key.replace(/^w/, ""), id = k.slice(2);
   if (k.startsWith("t:")) {
-    const z = S.zones.find((x) => x.id === id), due = (S.trees.filter((t) => t.zoneId === id)).flatMap((t) => dueList(t.id)).map((n) => n.id);
-    return menu(atPointer(e), [{ label: "New knowledge graph here", key: "N", run: () => newGraph(id) }, due.length && { label: `Water ${due.length}`, key: "W", run: () => water(due) },
+    const z = S.zones.find((x) => x.id === id);
+    return menu(atPointer(e), [{ label: "New knowledge graph here", key: "N", run: () => newGraph(id) },
       { label: "Show in the garden", run: () => toGarden({ topic: id }) }, { label: "Knowledge graphs", run: () => openScope(id) }, z && { label: "Tech tree", key: "K", run: () => { location.hash = "#/techtree/" + id; } }]);
   }
   if (k.startsWith("i:") && id !== "_loose") menu(atPointer(e), [{ label: "Show in the garden", run: () => toGarden({ isle: id }) }, { label: "Knowledge graphs", run: () => openScope(id) }]);
@@ -3234,7 +3371,7 @@ function notesTopics() {
   return groups;
 }
 function notesKey(k, stop, e = {}) {
-  if (e.shiftKey && /^Digit[123]$/.test(e.code || "")) { stop(); return setLibTab(LIBTABS[+e.code.slice(5) - 1][0]); }
+  if (e.shiftKey && /^Digit[12]$/.test(e.code || "")) { stop(); return setLibTab(LIBTABS[+e.code.slice(5) - 1][0]); }
   const rows = noteRows().map((r) => r.p), i = rows.findIndex((p) => p.id === S.npage), p = pageOf(S.npage);
   if (k === "v" && e.shiftKey) { stop(); return openVocab(); }
   if (S.npage === VOCAB) {
@@ -3261,11 +3398,9 @@ function notesKey(k, stop, e = {}) {
     }
     if (k === "0") { stop(); return S.board?.fit(); }
     if (k === "v" && !e.shiftKey) { stop(); return flipBoard(); }
-    if (k === "w") { stop(); return thirstyOf(g) ? water(null, g.id) : toast("Nothing to water"); }
     if (/^[nfwd]$/.test(k) || (k === "v" && e.shiftKey)) return;   // nothing else of the notes' own keys on a board, bar new note, folder, pen, vocab
   }
   if (k === "n" && libTab() === "graphs") { stop(); return newGraph(); }
-  if (k === "w" && libTab() === "water") { stop(); return thirstyGraphs().length ? water(null) : toast("Nothing to water"); }
   if (k === "n") { stop(); return newPage(); }
   if (k === "f") { stop(); return newPage(null, "folder"); }
   if (k === "w") { stop(); return newPage(null, "ink"); }
@@ -3427,10 +3562,10 @@ function goWindow(w) {
   location.hash = w === "garden" ? "#/" : w === "notes" ? S.lastNotes || notesHash() : S.lastKnowledge || "#/forest";
 }
 function winSwitch() {
-  const now = winOf(S.view), due = dueList(null).length;
+  const now = winOf(S.view);
   const b = (w, id, label, d, extra) => el("button", { class: "ws" + (now === w ? " on" : ""), id, type: "button", title: `${label} (Shift+Tab)`, "aria-pressed": String(now === w), onclick: () => goWindow(w) }, icon(d), el("span", { class: "wl", text: label }), extra);
   return el("div", { class: "winseg", role: "group", "aria-label": "Window" },
-    b("garden", "winGarden", "Garden", ICON.sprout, now !== "garden" && due ? el("span", { class: "thirst", text: String(due) }) : null),
+    b("garden", "winGarden", "Garden", ICON.sprout),
     b("knowledge", "winKnowledge", "Knowledge", ICON.graph),
     b("notes", "winNotes", "Library", ICON.page), el("kbd", { class: "wsk", text: "⇧Tab" }));
 }
@@ -3445,7 +3580,7 @@ async function init() {
   stage.onTap = onTap; stage.labelOpacity = labelOpacity; stage.onGrab = grabIdea; stage.onDouble = onDouble; stage.onMenu = onMenu;
   vocab = createVocab({ el, pinIcon: () => icon(ICON.pin), panelActions: (g, done) => [el("button", { class: "btn", type: "button", dataset: { act: "claude" }, onclick: () => { done(); fleshOut({ termId: g.id }); } }, "Claude"), el("button", { class: "btn", type: "button", dataset: { act: "google" }, onclick: () => google(g.term) }, "Google")], terms: () => S.vocab || [], onEdit: (id) => editTerm({ id }), seenIn, openPage: (id) => { if (S.view === "notes") pickPage(id); else location.hash = notesHash(id); } }); vocab.reindex();
   selPanel = createQuick({ el, roots: () => [...document.querySelectorAll(".page .blocks")], actions: selActions });
-  S.joined = pref("joined", "0") === "1"; S.thirsty = pref("thirsty", "1") === "1";
+  S.joined = pref("joined", "0") === "1"; S.thirsty = pref("thirsty", "0") === "1";   // off since the day's 10 took over from watering; H shows it
   if (desktop) desktopUpdate().then((u) => { S.desk = u; });
   stage.labelRank = (L) => (L.id === S.sel || (!ideaView() && L.id === S.fsel) ? 0 : S.near.has(L.id) ? 1 + L.depth * 0.01 : 2 + L.depth);
   stage.onHover = (hit, e) => {
@@ -3467,7 +3602,9 @@ async function init() {
   }
   window.bonsai = { S, store, sync, refresh, get stage() { return stage; }, get isles() { return isles; }, get tech() { return tech; }, get vocab() { return vocab; }, thirst, water, openTree, graphItems, dueByLevel, setLevel, zoneLevel,
     timelapse: { set secs(v) { tlSecs = v; }, get state() { return S.tl; } },
-    sunday: { list: () => store.listSundays(), start: startSunday, setClock: (t) => { sunClock = t == null ? null : +new Date(t); renderTop(); }, get due() { return sundayDue(); } } };
+    sunday: { list: () => store.listSundays(), start: startSunday, setClock: (t) => { sunClock = t == null ? null : +new Date(t); renderTop(); }, get due() { return sundayDue(); } },
+    today: { pick: () => S.todayPick, days: () => S.days, pool: () => todayPool(), show: todayShow, close: todayClose, get open() { return !!S.todayOpen; }, get left() { return todayLeft(); },
+      setClock: (t) => { sunClock = t == null ? null : +new Date(t); renderTop(); } } };
   await go();
   document.body.dataset.ready = "1";
   syncStart();

@@ -502,8 +502,6 @@ body[data-nside="page"]{--dl:min(760px,62vw)}
 .top .btn{padding:5px 10px;font-size:13px;font-weight:600}
 .top .btn .ic svg{width:15px;height:15px}
 .top .btn.on{background:var(--well);border-color:var(--muted)}
-.btn.water{color:var(--sap);border-color:var(--sap)}
-.btn.water .thirst{margin-left:0}
 .crumb.sub{padding-left:10px;border-left:1px solid var(--line)}
 .crumb.sub h1{font-weight:600}
 .channel{font:700 10px/1 var(--font);letter-spacing:.12em;text-transform:uppercase;color:var(--bg);background:var(--sap);padding:4px 6px;border-radius:3px}
@@ -755,7 +753,7 @@ input.bask::placeholder{color:var(--muted)}
 
 .winseg .wsk{margin:0 4px 0 2px}
 @media (max-width:700px){.winseg .wsk{display:none}}
-/* the Library's tabs: Notes, Graphs, Watering (0.29.0) */
+/* the Library's tabs: Notes, Graphs (0.29.0; Watering went with Today) */
 .ltabs{display:flex;gap:2px;padding:6px 6px 0;container-type:inline-size;border-bottom:1px solid var(--line)}
 .ltab{flex:1 1 auto;display:flex;align-items:center;justify-content:center;gap:4px;min-width:0;white-space:nowrap;overflow:hidden;padding:6px 5px 7px;border:1px solid transparent;border-bottom:0;border-radius:5px 5px 0 0;background:none;font:inherit;font-size:12.5px;font-weight:600;color:var(--muted);cursor:pointer;margin-bottom:-1px}
 .ltab:hover{color:var(--ink)}
@@ -764,10 +762,61 @@ input.bask::placeholder{color:var(--muted)}
 .ltab .lcount{display:none}
 .ltab kbd{font-size:9.5px;padding:1px 3px;border-bottom-width:1px}
 .nside-bar[data-tab] .nlib{border-top:0}
-.nfoot .btn.water{gap:6px}
 @container (max-width:235px){.ltab kbd{display:none}}
 
 /* the little 3D window shows the shape only, no names (0.29.2, his ask) */
 .pipwin .lbl{display:none!important}
 #newPageBtn .caret{font-size:10px;color:var(--muted);margin-left:2px}
 @media (max-width:700px){ .timeline kbd{display:none} .timeline{gap:4px} }
+
+/* Today (Y): the streak, the day's 10, the month and a day's log, over the window under the top bar */
+.tdbtn{position:relative}
+.tdbtn.on{background:var(--well);border-color:var(--ink)}
+.tddot{position:absolute;top:3px;right:3px;width:7px;height:7px;border-radius:2px;background:var(--sap)}
+.tdview{position:absolute;inset:var(--top) 0 0 0;z-index:8;overflow:auto;background:var(--bg);display:grid;grid-template-columns:minmax(0,440px) minmax(0,1fr);align-content:start;gap:0 32px;
+  padding:16px max(16px,calc(50% - 480px)) calc(24px + env(safe-area-inset-bottom))}
+.tdhead{grid-column:1/-1;display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.tdstreak{display:flex;align-items:baseline;gap:7px}
+.tdstreak b{font-size:38px;line-height:1;font-variant-numeric:tabular-nums}
+.tdmain{display:grid;gap:16px;align-content:start}
+.tdten{display:grid;gap:10px;padding:12px;border:1px solid var(--line);border-radius:5px;background:var(--card)}
+.tdten .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.tdqs{display:flex;gap:4px;flex-wrap:wrap}
+.tdq{width:18px;height:18px;border-radius:3px;border:1px solid var(--line);background:var(--well)}
+.tdq.ok{background:var(--accent);border-color:var(--accent)}
+.tdq.hard{background:color-mix(in srgb,var(--sap) 40%,transparent);border-color:var(--sap)}
+.tdq.miss{background:var(--sap);border-color:var(--sap)}
+.tdq.bonus{border-style:dashed;border-color:var(--muted)}
+.tdscore{font-size:28px;line-height:1;font-variant-numeric:tabular-nums}
+.tdnav{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.tdnav h3,.tdlog h3{font-size:12px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:0}
+#todayMonth{min-width:9.5em;text-align:center}
+.tdnav .ib.keyed{width:auto;padding:0 6px;gap:4px;display:inline-flex}
+.tdcal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px}
+.tdwd{font-size:11px;font-weight:600;color:var(--muted);text-align:center;padding-bottom:2px}
+.tdday{display:grid;align-content:start;justify-items:start;gap:1px;min-height:46px;padding:4px 5px;border:1px solid var(--line);border-radius:4px;background:var(--card);color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+.tdday:hover{border-color:var(--muted)}
+.tdday .d{font-size:12px;font-weight:600;font-variant-numeric:tabular-nums}
+.tdday .s{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.tdday.done .s{color:var(--accent);font-weight:700}
+.tdday.out{opacity:.45}
+.tdday.pick{background:var(--well)}
+.tdday.today{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.tdday.held .d{text-decoration:underline;text-decoration-color:var(--accent);text-decoration-thickness:2px;text-underline-offset:3px}
+.tdlog{display:grid;gap:12px;align-content:start}
+.tdlog section{display:grid;gap:4px}
+.tdlog ul{list-style:none;margin:0;padding:0;display:grid;gap:1px}
+.tdrow{display:flex;align-items:center;gap:8px;width:100%;border:0;background:none;border-radius:4px;padding:4px 6px;font:inherit;font-size:14px;color:var(--ink);text-align:left;cursor:pointer}
+.tdrow:hover{background:var(--hover)}
+.tdrow .ic svg{width:15px;height:15px;color:var(--muted)}
+.tdrate{font-size:11px;font-weight:600;border:1px solid var(--line);border-radius:3px;padding:0 5px;color:var(--muted)}
+.tdrate.ok{color:var(--accent);border-color:var(--accent)}
+.tdrate.hard,.tdrate.miss{color:var(--sap);border-color:var(--sap)}
+.tdlscore b{font-size:20px;font-variant-numeric:tabular-nums}
+@media (max-width:700px){
+  .tdview{grid-template-columns:minmax(0,1fr);gap:16px;padding:12px 10px calc(20px + env(safe-area-inset-bottom))}
+  .tdview kbd{display:none} .tdhead{margin-bottom:0}
+  .tdday{min-height:42px;padding:3px 4px}
+  .tdbtn kbd{display:none}
+}
+.tdnav .btn{padding:3px 8px;font-size:13px}
