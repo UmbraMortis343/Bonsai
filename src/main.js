@@ -1976,12 +1976,15 @@ function gardenModel(past = null) {
   return model;
 }
 const multi = () => (S.garden?.hubs?.length || 0) > 1, charted = () => !!S.garden?.mapAt;   // mist only means something once a map says what should be there
-// How many links run between ideas on two different islands; the garden widens those bridges.
+// Bridges join only islands the tech tree joins (one grows from the other, `after`) in the same hub (his call,
+// 0.35.1: no bridges between hubs, none just because two ideas are linked). The links between their ideas widen it.
 function crossLinks(links = S.links) {
   const where = new Map(); S.model.forEach((isl) => isl.topics.forEach((t) => where.set(t.id, isl.id)));
-  const isleOf = (nodeId) => where.get(treeOf(S.byId.get(nodeId)?.treeId)?.zoneId), n = new Map();
-  for (const l of links) { const a = isleOf(l.fromId), b = isleOf(l.toId); if (a && b && a !== b) { const k = [a, b].sort().join("|"); n.set(k, (n.get(k) || 0) + 1); } }
-  return [...n].map(([k, c]) => [...k.split("|"), c]);
+  const isleOf = (nodeId) => where.get(treeOf(S.byId.get(nodeId)?.treeId)?.zoneId), n = new Map(), key = (a, b) => [a, b].sort().join("|");
+  const shown = new Set(S.model.map((q) => q.id)), hubOf = new Map(S.model.map((q) => [q.id, q.hub]));
+  for (const q of S.garden?.islands || []) if (q.after && q.after !== q.id && shown.has(q.id) && shown.has(q.after) && hubOf.get(q.id) === hubOf.get(q.after)) n.set(key(q.id, q.after), 1);
+  for (const l of links) { const a = isleOf(l.fromId), b = isleOf(l.toId); if (a && b && a !== b && n.has(key(a, b))) n.set(key(a, b), n.get(key(a, b)) + 1); }
+  return [...n].map(([k, c]) => [...k.split("|"), c - 1]);
 }
 function showWindow(garden, flat = false, notes = false) {
   $("#notes").hidden = !notes; if (!notes) $("#notes").replaceChildren(); flat ||= notes;

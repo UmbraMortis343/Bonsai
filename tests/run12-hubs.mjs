@@ -56,7 +56,10 @@ const shape = (page) => state(page, () => bonsai.S.hubs.map((h) => [h.name, h.is
   const spots = await state(page, () => bonsai.isles.spots);
   let apart = true; for (const a of spots.islands) for (const b of spots.islands) if (a !== b && Math.hypot(a.pos[0] - b.pos[0], a.pos[2] - b.pos[2]) < a.R + b.R) apart = false;
   t.eq(apart, true, "no two islands overlap");
-  t.eq([spots.hubs.map((h) => h.mist), spots.links.length], [[false, true, false], 3], "an empty hub is a bank of mist; two bridges inside Academics and one across to Play");
+  t.eq([spots.hubs.map((h) => h.mist), spots.links.length], [[false, true, false], 0], "an empty hub is a bank of mist; no bridges until the tech tree joins islands, none between hubs");
+  await state(page, async () => { const g = structuredClone(bonsai.S.garden), f = g.islands.find((q) => q.name === "Foundations"), sc = g.islands.find((q) => q.name === "Sciences"), ga = g.islands.find((q) => q.name === "Games"); sc.after = f.id; ga.after = f.id; await bonsai.store.setMeta("garden", g); await bonsai.refresh(); });
+  await page.waitForFunction(() => bonsai.isles.spots.links.length === 1);
+  t.eq(await state(page, () => bonsai.isles.spots.links.length), 1, "a bridge where an island grows from another in its hub; none across hubs");
   await page.waitForTimeout(1500); await page.screenshot({ path: "tests/shots/hubs-all.png" });
 
   // 1 goes to the first hub, 2 to its second island, 2 to that island's second topic.

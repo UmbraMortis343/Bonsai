@@ -307,19 +307,11 @@ export function createIsles(opts) {
     ALL = Math.max(x1 - x0, z1 - z0) / 2 + 30; fitShadow();
     linksStale = true;
   }
-  // Bridges: in a hub every island to the one in the middle; neighbouring hubs by their two nearest islands; then any two islands whose ideas are linked.
+  // Bridges (0.35.1, his call): only between islands the tech tree joins, as main.js `crossLinks` gives them
+  // ([idA, idB, ideas linked across]); no hub-to-hub bridges, no star round a hub's first island. More links, wider.
   function wire() {
-    const idx = new Map(ISLANDS.map((q, i) => [q.id, i])), n = new Map(), key = (i, j) => (i < j ? i + "|" + j : j + "|" + i), out = [];
-    for (const [a, b, c] of PAIRS) if (idx.has(a) && idx.has(b)) n.set(key(idx.get(a), idx.get(b)), c);
-    const take = (p, q) => { const i = ISLANDS.indexOf(p), j = ISLANDS.indexOf(q), k = key(i, j), c = n.get(k) || 0; n.delete(k); out.push([i, j, 1 + Math.min(3, c)]); };
-    for (const hub of HUBS) hub.list.slice(1).forEach((q) => take(hub.list[0], q));
-    const full = HUBS.filter((h) => h.list.length);
-    for (let a = 0; a < (full.length > 2 ? full.length : full.length - 1); a++) {
-      const A = full[a], B = full[(a + 1) % full.length]; let best = null, bd = 1e9;
-      for (const p of A.list) for (const q of B.list) { const d = Math.hypot(p.pos[0] - q.pos[0], p.pos[2] - q.pos[2]) - p.R - q.R; if (d < bd) { bd = d; best = [p, q]; } }
-      take(...best);
-    }
-    for (const [k, c] of n) out.push([...k.split("|").map(Number), Math.min(4, c)]);
+    const idx = new Map(ISLANDS.map((q, i) => [q.id, i])), out = [];
+    for (const [a, b, c] of PAIRS) if (idx.has(a) && idx.has(b) && a !== b) out.push([idx.get(a), idx.get(b), 1 + Math.min(3, c || 0)]);
     return out;
   }
 
