@@ -99,8 +99,9 @@ t.eq(pref, ["old", "has", "none"], "Today picks the long overdue first, then amo
 
 // ---------- Today's round in its own box, Claude marking ----------
 await page.evaluate(() => { location.hash = "#/notes"; }); await page.waitForFunction(() => bonsai.S.view === "notes");
-await page.evaluate(() => { document.querySelector("#toast").hidden = true; });
-await page.keyboard.press("y"); await page.waitForSelector("#today #todayGo");
+await page.evaluate(() => { document.querySelector("#toast").hidden = true; document.activeElement?.blur?.(); });
+await page.keyboard.press("y"); await page.waitForSelector("#today:not([hidden])");
+await page.waitForSelector("#today #todayGo", { timeout: 8000 }).catch(async () => t.fail("Today: " + (await page.textContent("#today")).slice(0, 200)));
 const blur = await state(page, () => { const b = document.querySelector("#todayBlur"), r = b.getBoundingClientRect(), cs = getComputedStyle(b), top = document.querySelector("#top");
   return [cs.backdropFilter.includes("blur"), r.top <= 0 && r.left <= 0 && r.right >= innerWidth, +cs.zIndex > +getComputedStyle(top).zIndex, document.elementFromPoint(innerWidth - 20, 20) === b]; });
 t.eq(blur, [true, true, true, true], "Today floats over a blur that covers everything, the top bar too");
