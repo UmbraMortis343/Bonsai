@@ -97,5 +97,81 @@ const pref = await page.evaluate(async () => {
 });
 t.eq(pref, ["old", "has", "none"], "Today picks the long overdue first, then among the same day one with a question");
 
+// ---------- Today's round in its own box, Claude marking ----------
+await page.evaluate(() => { location.hash = "#/notes"; }); await page.waitForFunction(() => bonsai.S.view === "notes");
+await page.evaluate(() => { document.querySelector("#toast").hidden = true; });
+await page.keyboard.press("y"); await page.waitForSelector("#today #todayGo");
+const blur = await state(page, () => { const b = document.querySelector("#todayBlur"), r = b.getBoundingClientRect(), cs = getComputedStyle(b), top = document.querySelector("#top");
+  return [cs.backdropFilter.includes("blur"), r.top <= 0 && r.left <= 0 && r.right >= innerWidth, +cs.zIndex > +getComputedStyle(top).zIndex, document.elementFromPoint(innerWidth - 20, 20) === b]; });
+t.eq(blur, [true, true, true, true], "Today floats over a blur that covers everything, the top bar too");
+await page.keyboard.press("Enter"); await page.waitForSelector("#tq #tqAnswer");
+await page.waitForFunction(() => document.activeElement?.id === "tqAnswer", null, { timeout: 3000 }).catch(() => {});
+t.eq(await state(page, () => document.activeElement?.id), "tqAnswer", "the answer box takes the keys");
+t.eq(await page.$$eval("#tq kbd", (k) => k.map((x) => x.textContent)).then((k) => ["Esc", "↵", "Space", "Win+H"].every((x) => k.includes(x))), true, "keys shown: Esc, ↵, Space, Win+H");
+t.eq(await state(page, () => !!document.querySelector("#review:not([hidden])")), false, "the round doesn't leave for the review box");
+const q1 = await state(page, () => ({ id: bonsai.S.tq.ids[0], q: document.querySelector("#tqQ").textContent }));
+await page.screenshot({ path: "tests/shots/qbank-desktop-question.png" });
+await page.keyboard.type("The right answer, I think");
+const n0 = await state(page, () => __asked.length);
+await page.keyboard.press("Enter"); await page.waitForSelector("#tqMark");
+const mp = await state(page, () => __asked.at(-1));
+t.eq([mp.startsWith("Mark my answer"), mp.includes("My answer: The right answer, I think"), mp.includes(q1.q.slice(0, 30)), await state(page, () => __asked.length) - n0], [true, true, true, 1], "one small call marks it: the question, the answer, what's expected");
+t.eq([await page.textContent("#tqMark b"), await page.textContent("#tqMark span"), !!(await page.$("#tqAns")), await page.$eval('#tqRate .btn[data-mark="right"]', (b) => b.classList.contains("on"))], ["Right", "Marked right", true, true], "the mark, why, and the stored answer");
+await page.screenshot({ path: "tests/shots/qbank-desktop-marked.png" });
+await page.keyboard.press("3");   // he overrules: missed
+await page.waitForFunction(() => bonsai.S.tq?.i === 1 && bonsai.S.tq.phase === "ask");
+t.eq(await state(page, (id) => bonsai.today.pick().rated[id], q1.id), "again", "overruled to Missed: again");
+await page.waitForFunction(() => document.activeElement?.id === "tqAnswer"); await page.keyboard.type("about half of it");
+await page.keyboard.press("Enter"); await page.waitForSelector("#tqMark");
+t.eq(await page.textContent("#tqMark b"), "Partly", "partly");
+const q2 = await state(page, () => bonsai.S.tq.ids[1]);
+await page.keyboard.press("Enter"); await page.waitForFunction(() => bonsai.S.tq?.i === 2 && bonsai.S.tq.phase === "ask");
+t.eq(await state(page, (id) => bonsai.today.pick().rated[id], q2), "hard", "↵ takes Claude's mark: partly is hard");
+await page.waitForFunction(() => document.activeElement?.id === "tqAnswer"); const before3 = await state(page, () => __asked.length);
+await page.keyboard.press(" "); await page.waitForSelector("#tqRate");
+t.eq([await page.$$eval("#tqRate .btn", (b) => b.map((x) => x.dataset.mark)), await state(page, () => __asked.length) - before3], [["right", "partly", "missed"], 0], "Space with nothing typed shows the answer to mark yourself");
+const q3 = await state(page, () => bonsai.S.tq.ids[2]);
+await page.keyboard.press("1"); await page.waitForFunction(() => bonsai.S.tq?.i === 3);
+t.eq(await state(page, (id) => bonsai.today.pick().rated[id], q3), "good", "Right is good");
+await page.keyboard.press("Escape"); await page.waitForFunction(() => !bonsai.S.tq);
+t.eq([await state(page, () => bonsai.today.open), await page.textContent("#todayProgress")], [true, "3/" + (await state(page, () => bonsai.today.pick().ids.length))], "Esc stops the round, back to Today");
+await page.keyboard.press("Escape"); await page.waitForSelector("#today", { state: "hidden" });
+t.eq(await page.$eval("#todayBlur", (b) => b.hidden), true, "and Esc again closes it");
+
+// ---------- the calendar: numbers only, purple for 11 of 11, green ten or more, yellow fewer ----------
+const days = await state(page, async () => {
+  const d = (k) => { const x = new Date(); x.setDate(k); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(k).padStart(2, "0")}`; };
+  const keys = [d(3), d(4), d(5), d(6)];
+  const days = { ...(await bonsai.store.getMeta("days")), [keys[0]]: { n: 11, asked: 11, good: 11, done: true }, [keys[1]]: { n: 10, asked: 10, good: 10, done: true }, [keys[2]]: { n: 10, asked: 10, good: 6, done: true }, [keys[3]]: { n: 10, asked: 0, good: 0, done: false } };
+  await bonsai.store.setMeta("days", days); await bonsai.refresh(); return keys;
+});
+await page.keyboard.press("y"); await page.waitForSelector("#todayCal");
+const cal = await page.evaluate((keys) => { const v = (n) => getComputedStyle(document.body).getPropertyValue(n).trim(), rgb = (c) => { const e = document.createElement("i"); e.style.color = c; document.body.append(e); const r = getComputedStyle(e).color; e.remove(); return r; };
+  return { cells: keys.map((k) => { const s = document.querySelector(`.tdday[data-day="${k}"] .s`); return s ? [s.textContent, getComputedStyle(s).color] : null; }), want: ["--perfect", "--accent", "--fair"].map((x) => rgb(v(x))) }; }, days);
+t.eq(cal.cells, [["11", cal.want[0]], ["10", cal.want[1]], ["6", cal.want[2]], null], "11 purple, 10 green, 6 yellow, nothing asked shows nothing");
+await page.screenshot({ path: "tests/shots/qbank-calendar.png" });
+await page.keyboard.press("Escape");
+
 await ctx.close();
+
+// ---------- the phone: no Claude; the note asks, the name is kept back; Show, then Got it or Missed ----------
+const pctx = await t.browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true }), phone = await pctx.newPage();
+phone.on("pageerror", (e) => t.fail("phone page error: " + e.message));
+await phone.goto(t.url + "#/notes"); await phone.waitForSelector("body[data-ready]");
+await phone.tap("#todayBtn"); await phone.waitForSelector("#today #todayGo");
+await phone.tap("#todayGo"); await phone.waitForSelector("#tq #tqShow");
+const cue = await state(phone, () => { const n = bonsai.S.byId.get(bonsai.S.tq.ids[0]), card = document.querySelector("#tq").textContent; return { note: (n.note || "").trim(), title: n.title, qs: (n.qs || []).length, kind: document.querySelector("#tqKind")?.textContent || "", q: document.querySelector("#tqQ").textContent, hidden: !card.includes(n.title) }; });
+if (!cue.qs && cue.note) t.eq([cue.kind, cue.q, cue.hidden], ["Name", cue.note, true], "no question yet: its note asks, the name kept back");
+t.eq(await phone.$("#tqAnswer"), null, "no answer box without Claude");
+const box = await phone.locator("#today").boundingBox(), show = await phone.locator("#tqShow").boundingBox();
+t.eq([Math.round(box.width), box.height >= 800, show.height >= 48], [390, true, true], "the box fills the phone, big buttons");
+await phone.screenshot({ path: "tests/shots/qbank-phone-question.png" });
+await phone.tap("#tqShow"); await phone.waitForSelector("#tqRate");
+t.eq(await phone.$$eval("#tqRate .btn", (b) => b.map((x) => x.firstChild.textContent)), ["Got it", "Missed"], "Got it or Missed, no difficulty scale");
+const pid = await state(phone, () => bonsai.S.tq.ids[0]);
+await phone.screenshot({ path: "tests/shots/qbank-phone-answer.png" });
+await phone.tap('#tqRate .btn[data-mark="missed"]'); await phone.waitForFunction(() => bonsai.S.tq?.i === 1);
+t.eq(await state(phone, (id) => bonsai.today.pick().rated[id], pid), "again", "Missed is again");
+await phone.tap("#tqStop"); await phone.waitForSelector("#today #todayGo");
+await pctx.close();
 await t.end();

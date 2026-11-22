@@ -858,8 +858,31 @@ input.bask::placeholder{color:var(--muted)}
 .tdbtn{position:relative}
 .tdbtn.on{background:var(--well);border-color:var(--ink)}
 .tddot{position:absolute;top:3px;right:3px;width:7px;height:7px;border-radius:2px;background:var(--sap)}
-.tdview{position:absolute;inset:var(--top) 0 0 0;z-index:8;overflow:auto;background:var(--bg);display:grid;grid-template-columns:minmax(0,440px) minmax(0,1fr);align-content:start;gap:0 32px;
-  padding:16px max(16px,calc(50% - 480px)) calc(24px + env(safe-area-inset-bottom))}
+/* Today floats in the middle over everything, the top bar too, blurred and dimmed behind it */
+.tdblur{position:absolute;inset:0;z-index:12;background:rgb(24 24 22 / .26);backdrop-filter:blur(7px) saturate(.9);-webkit-backdrop-filter:blur(7px) saturate(.9)}
+.tdview{position:absolute;inset:24px;margin:auto;z-index:13;width:min(1000px,calc(100% - 48px));height:fit-content;max-height:calc(100% - 48px);overflow:auto;
+  background:var(--bg);border:1px solid var(--line);border-radius:6px;box-shadow:0 10px 40px rgb(0 0 0 / .22);
+  display:grid;grid-template-columns:minmax(0,440px) minmax(0,1fr);align-content:start;gap:0 32px;padding:18px 22px 22px}
+/* the day's questions, one at a time, in the same box */
+.tdview.round{width:min(640px,calc(100% - 48px));grid-template-columns:minmax(0,1fr)}
+.tqcard{display:grid;gap:12px;align-content:start}
+.tqcard .tdhead{margin-bottom:0}
+.tqpath{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+.tqcard h2{font-size:21px;line-height:1.3;text-wrap:balance}
+.tqcard h2.tqcue{font-size:18px;font-weight:500}
+.tqcard textarea{width:100%;font:inherit;padding:9px 11px;border:1px solid var(--line);border-radius:4px;background:var(--card);color:var(--ink);resize:vertical;min-height:84px}
+.tqcard textarea:focus{outline:none;border-color:var(--accent)}
+.tqcard .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.tqdict{display:inline-flex;align-items:center;gap:5px;font-size:13px}
+.tqsaid{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--muted);border-left:3px solid var(--line);padding:2px 0 2px 10px}
+.tqmark{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.tqmark b{font-size:15px;border:1px solid currentColor;border-radius:3px;padding:1px 7px}
+.tqmark.right b{color:var(--accent)} .tqmark.partly b{color:var(--fair)} .tqmark.missed b{color:var(--sap)}
+.tqrate .btn{flex:1;justify-content:center;min-height:40px}
+.tqrate .btn.on{border-color:var(--ink);background:var(--well)}
+.tqrate .btn.primary{flex:1.3}
+.tqbig{min-height:44px;justify-content:center}
+.tdbank{font-size:13px;font-variant-numeric:tabular-nums}
 .tdhead{grid-column:1/-1;display:flex;align-items:center;gap:8px;margin-bottom:12px}
 .tdstreak{display:flex;align-items:baseline;gap:7px}
 .tdstreak b{font-size:38px;line-height:1;font-variant-numeric:tabular-nums}
@@ -902,7 +925,13 @@ input.bask::placeholder{color:var(--muted)}
 .tdrate.hard,.tdrate.miss{color:var(--sap);border-color:var(--sap)}
 .tdlscore b{font-size:20px;font-variant-numeric:tabular-nums}
 @media (max-width:700px){
-  .tdview{grid-template-columns:minmax(0,1fr);gap:16px;padding:12px 10px calc(20px + env(safe-area-inset-bottom))}
+  .tdview,.tdview.round{inset:0;width:100%;height:100%;max-height:none;border:0;border-radius:0;box-shadow:none;grid-template-columns:minmax(0,1fr);gap:16px;padding:12px 10px calc(20px + env(safe-area-inset-bottom))}
+  .tdview.round{display:flex;flex-direction:column;padding:14px 14px calc(20px + env(safe-area-inset-bottom))}
+  .tdview.round .tqcard{flex:1;display:flex;flex-direction:column}
+  .tdview.round .tqcard>:last-child{margin-top:auto}   /* the buttons sit under the thumb */
+  .tqcard{gap:16px} .tqcard h2{font-size:22px}
+  .tqrate .btn,.tqbig{min-height:56px;font-size:17px}
+  .tqbig{width:100%}
   .tdview kbd{display:none} .tdhead{margin-bottom:0}
   .tdday{min-height:42px;padding:3px 4px}
   .tdbtn kbd{display:none}
