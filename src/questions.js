@@ -74,34 +74,56 @@ export function questionFor(node, ctx = {}, day = dayNumber(), prefer = null) {
 }
 
 // ---------- Claude writes questions for a batch of ideas (Bonsai Desktop) ----------
-// ideas: [{ id, title, note, parent (title), kids: [{ id, title }], links: [{ id, other (title), label }] }]
-export function questionsPrompt({ topic = "", graph = "", ideas = [] }) {
+// The question bank: every idea should carry BANK_PER written questions of different kinds, written by Claude in
+// batches of BANK_BATCH on the laptop and kept on the idea (node.qs), so the phone asks them with no Claude there.
+export const BANK_PER = 3;
+export const BANK_BATCH = 25;
+const line = (s, n) => clip(String(s ?? "").replace(/\*\*|__|`+/g, "").replace(/\s+/g, " "), n);
+// ideas: [{ id, title, note, body, graph, parent (title), kids: [{ id, title }], links: [{ id, other (title), label }],
+//   need (how many to write), hasKinds (kinds it has), have (its questions' text, so none is written twice) }]
+// per: questions wanted for each idea (1: one each, the kinds mixed across the batch; 3: the bank's three kinds).
+export function questionsPrompt({ topic = "", graph = "", ideas = [], per = 1 }) {
+  const graphs = new Set(ideas.map((x) => x.graph).filter(Boolean)), many = graphs.size > 1;
+  const named = graph || (graphs.size === 1 ? [...graphs][0] : "");
   const sheet = ideas.map((x, k) => [
-    `${k + 1}. ${x.title}${x.note ? " | " + clip(x.note, 200) : ""}`,
+    `${k + 1}. ${x.title}${x.note ? " | " + line(x.note, 200) : ""}`,
+    many && x.graph ? `   in graph: ${x.graph}` : "",
     x.parent ? `   hangs from: ${x.parent}` : "",
     x.kids?.length ? `   under it: ${x.kids.map((c) => c.title).join("; ")}` : "",
     x.links?.length ? `   linked to: ${x.links.map((l) => l.other + (l.label ? ` (${l.label})` : "")).join("; ")}` : "",
+    x.body ? `   notes: ${line(x.body, 500)}` : "",
+    per > 1 && x.need && x.need < per ? `   already has: ${(x.hasKinds || []).join(", ") || "some"}; write ${x.need}` : "",
   ].filter(Boolean).join("\n")).join("\n");
-  return [
-    `Write review questions for ideas in my knowledge graph "${graph}"${topic ? `, topic "${topic}"` : ""}, in Bonsai, a knowledge-retention app.`,
-    "",
-    "When I water an idea I see your question, answer it in my head, then see the answer and rate myself. Write one question per idea. Kinds:",
-    "- recall: asks for the idea itself (\"What is impulse equal to?\")",
-    "- why: asks why a foundation holds (\"Why does a changing current induce a voltage?\")",
+  const kinds = [
+    "- recall: describes the idea and asks for it, so the answer is the idea. Never put the idea's title, or a form of it, in a recall question: not \"What is impulse?\" but \"What equals a force times the time it acts for?\"",
+    "- why: asks why it holds, or why it matters (\"Why does a changing current induce a voltage?\")",
+    "- apply: a quick problem to work, with numbers where the topic has them (physics, circuits, maths, music theory); \"a\" is the worked answer",
     "- connect: asks how the idea relates to one it is linked to; give that idea's exact title as \"link\"",
-    "- rebuild: for an idea with ideas under it; I name the hidden ones. Give 2 or 3 of their exact titles as \"hide\"",
-    "- apply: a quick problem with numbers, only where the topic suits it (physics, circuits, maths); \"a\" is the worked answer",
+    "- rebuild: for an idea with ideas under it; I name the hidden ones. Give 2 or 3 of their exact titles as \"hide\"; \"q\" may be empty",
+  ];
+  const ask = per > 1
+    ? [`Write ${per} questions for each idea, each of a different kind: a recall, a why, and then an apply where the topic suits it, else a connect if the idea is linked to another, else a rebuild if it has ideas under it, else another why. Where an idea already has questions, write only as many as it says, of kinds it doesn't have.`, "", "Kinds:", ...kinds]
+    : ["Write one question per idea, mixing the kinds across the batch. Kinds:", ...kinds];
+  return [
+    `Write review questions for ideas in my knowledge graph${many ? "s" : ""}${named ? ` "${named}"` : ""}${topic ? `, topic "${topic}"` : ""}, in Bonsai, a knowledge-retention app.`,
     "",
-    "Mix the kinds across the batch. Don't put the idea's title in a recall or why question. Questions under 200 characters; answers short (under 300), and leave \"a\" empty when the idea's title and note already answer it.",
+    "Each morning Bonsai asks me one question on an idea; I answer, typed or spoken, then see your answer. The questions should test whether I understand the idea and can use it, not whether I recognise its name. Build them from the idea's note, notes, and the ideas around it; keep to what's standard for the topic.",
+    "",
+    ...ask,
+    "",
+    "Questions under 200 characters. Answers (\"a\") 1 or 2 sentences, under 300 characters; a rebuild needs none. No \"what is X?\" with X the idea.",
     "",
     "Reply with only JSON, in this shape:",
-    '{"questions":[{"idea":1,"kind":"why","q":"…","a":"…"},{"idea":2,"kind":"connect","q":"…","a":"…","link":"…"},{"idea":3,"kind":"rebuild","q":"…","hide":["…","…"]}]}',
+    '{"questions":[{"idea":1,"kind":"recall","q":"…","a":"…"},{"idea":1,"kind":"why","q":"…","a":"…"},{"idea":2,"kind":"connect","q":"…","a":"…","link":"…"},{"idea":3,"kind":"rebuild","q":"","hide":["…","…"]}]}',
     "",
     "The ideas:",
     "",
     sheet,
   ].join("\n");
 }
+
+// A recall that names its own idea gives the answer away.
+export const namesItself = (q, title) => { const t = norm(title).replace(/[^\p{L}\p{N} ]/gu, ""), x = norm(q).replace(/[^\p{L}\p{N} ]/gu, ""); return t.length >= 3 && x.includes(t); };
 
 // Reads Claude's reply (parsed JSON, or text holding it) against the ideas it was asked about.
 // Returns { list: [{ id, q }], bad } where q is a question ready to keep (by: "claude").
@@ -114,11 +136,15 @@ export function readQuestions(reply, ideas) {
   }
   const rows = Array.isArray(data) ? data : Array.isArray(data?.questions) ? data.questions : null;
   if (!rows) throw new Error("Claude's reply had no questions");
-  const list = [], at = new Date().toISOString(); let bad = 0;
+  const list = [], at = new Date().toISOString(), seen = new Map(), got = new Map(); let bad = 0;
   for (const r of rows) {
     const idea = ideas[(Number(r?.idea) || 0) - 1];
     const kind = norm(r?.kind);
     if (!idea || !KINDS.includes(kind)) { bad++; continue; }
+    if (kind === "recall" && namesItself(r.q, idea.title)) { bad++; continue; }
+    if (!seen.has(idea.id)) seen.set(idea.id, new Set((idea.have || []).map(norm)));
+    if (kind !== "rebuild" && seen.get(idea.id).has(norm(r.q))) { bad++; continue; }
+    if (idea.need != null && (got.get(idea.id) || 0) >= idea.need) { bad++; continue; }
     const x = { kind, q: r.q, a: r.a };
     if (kind === "connect") {
       const l = (idea.links || []).find((l) => norm(l.other) === norm(r.link)) || (idea.links?.length === 1 ? idea.links[0] : null);
@@ -133,7 +159,35 @@ export function readQuestions(reply, ideas) {
     }
     const q = makeQuestion(x, "claude", at);
     if (!q) { bad++; continue; }
+    seen.get(idea.id).add(norm(q.q)); got.set(idea.id, (got.get(idea.id) || 0) + 1);
     list.push({ id: idea.id, q });
   }
   return { list, bad };
+}
+
+// ---------- Claude marks an answer (Today, Bonsai Desktop) ----------
+// One quick call per answer: the question, what he wrote, the stored answer and the idea's note. The reply is
+// { mark: right | partly | missed, why: one short line }.
+export const MARKS = ["right", "partly", "missed"];
+export const MARK_NAME = { right: "Right", partly: "Partly", missed: "Missed" };
+export const MARK_RATING = { right: "good", partly: "hard", missed: "again" };
+export function markPrompt({ topic = "", title = "", note = "", kind = "", q = "", a = "", answer = "" }) {
+  return [
+    "Mark my answer to a review question in Bonsai, a knowledge-retention app. Right: it has the substance, whatever the wording or spelling. Partly: some of it, but something key is missing or wrong. Missed: not really.",
+    "",
+    topic ? `Topic: ${topic}` : "",
+    `Idea: ${title}${note ? " | " + line(note, 300) : ""}`,
+    `Question${kind ? ` (${kind})` : ""}: ${line(q, 400)}`,
+    a ? `Expected: ${line(a, 600)}` : "",
+    `My answer: ${line(answer, 1200)}`,
+    "",
+    'Reply with only JSON: {"mark":"right"|"partly"|"missed","why":"one short line, under 100 characters, said to me"}',
+  ].filter((x) => x !== "").join("\n");
+}
+export function readMark(text) {
+  const t = String(text || "").replace(/```(?:json)?/g, ""), a = t.indexOf("{"), b = t.lastIndexOf("}");
+  if (a < 0 || b <= a) return null;
+  let d; try { d = JSON.parse(t.slice(a, b + 1)); } catch { return null; }
+  const mark = norm(d?.mark);
+  return MARKS.includes(mark) ? { mark, why: clip(d.why, 160) } : null;
 }

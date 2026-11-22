@@ -17,13 +17,17 @@ const seed = (s) => { let h = 2166136261; for (const c of String(s)) { h ^= c.ch
 export const bonusDay = (day) => seed("bonus:" + day) % BONUS_EVERY === 0;
 
 // Longest overdue first, taking turns between topics: the topic whose oldest idea has waited longest goes first,
-// then the next, and round again. items: [{ id, zone, due (ms) }].
+// then the next, and round again. Among ideas due the same day, one with a written question goes before one with
+// none (so the question bank is used), but a day overdue always outranks that. items: [{ id, zone, due (ms), kinds }].
+const DAY = 86400000;
+const asks = (x) => (x.kinds?.length ? 0 : 1);
+export const before = (a, b) => Math.floor(a.due / DAY) - Math.floor(b.due / DAY) || asks(a) - asks(b) || a.due - b.due || String(a.id).localeCompare(String(b.id));
 export function spread(items) {
   const by = new Map();
-  for (const it of [...items].sort((a, b) => a.due - b.due || String(a.id).localeCompare(String(b.id)))) { if (!by.has(it.zone)) by.set(it.zone, []); by.get(it.zone).push(it); }
+  for (const it of [...items].sort(before)) { if (!by.has(it.zone)) by.set(it.zone, []); by.get(it.zone).push(it); }
   const lanes = [...by.values()], out = [];
   for (let k = 0; lanes.some((l) => l.length > k); k++) {
-    const row = lanes.filter((l) => l[k]).map((l) => l[k]).sort((a, b) => a.due - b.due);
+    const row = lanes.filter((l) => l[k]).map((l) => l[k]).sort(before);
     out.push(...row);
   }
   return out;

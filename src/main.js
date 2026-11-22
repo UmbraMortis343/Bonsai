@@ -24,7 +24,7 @@ import { desktop, canSee, liveStatus, liveProblem, askClaude, desktopUpdate } fr
 import { oralOpen, oralPrompt, readOral, oralMarkPrompt, readMarks } from "./paper.js";
 import { weekOf, sundayOpen, sundayPrompt, readTurn, stitchPrompt, readStitch, tally, isSunday, dayOf, SUNDAY_MAX } from "./sunday.js";
 import * as sync from "./sync.js";
-import { KINDS, KIND_NAME, REBUILD_Q, questionFor, usableQs, pickHide, questionsPrompt, readQuestions, dayNumber } from "./questions.js";
+import { KINDS, KIND_NAME, REBUILD_Q, questionFor, usableQs, pickHide, questionsPrompt, readQuestions, dayNumber, cleanQs, BANK_PER, BANK_BATCH, MARK_NAME, MARK_RATING, markPrompt, readMark } from "./questions.js";
 import { createInk } from "./ink.js";
 import * as focus from "./focus.js";
 import { createHistory } from "./history.js";
@@ -767,6 +767,7 @@ function appMenu(anchor) {
     S.view !== "notes" && S.view !== "tree" && { label: "Notes", key: "O", run: openNotes },
     (S.view === "forest" || S.view === "isles") && { label: "Timelapse", key: "T", run: tlToggle },
     desktop && { label: "Sunday session", key: "U", run: startSunday },
+    desktop && { label: bank.on ? bankLabel() : "Write questions", run: () => { if (!bank.on) bankRun({ all: true }); } },
     archived.length && { label: "Archived", run: () => menu(anchor, archived.map((x) => ({ label: `Restore ${x.name}`, run: async () => { await safely(() => (x.rootId ? store.updateTree : store.updateZone)(x.id, { archived: false })); refresh(); } }))) },
     "-", S.view === "isles" && { label: "Import map", run: importMap }, { label: "Import exam", run: importExam }, { label: "Export backup", run: exportBackup }, { label: "Restore backup", run: () => $("#importFile").click() },
     CHANNEL && { label: "Reset demo data", run: resetDemo },
@@ -1231,12 +1232,12 @@ function startReview(treeId) {
   let q = dueList(treeId);
   if (!q.length && treeId) q = (S.byTree.get(treeId) || []).filter((n) => srs.reviewable(n, kidsOf(n.id).length));
   if (!q.length) return toast("Nothing to water");
-  S.review = { ids: q.map((n) => n.id), i: 0, shown: false, n: 0 }; S.panel = null; S.quick = null;
+  bankStop(); S.review = { ids: q.map((n) => n.id), i: 0, shown: false, n: 0 }; S.panel = null; S.quick = null;
   stepReview();
 }
 function reviewIds(ids) {
   if (!ids.length) return toast("Nothing due");
-  S.review = { ids, i: 0, shown: false, n: 0 }; S.panel = null; S.quick = null;
+  bankStop(); S.review = { ids, i: 0, shown: false, n: 0 }; S.panel = null; S.quick = null;
   stepReview();
 }
 function stepReview() {
@@ -1293,7 +1294,7 @@ async function rateNow(rating) {
   stepReview();
 }
 async function endReview() {
-  const n = S.review?.n, today = S.review?.today; S.review = null;
+  const n = S.review?.n, today = S.review?.today; S.review = null; setTimeout(bankAuto, 0);
   await refresh({ animate: true }); renderReview();
   if (today) return todayShow();   // back to Today, with the score
   if (n) toast(`Reviewed ${n}`);
@@ -1371,7 +1372,7 @@ async function writeQuestions(treeId) {
   const all = (S.byTree.get(tree.id) || []).filter((n) => !n.ghost && !(n.qs || []).length);
   if (!all.length) return toast("Every idea has a question");
   const pick = all.slice(0, WRITE_MAX), zone = S.zones.find((z) => z.id === tree.zoneId);
-  const ideas = pick.map((n) => { const c = qctx(n); return { id: n.id, title: n.title, note: n.note || "", parent: S.byId.get(n.parentId)?.title || "", kids: c.kids.map((k) => ({ id: k.id, title: k.title })), links: c.links.map((l) => ({ id: l.id, other: l.other.title, label: l.label })) }; });
+  const ideas = pick.map((n) => ideaSheet(n));
   const status = el("p", { class: "muted", id: "wqStatus", text: "Claude is writing" }), list = el("div", { class: "wqlist", id: "wqList" });
   let found = [];
   const body = el("div", { class: "wq" }, status, list);
@@ -1399,6 +1400,73 @@ async function writeQuestions(treeId) {
   await afterQuestion();
   toast(`Kept ${keep.length} question${keep.length === 1 ? "" : "s"}`, { label: "Undo", run: async () => { await safely(() => store.restoreRows({ nodes: before })); afterQuestion(); } });
 }
+
+// What Claude is told about an idea when writing its questions: its note and notes, what it hangs from, what hangs
+// from it, its links, and (for the bank) how many it still needs and what it has.
+function ideaSheet(n, need) {
+  const c = qctx(n), have = usableQs(n, c);
+  return { id: n.id, title: n.title, note: n.note || "", body: n.body || "", graph: treeOf(n.treeId)?.name || "", parent: S.byId.get(n.parentId)?.title || "",
+    kids: c.kids.map((k) => ({ id: k.id, title: k.title })), links: c.links.map((l) => ({ id: l.id, other: l.other.title, label: l.label })),
+    have: (n.qs || []).map((q) => q.q), hasKinds: [...new Set(have.map((q) => q.kind))], ...(need != null ? { need } : {}) };
+}
+
+// ---------- the question bank (Bonsai Desktop) ----------
+// Every idea that can be reviewed should carry BANK_PER written questions of different kinds (questions.js). On the
+// laptop Claude writes them in the background, a topic at a time in batches of BANK_BATCH, one call at a time; each
+// batch is saved as it arrives (store.addQuestions, by Claude), so closing the app loses at most the batch under way,
+// and the questions sync to the phone with the rest of the idea. It starts when Bonsai Desktop opens and after Grow
+// or an exam adds ideas, and stops while a review or Today's round runs (each answer there is marked by Claude, so
+// the two don't queue behind each other). Menu → Write questions runs it now for everything, including ideas Claude
+// couldn't write for earlier in this session. Tests switch the automatic start on with pref `bankauto` = 1.
+const bank = { on: false, job: null, tried: new Set() };
+const haveQs = (n) => usableQs(n, qctx(n)).length;
+const bankPool = () => { const live = new Set(S.trees.map((t) => t.id)); return S.nodes.filter((n) => live.has(n.treeId) && srs.reviewable(n, kidsOf(n.id).length)); };
+// How far the bank has got: questions written of those wanted (BANK_PER per idea).
+function bankCount() { const pool = bankPool(); return { done: pool.reduce((a, n) => a + Math.min(BANK_PER, haveQs(n)), 0), total: pool.length * BANK_PER }; }
+const bankLabel = () => { const c = bankCount(); return `Questions ${c.done} of ${c.total}`; };
+const bankBusy = () => !!(S.review || S.oral || S.sun || S.tq);
+// The next batch: ideas short of questions, by topic and graph in the order they're shown, at most BANK_BATCH and one topic.
+function bankNext() {
+  const order = new Map(S.trees.map((t, i) => [t.id, i])), zord = new Map(S.zones.map((z, i) => [z.id, i]));
+  const short = bankPool().filter((n) => !bank.tried.has(n.id) && haveQs(n) < BANK_PER);
+  if (!short.length) return null;
+  const zoneOf = (n) => treeOf(n.treeId)?.zoneId;
+  short.sort((a, b) => (zord.get(zoneOf(a)) ?? 0) - (zord.get(zoneOf(b)) ?? 0) || order.get(a.treeId) - order.get(b.treeId) || byOrder(a, b));
+  const zone = zoneOf(short[0]);
+  return { zone: S.zones.find((z) => z.id === zone), nodes: short.filter((n) => zoneOf(n) === zone).slice(0, BANK_BATCH) };
+}
+function bankShow() {
+  const line = $("#bankLine"); if (line) { line.hidden = !bank.on; line.textContent = bank.on ? bankLabel() : ""; }
+}
+async function bankRun({ all = false } = {}) {
+  if (!desktop || bank.on) return;
+  if (bankBusy()) return;
+  const bad = liveProblem(await liveStatus()); if (bad) { if (all) toast(bad); return; }
+  if (all) bank.tried.clear();
+  if (!bankNext()) { if (all) toast("Every idea has its questions"); return; }
+  bank.on = true; bankShow();
+  try {
+    for (let b = bankNext(); b && !bankBusy(); b = bankNext()) {
+      const ideas = b.nodes.map((n) => ideaSheet(n, BANK_PER - haveQs(n)));
+      const job = askClaude(questionsPrompt({ topic: b.zone?.name || "", ideas, per: BANK_PER })); bank.job = job;
+      const r = await job.done; bank.job = null;
+      if (!r.ok) break;   // stopped, or Claude can't be reached: try again next time
+      let read; try { read = readQuestions(r.text, ideas); } catch { read = { list: [] }; }
+      for (const x of ideas) bank.tried.add(x.id);   // asked once a session; Write questions asks again
+      const by = new Map(); for (const f of read.list) { if (!by.has(f.id)) by.set(f.id, []); by.get(f.id).push(f.q); }
+      if (!by.size) continue;
+      const rows = [...by].map(([id, qs]) => ({ id, qs }));
+      if (!(await safely(() => store.addQuestions(rows)))) break;
+      // the same change in memory, so nothing has to redraw under whatever he's doing
+      for (const { id, qs } of rows) { const n = S.byId.get(id); if (n) n.qs = cleanQs([...(n.qs || []), ...cleanQs(qs, "claude")]); }
+      bankShow();
+    }
+  } finally { bank.on = false; bank.job = null; bankShow(); if (S.todayOpen && !S.tq) renderToday(); }
+}
+// The automatic start: Bonsai Desktop only, quietly, and not under a test unless it asks for it.
+const bankAuto = () => { if (desktop && (!navigator.webdriver || pref("bankauto", "") === "1")) bankRun(); };
+// A review or Today's round is starting: the batch under way is let go (it's asked again later).
+const bankStop = () => { bank.job?.cancel(); };
 
 // ---------- oral ----------
 // Watering by talking (Bonsai Desktop, card t-examport): Claude asks about the ideas waiting in a graph, one
@@ -1429,6 +1497,7 @@ async function startOral(treeId, ids) {
   const tree = treeOf(treeId); if (!tree) return toast("Pick a graph first");
   if (!desktop) return toast("Orals run in Bonsai Desktop");
   const bad = liveProblem(await liveStatus()); if (bad) return toast(bad);
+  bankStop();
   const all = S.byTree.get(tree.id) || [], due = new Set(dueList(tree.id).map((n) => n.id));
   let pick = ids?.length ? ids.map((id) => S.byId.get(id)).filter(Boolean) : all.filter((n) => n.ghost || due.has(n.id));
   if (!pick.length) pick = all;   // nothing waiting: practise the whole graph
@@ -1520,6 +1589,7 @@ async function startSunday() {
   if (S.sun) return;
   if (!desktop) return toast("Sunday sessions run in Bonsai Desktop");
   const bad = liveProblem(await liveStatus()); if (bad) return toast(bad);
+  bankStop();
   const at = clockNow(), events = await store.eventsSince(new Date(at - 7 * DAY).toISOString()).catch(() => []);
   const week = weekOf({ zones: S.allZones, trees: S.allTrees, nodes: S.nodes, events, links: S.links }, at);
   if (S.oral) stopOral(); S.review = null;
@@ -2247,6 +2317,7 @@ async function applyExam(text) {
   const woke = made.woke.filter((w) => w.ghost).length, grey = made.nodeIds.filter((id) => S.byId.get(id)?.ghost).length, n = made.nodeIds.length - grey + woke;
   toast([`${n} idea${n === 1 ? "" : "s"} shown`, grey ? `${grey} greyed` : "", made.linkIds.length ? `${made.linkIds.length} link${made.linkIds.length === 1 ? "" : "s"}` : ""].filter(Boolean).join(", "),
     { label: "Undo", run: async () => { await safely(() => store.undoExam(made)); refresh(); } });
+  bankAuto();
 }
 
 // ---------- a topic past 200% moves onto an island of its own ----------
@@ -3355,6 +3426,7 @@ async function growDialog(id) {
   await refresh(); redrawNotes();
   const n = made.nodeIds.length, l = made.linkIds.length;
   toast(`Grew ${n} idea${n === 1 ? "" : "s"}${l ? `, ${l} link${l === 1 ? "" : "s"}` : ""}`, { label: "Undo", run: () => ungrow(page.id) });
+  bankAuto();
 }
 async function setPageStatus(id, value) {
   await load(); const p = pageOf(id); if (!p) return;
@@ -3720,10 +3792,12 @@ async function init() {
   window.bonsai = { S, store, sync, refresh, get stage() { return stage; }, get isles() { return isles; }, get tech() { return tech; }, get vocab() { return vocab; }, thirst, water, openTree, graphItems, dueByLevel, setLevel, zoneLevel,
     timelapse: { set secs(v) { tlSecs = v; }, get state() { return S.tl; } },
     sunday: { list: () => store.listSundays(), start: startSunday, setClock: (t) => { sunClock = t == null ? null : +new Date(t); renderTop(); }, get due() { return sundayDue(); } },
+    bank: { run: bankRun, count: bankCount, short: () => bankPool().filter((n) => haveQs(n) < BANK_PER).length, get on() { return bank.on; } },
     today: { pick: () => S.todayPick, days: () => S.days, pool: () => todayPool(), show: todayShow, close: todayClose, get open() { return !!S.todayOpen; }, get left() { return todayLeft(); },
       setClock: (t) => { sunClock = t == null ? null : +new Date(t); renderTop(); } } };
   await go();
   document.body.dataset.ready = "1";
   syncStart();
+  if (desktop) setTimeout(bankAuto, 1500);
 }
 init();
