@@ -2,6 +2,12 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.36.0 — 2026-11-23
+- Real questions. Bonsai Desktop now writes three questions for every idea in the background (a Recall that doesn't give the name away, a Why, and an Apply, Connect or Rebuild), a topic at a time, saved as it goes, so the phone has them through sync. Menu → Write questions runs it now. Grow and exam imports get theirs too.
+- Today's questions stay in the Today box, which floats over a blurred screen. In Bonsai Desktop you type or dictate an answer and Claude marks it Right, Partly or Missed with a line of why (1–3 to overrule, Space to just see the answer). On the phone: Show, then Got it or Missed. No difficulty scale. An idea with no question yet is asked by its note with the name hidden.
+- Today's scores are just the number right: purple for 11 of 11, green for ten or more, yellow under.
+- Bridges only join islands the tech tree joins (one grows from the other) inside a hub; none between hubs.
+
 ## 0.35.0 — 2026-11-21
 - Today (Y), in every window: your streak, the day's 10 questions and the month. The 10 are due ideas only, longest waiting first and spread across topics, mostly Focus, some Keep, now and then a bonus from Settled. ↵ starts them and they come back with the score. Each day in the calendar shows its score; click one for what was added, reviewed and stitched that day. An ochre mark on the button means today's aren't done, or it's Sunday and the session hasn't been held.
 - Watering as something to click is gone: no water buttons, no W, no Watering tab, and Thirsty (H) starts off. A topic only dries after about three weeks of neglect on Focus, six on Keep.
