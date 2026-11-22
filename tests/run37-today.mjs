@@ -3,7 +3,7 @@
 // Settled bonus) is kept for the day; a round runs through the review box and comes back with the score; the
 // calendar shows each day's score and opens a day's log. A topic only dries after long neglect.
 import { start, state } from "./lib.mjs";
-import { pickToday, streak, recordOf, assignKinds, monthGrid, bonusDay } from "../src/today.js";
+import { pickToday, streak, recordOf, assignKinds, monthGrid, bonusDay, scoreTier } from "../src/today.js";
 
 const t = await start("run37-today", 4338, { channel: "beta" });
 
@@ -28,6 +28,7 @@ const D = (k) => ({ n: 10, asked: 10, good: 8, done: !!k });
 t.eq(streak({ "2026-11-23": D(1), "2026-11-21": D(1), "2026-11-20": D(1) }, "2026-11-23"), 3, "a missed Sunday doesn't break the streak");
 t.eq(streak({ "2026-11-23": D(1), "2026-11-19": D(1) }, "2026-11-23"), 1, "a missed weekday does");
 t.eq(streak({ "2026-11-22": D(1), "2026-11-21": D(1) }, "2026-11-23"), 2, "today not done yet doesn't break it");
+t.eq([{ n: 11, asked: 11, good: 11 }, { n: 11, asked: 11, good: 10 }, { n: 10, asked: 10, good: 10 }, { n: 10, asked: 10, good: 9 }, { n: 4, asked: 4, good: 4 }, { n: 10, asked: 0, good: 0 }].map(scoreTier), ["perfect", "good", "good", "short", "good", ""], "11 of 11 purple, ten or more green, fewer yellow, nothing asked nothing");
 t.eq(monthGrid(2026, 10)[0].map((c) => c.d), [26, 27, 28, 29, 30, 31, 1], "the month starts on a Monday");
 
 // ----- in the app -----
@@ -81,12 +82,12 @@ const round = async (rate) => {
 };
 const asked = await round((i) => (i === 0 ? 2 : i === 1 ? 1 : 3));
 const n0 = pick.ids.length;
-t.eq(await page.textContent("#todayScore"), `${n0 - 2}/${n0}`, "back on Today with the score");
+t.eq(await page.textContent("#todayScore"), String(n0 - 2), "back on Today with the score, the number right only");
 t.eq(await page.$$("#todayDot").then((x) => x.length), 0, "and the mark has gone");
 t.eq(await page.textContent("#todayStreak b"), "1", "a streak of one");
 const today = pick.day;
 t.eq(await state(page, (d) => bonsai.today.days()[d], today), { n: n0, asked: n0, good: n0 - 2, done: true }, "the day's record");
-t.eq(await page.$eval(`.tdday[data-day="${today}"]`, (e) => [e.classList.contains("today"), e.querySelector(".s")?.textContent]), [true, `${n0 - 2}/${n0}`], "the calendar shows today's score");
+t.eq(await page.$eval(`.tdday[data-day="${today}"]`, (e) => [e.classList.contains("today"), e.querySelector(".s")?.textContent, e.querySelector(".s")?.className]), [true, String(n0 - 2), "s short"], "the calendar shows today's score as a number, yellow under ten");
 
 // the log: today's reviews and what was added; a Sunday session held shows on the calendar and in the log
 await state(page, (d) => bonsai.store.addSunday({ day: d, turns: [], summary: "", kept: { links: 2, notes: 1, questions: 0, fuzzy: 0 }, saved: true }), today);
@@ -120,7 +121,7 @@ const pick2 = await state(page, () => bonsai.today.pick());
 t.eq([pick2.day !== today, await page.textContent("#todayStreak b")], [true, "1"], "tomorrow's pick, and the streak still stands");
 await round(() => 4);
 t.eq(await page.textContent("#todayStreak b"), "2", "two days in a row");
-t.eq(await page.textContent("#todayScore"), `${pick2.ids.length}/${pick2.ids.length}`, "all easy, all good");
+t.eq(await page.textContent("#todayScore"), String(pick2.ids.length), "all easy, all good");
 await key("Escape"); await page.evaluate(() => bonsai.today.setClock(null));
 
 // dryness only after long neglect: a Focus topic's ideas ten days past due leave it healthy; four weeks dries it

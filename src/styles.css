@@ -1,7 +1,7 @@
 /* Bonsai. The 3D stage fills the screen; every control floats over it. */
 :root{
   --bg:#ffffff; --card:#ffffff; --card-t:rgb(255 255 255 / .96); --ink:#1d1d1b; --muted:#6f6e69; --line:#e5e4df; --well:#f4f3ef; --hover:rgb(29 29 27 / .05);
-    --accent:#3e7a4b; --accent-ink:#ffffff; --sap:#93703f; --danger:#b5483e; --shadow:0 1px 2px rgb(0 0 0 / .06),0 6px 20px rgb(0 0 0 / .08);
+    --accent:#3e7a4b; --accent-ink:#ffffff; --sap:#93703f; --perfect:#7b5e8f; --fair:#a6862a; --danger:#b5483e; --shadow:0 1px 2px rgb(0 0 0 / .06),0 6px 20px rgb(0 0 0 / .08);
     --grid:#ecebe6; --limb:#a3a19a; --ring:#d5d3cc; --trunk:#4a4945;
   --c-gray:#787774;--c-brown:#9f6b53;--c-orange:#d9730d;--c-yellow:#cb912f;--c-green:#448361;--c-blue:#337ea9;--c-purple:#9065b0;--c-pink:#c14c8a;--c-red:#d44c47;
     --b-gray:#f1f1ef;--b-brown:#f4eeee;--b-orange:#fbecdd;--b-yellow:#fbf3db;--b-green:#edf3ec;--b-blue:#e7f3f8;--b-purple:#f6f3f9;--b-pink:#faf1f5;--b-red:#fdebec;
@@ -11,7 +11,7 @@
 }
 @media (prefers-color-scheme:dark){
   :root{ --bg:#151514; --card:#1c1c1b; --card-t:rgb(28 28 27 / .96); --ink:#ebeae6; --muted:#9a9892; --line:#2d2d2b; --well:#232321; --hover:rgb(255 255 255 / .05);
-    --accent:#7fb489; --accent-ink:#10190f; --sap:#c39b64; --danger:#df6a5e; --shadow:0 1px 2px rgb(0 0 0 / .4),0 6px 20px rgb(0 0 0 / .45);
+    --accent:#7fb489; --accent-ink:#10190f; --sap:#c39b64; --perfect:#b39bc7; --fair:#d5b55e; --danger:#df6a5e; --shadow:0 1px 2px rgb(0 0 0 / .4),0 6px 20px rgb(0 0 0 / .45);
     --grid:#1f1f1e; --limb:#5d5c58; --ring:#2f2f2d; --trunk:#e3e2de;
     --c-gray:#9b9b9b;--c-brown:#ba856f;--c-orange:#c77d48;--c-yellow:#ca9849;--c-green:#529e72;--c-blue:#5e87c9;--c-purple:#9d68d3;--c-pink:#d15796;--c-red:#df5452;
     --b-gray:#2f2f2f;--b-brown:#4a3229;--b-orange:#5c3b23;--b-yellow:#564328;--b-green:#243d30;--b-blue:#143a4e;--b-purple:#3c2d49;--b-pink:#4e2c3c;--b-red:#522e2a; color-scheme:dark; }
@@ -36,7 +36,7 @@ kbd{font:600 11px/1 var(--font);border:1px solid var(--line);border-bottom-width
 .tech canvas{display:block;position:absolute;inset:0}
 /* the tech tree follows the garden's day and night: at night the whole screen takes the dark colours */
 body.night-ui{--bg:#151514; --card:#1c1c1b; --card-t:rgb(28 28 27 / .96); --ink:#ebeae6; --muted:#9a9892; --line:#2d2d2b; --well:#232321; --hover:rgb(255 255 255 / .05);
-    --accent:#7fb489; --accent-ink:#10190f; --sap:#c39b64; --danger:#df6a5e; --shadow:0 1px 2px rgb(0 0 0 / .4),0 6px 20px rgb(0 0 0 / .45);
+    --accent:#7fb489; --accent-ink:#10190f; --sap:#c39b64; --perfect:#b39bc7; --fair:#d5b55e; --danger:#df6a5e; --shadow:0 1px 2px rgb(0 0 0 / .4),0 6px 20px rgb(0 0 0 / .45);
     --grid:#1f1f1e; --limb:#5d5c58; --ring:#2f2f2d; --trunk:#e3e2de;
   --c-gray:#9b9b9b;--c-brown:#ba856f;--c-orange:#c77d48;--c-yellow:#ca9849;--c-green:#529e72;--c-blue:#5e87c9;--c-purple:#9d68d3;--c-pink:#d15796;--c-red:#df5452;
     --b-gray:#2f2f2f;--b-brown:#4a3229;--b-orange:#5c3b23;--b-yellow:#564328;--b-green:#243d30;--b-blue:#143a4e;--b-purple:#3c2d49;--b-pink:#4e2c3c;--b-red:#522e2a; color-scheme:dark}
@@ -882,8 +882,11 @@ input.bask::placeholder{color:var(--muted)}
 .tdday{display:grid;align-content:start;justify-items:start;gap:1px;min-height:46px;padding:4px 5px;border:1px solid var(--line);border-radius:4px;background:var(--card);color:var(--ink);font:inherit;text-align:left;cursor:pointer}
 .tdday:hover{border-color:var(--muted)}
 .tdday .d{font-size:12px;font-weight:600;font-variant-numeric:tabular-nums}
-.tdday .s{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
-.tdday.done .s{color:var(--accent);font-weight:700}
+.tdday .s{font-size:15px;line-height:1.1;font-weight:700;color:var(--muted);font-variant-numeric:tabular-nums}
+/* a day's score: 11 of 11 on a bonus day purple, ten or more green, fewer a yellow ochre */
+.tdday .s.perfect,.tdscore.perfect,.tdlscore b.perfect{color:var(--perfect)}
+.tdday .s.good,.tdscore.good,.tdlscore b.good{color:var(--accent)}
+.tdday .s.short,.tdscore.short,.tdlscore b.short{color:var(--fair)}
 .tdday.out{opacity:.45}
 .tdday.pick{background:var(--well)}
 .tdday.today{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}

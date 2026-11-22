@@ -67,6 +67,14 @@ export function recordOf(pick, live = null) {
   return { n: ids.length, asked, good, done: asked === ids.length };
 }
 
+// How a day's score is coloured: every one right on a bonus day (11 of 11) is "perfect", ten or more right (or all
+// of a smaller day) "good", fewer "short"; nothing asked, "" (the day shows no score).
+export function scoreTier(r) {
+  if (!r?.asked) return "";
+  if (r.n > DAILY && r.good === r.n) return "perfect";
+  return r.good >= Math.min(DAILY, r.n) ? "good" : "short";
+}
+
 // "YYYY-MM-DD" one day on (or back).
 export function addDays(key, d) { const [y, m, x] = key.split("-").map(Number); return dayOf(new Date(y, m - 1, x + d, 12)); }
 const dateOf = (key) => { const [y, m, x] = key.split("-").map(Number); return new Date(y, m - 1, x, 12); };

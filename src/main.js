@@ -28,7 +28,7 @@ import { KINDS, KIND_NAME, REBUILD_Q, questionFor, usableQs, pickHide, questions
 import { createInk } from "./ink.js";
 import * as focus from "./focus.js";
 import { createHistory } from "./history.js";
-import { pickToday, recordOf, streak, monthGrid, dayLog, addDays } from "./today.js";
+import { pickToday, recordOf, streak, monthGrid, dayLog, addDays, scoreTier } from "./today.js";
 
 const PALETTE = [["Blue", "#3b82f6"], ["Violet", "#8b5cf6"], ["Pink", "#ec4899"], ["Red", "#ef4444"], ["Orange", "#f97316"], ["Amber", "#f59e0b"], ["Green", "#22c55e"], ["Teal", "#14b8a6"], ["Cyan", "#06b6d4"]];
 const SWATCHES = [["Auto", ""], ...PALETTE];
@@ -1720,7 +1720,7 @@ function renderToday() {
     return el("span", { class: "tdq" + (r ? " " + RATED[r] : "") + (id === p.bonus ? " bonus" : ""), dataset: { id, rated: r || "" }, title: r ? `${n?.title || ""} · ${r}` : "" }); }));
   const ten = el("section", { class: "tdten", id: "todayTen" },
     !rec || !rec.n ? el("p", { class: "muted", id: "todayNone", text: "Nothing due" })
-      : rec.done ? el("div", { class: "row" }, el("b", { class: "tdscore", id: "todayScore", text: `${rec.good}/${rec.n}` }), el("span", { class: "grow" }), squares)
+      : rec.done ? el("div", { class: "row" }, el("b", { class: "tdscore " + scoreTier(rec), id: "todayScore", text: String(rec.good) }), el("span", { class: "grow" }), squares)
       : el("div", { class: "row" }, el("button", { class: "btn primary", id: "todayGo", onclick: todayStart }, "Start", key("↵")), el("span", { class: "muted", id: "todayProgress", text: `${rec.asked}/${rec.n}` }), el("span", { class: "grow" }), squares),
     sundayDue() ? el("div", { class: "row" }, el("button", { class: "btn", id: "todaySunday", onclick: () => { todayClose(); startSunday(); } }, "Sunday", key("U"))) : null);
   const run = streak(S.days, day);
@@ -1735,7 +1735,7 @@ function renderToday() {
   const cal = el("div", { class: "tdcal", id: "todayCal", role: "grid" }, wd.map((t) => el("span", { class: "tdwd", text: t })),
     weeks.flat().map((c) => { const r = S.days[c.key];
       return el("button", { type: "button", class: "tdday" + (c.inMonth ? "" : " out") + (c.key === day ? " today" : "") + (c.key === S.tdSel ? " pick" : "") + (held.has(c.key) ? " held" : "") + (r?.done && r.n ? " done" : ""), dataset: { day: c.key }, "aria-pressed": String(c.key === S.tdSel), onclick: () => todayPickDay(c.key) },
-        el("span", { class: "d", text: String(c.d) }), r?.n ? el("span", { class: "s", text: `${r.good}/${r.n}` }) : null); }));
+        el("span", { class: "d", text: String(c.d) }), r?.asked ? el("span", { class: "s " + scoreTier(r), text: String(r.good) }) : null); }));
   // the picked day's log
   const L = S.tdLog?.day === S.tdSel ? S.tdLog : null; if (!L) todayLogLoad(S.tdSel);
   const list = (rows) => el("ul", {}, rows);
@@ -1747,7 +1747,7 @@ function renderToday() {
   if (L) {
     const r = L.record, sun = L.sunday, k = sun?.kept || {};
     logBody = [
-      r?.asked ? el("p", { class: "tdlscore", id: "logScore" }, el("b", { text: `${r.good}/${r.n}` }), r.done ? null : el("span", { class: "muted", text: ` · ${r.asked} asked` })) : null,
+      r?.asked ? el("p", { class: "tdlscore", id: "logScore" }, el("b", { class: scoreTier(r), text: String(r.good) }), r.done ? null : el("span", { class: "muted", text: ` · ${r.asked} asked` })) : null,
       L.reviewed.length ? sec("logReviewed", "Reviewed", L.reviewed.length, el("div", {}, list(cut(L.reviewed).map((x) => item(x.title, go(() => jump(x.id)), el("span", { class: "tdrate " + (RATED[x.rating] || ""), text: x.rating ? x.rating[0].toUpperCase() + x.rating.slice(1) : "" })))), more(L.reviewed))) : null,
       L.added.length || L.graphs.length ? sec("logAdded", "Added", L.added.length, el("div", {}, list([...L.graphs.map((t) => item(t.name, go(() => goTree(t.id)), icon(ICON.graph))), ...cut(L.added).map((n) => item(n.title, go(() => jump(n.id))))]), more(L.added))) : null,
       L.notes.length ? sec("logNotes", "Notes", L.notes.length, el("div", {}, list(cut(L.notes).map((pg) => item(pg.title || "Untitled", go(() => { location.hash = notesHash(pg.id); }), icon(pg.kind === "ink" ? ICON.ink : ICON.page)))), more(L.notes))) : null,
