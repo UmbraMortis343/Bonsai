@@ -3,7 +3,7 @@
 // Settled bonus) is kept for the day; a round runs through the review box and comes back with the score; the
 // calendar shows each day's score and opens a day's log. A topic only dries after long neglect.
 import { start, state } from "./lib.mjs";
-import { pickToday, streak, recordOf, assignKinds, monthGrid, bonusDay } from "../src/today.js";
+import { pickToday, streak, recordOf, assignKinds, monthGrid, bonusDay, scoreTier } from "../src/today.js";
 
 const t = await start("run37-today", 4338, { channel: "beta" });
 
@@ -28,6 +28,7 @@ const D = (k) => ({ n: 10, asked: 10, good: 8, done: !!k });
 t.eq(streak({ "2026-11-23": D(1), "2026-11-21": D(1), "2026-11-20": D(1) }, "2026-11-23"), 3, "a missed Sunday doesn't break the streak");
 t.eq(streak({ "2026-11-23": D(1), "2026-11-19": D(1) }, "2026-11-23"), 1, "a missed weekday does");
 t.eq(streak({ "2026-11-22": D(1), "2026-11-21": D(1) }, "2026-11-23"), 2, "today not done yet doesn't break it");
+t.eq([{ n: 11, asked: 11, good: 11 }, { n: 11, asked: 11, good: 10 }, { n: 10, asked: 10, good: 10 }, { n: 10, asked: 10, good: 9 }, { n: 4, asked: 4, good: 4 }, { n: 10, asked: 0, good: 0 }].map(scoreTier), ["perfect", "good", "good", "short", "good", ""], "11 of 11 purple, ten or more green, fewer yellow, nothing asked nothing");
 t.eq(monthGrid(2026, 10)[0].map((c) => c.d), [26, 27, 28, 29, 30, 31, 1], "the month starts on a Monday");
 
 // ----- in the app -----
@@ -68,25 +69,26 @@ await key("y"); await page.waitForSelector("#today #todayGo");
 t.eq((await state(page, () => bonsai.today.pick())).ids, pick.ids, "the pick stays for the day");
 t.eq(await state(page, async () => (await bonsai.store.getMeta("today")).ids), pick.ids, "and is kept in meta, to sync");
 
-// the round: ↵ starts it; good for all but two (one hard, one again)
-const round = async (rate) => {
-  await key("Enter"); await page.waitForSelector("#review:not([hidden]) #showAnswer");
-  const n = await state(page, () => bonsai.S.review.ids.length);
+// the round: ↵ starts it in the Today box; no Claude here, so Space shows the answer and Got it (1) or Missed (2)
+const round = async (mark) => {
+  await key("Enter"); await page.waitForSelector("#today #tq #tqShow");
+  const n = await state(page, () => bonsai.S.tq.ids.length);
   for (let i = 0; i < n; i++) {
-    await page.waitForSelector("#showAnswer"); await key(" "); await page.waitForSelector(".rate");
-    await key(String(rate(i))); await page.waitForFunction((k) => !bonsai.S.review || bonsai.S.review.i === k, i + 1);
+    await page.waitForFunction((k) => bonsai.S.tq?.i === k && bonsai.S.tq.phase === "ask", i);
+    await key(" "); await page.waitForSelector("#tqRate");
+    await key(String(mark(i))); await page.waitForFunction((k) => !bonsai.S.tq || bonsai.S.tq.i === k, i + 1);
   }
   await page.waitForSelector("#today #todayScore");
   return n;
 };
-const asked = await round((i) => (i === 0 ? 2 : i === 1 ? 1 : 3));
+const asked = await round((i) => (i < 2 ? 2 : 1));
 const n0 = pick.ids.length;
-t.eq(await page.textContent("#todayScore"), `${n0 - 2}/${n0}`, "back on Today with the score");
+t.eq(await page.textContent("#todayScore"), String(n0 - 2), "back on Today with the score, the number right only");
 t.eq(await page.$$("#todayDot").then((x) => x.length), 0, "and the mark has gone");
 t.eq(await page.textContent("#todayStreak b"), "1", "a streak of one");
 const today = pick.day;
 t.eq(await state(page, (d) => bonsai.today.days()[d], today), { n: n0, asked: n0, good: n0 - 2, done: true }, "the day's record");
-t.eq(await page.$eval(`.tdday[data-day="${today}"]`, (e) => [e.classList.contains("today"), e.querySelector(".s")?.textContent]), [true, `${n0 - 2}/${n0}`], "the calendar shows today's score");
+t.eq(await page.$eval(`.tdday[data-day="${today}"]`, (e) => [e.classList.contains("today"), e.querySelector(".s")?.textContent, e.querySelector(".s")?.className]), [true, String(n0 - 2), "s short"], "the calendar shows today's score as a number, yellow under ten");
 
 // the log: today's reviews and what was added; a Sunday session held shows on the calendar and in the log
 await state(page, (d) => bonsai.store.addSunday({ day: d, turns: [], summary: "", kept: { links: 2, notes: 1, questions: 0, fuzzy: 0 }, saved: true }), today);
@@ -118,9 +120,9 @@ await page.waitForSelector("#todayBtn #todayDot");
 await key("y"); await page.waitForSelector("#today #todayGo");
 const pick2 = await state(page, () => bonsai.today.pick());
 t.eq([pick2.day !== today, await page.textContent("#todayStreak b")], [true, "1"], "tomorrow's pick, and the streak still stands");
-await round(() => 4);
+await round(() => 1);
 t.eq(await page.textContent("#todayStreak b"), "2", "two days in a row");
-t.eq(await page.textContent("#todayScore"), `${pick2.ids.length}/${pick2.ids.length}`, "all easy, all good");
+t.eq(await page.textContent("#todayScore"), String(pick2.ids.length), "all easy, all good");
 await key("Escape"); await page.evaluate(() => bonsai.today.setClock(null));
 
 // dryness only after long neglect: a Focus topic's ideas ten days past due leave it healthy; four weeks dries it
@@ -145,11 +147,11 @@ t.eq(await state(phone, () => document.querySelector("#top").scrollWidth <= 390)
 await phone.tap("#todayBtn"); await phone.waitForSelector("#today #todayGo");
 t.eq(await state(phone, () => [document.querySelector("#today").scrollWidth <= 390, document.querySelector("#todayCal").getBoundingClientRect().right <= 390]), [true, true], "Today fits the phone");
 await phone.screenshot({ path: "tests/shots/today-phone.png" });
-await phone.tap("#todayGo"); await phone.waitForSelector("#review:not([hidden]) #showAnswer");
-const rv = await phone.locator("#review").boundingBox();
-t.eq(rv.x >= 0 && rv.x + rv.width <= 390, true, "the question fits too");
+await phone.tap("#todayGo"); await phone.waitForSelector("#today #tq #tqShow");
+const rv = await phone.locator("#today").boundingBox();
+t.eq([rv.x, rv.y <= 1, Math.round(rv.width), rv.height >= 800], [0, true, 390, true], "the question fills the phone");
 await phone.screenshot({ path: "tests/shots/today-phone-question.png" });
-await phone.tap("#reviewClose"); await phone.waitForSelector("#today #todayGo");
+await phone.tap("#tqStop"); await phone.waitForSelector("#today #todayGo");
 t.eq(true, true, "stopping goes back to Today");
 for (const h of ["#/", "#/forest"]) { await phone.evaluate((x) => { location.hash = x; }, h); await phone.waitForTimeout(400); t.eq(await state(phone, () => document.querySelector("#top").scrollWidth <= 390), true, `the top bar fits the phone at ${h}`); }
 await t.end();

@@ -49,6 +49,7 @@ await page.waitForSelector("#oralQ");
 t.eq(await page.evaluate((id) => bonsai.S.oral.g.ideas.some((i) => i.key === id), g.ghost), true, "the graph's Oral asks about greyed ideas too");
 await page.fill("#oralAnswer", `It is mostly about ${ghostName}.`); await page.press("#oralAnswer", "Enter");
 await page.waitForFunction(() => document.querySelector("#oralQ")?.textContent === "Why does that matter?");
+await page.waitForFunction((id) => !document.querySelector(`.lbl.node[data-id="${id}"]`)?.classList.contains("ghost"), g.ghost, { timeout: 5000 }).catch(() => {});   // the graph redraws just after the question shows
 t.eq([await page.textContent("#oralHeard"), await page.evaluate((id) => !document.querySelector(`.lbl.node[data-id="${id}"]`)?.classList.contains("ghost"), g.ghost)], [`1 of ${await page.evaluate(() => bonsai.S.oral.g.ideas.length)} heard`, true], "Claude's tally lights up the greyed idea it heard");
 await page.fill("#oralAnswer", "Because it explains the rest."); await page.press("#oralAnswer", "Enter");
 await page.waitForSelector("#oralScore");

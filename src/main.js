@@ -24,11 +24,11 @@ import { desktop, canSee, liveStatus, liveProblem, askClaude, desktopUpdate } fr
 import { oralOpen, oralPrompt, readOral, oralMarkPrompt, readMarks } from "./paper.js";
 import { weekOf, sundayOpen, sundayPrompt, readTurn, stitchPrompt, readStitch, tally, isSunday, dayOf, SUNDAY_MAX } from "./sunday.js";
 import * as sync from "./sync.js";
-import { KINDS, KIND_NAME, REBUILD_Q, questionFor, usableQs, pickHide, questionsPrompt, readQuestions, dayNumber } from "./questions.js";
+import { KINDS, KIND_NAME, REBUILD_Q, questionFor, usableQs, pickHide, questionsPrompt, readQuestions, dayNumber, cleanQs, BANK_PER, BANK_BATCH, MARK_NAME, MARK_RATING, markPrompt, readMark } from "./questions.js";
 import { createInk } from "./ink.js";
 import * as focus from "./focus.js";
 import { createHistory } from "./history.js";
-import { pickToday, recordOf, streak, monthGrid, dayLog, addDays } from "./today.js";
+import { pickToday, recordOf, streak, monthGrid, dayLog, addDays, scoreTier } from "./today.js";
 
 const PALETTE = [["Blue", "#3b82f6"], ["Violet", "#8b5cf6"], ["Pink", "#ec4899"], ["Red", "#ef4444"], ["Orange", "#f97316"], ["Amber", "#f59e0b"], ["Green", "#22c55e"], ["Teal", "#14b8a6"], ["Cyan", "#06b6d4"]];
 const SWATCHES = [["Auto", ""], ...PALETTE];
@@ -767,6 +767,7 @@ function appMenu(anchor) {
     S.view !== "notes" && S.view !== "tree" && { label: "Notes", key: "O", run: openNotes },
     (S.view === "forest" || S.view === "isles") && { label: "Timelapse", key: "T", run: tlToggle },
     desktop && { label: "Sunday session", key: "U", run: startSunday },
+    desktop && { label: bank.on ? bankLabel() : "Write questions", run: () => { if (!bank.on) bankRun({ all: true }); } },
     archived.length && { label: "Archived", run: () => menu(anchor, archived.map((x) => ({ label: `Restore ${x.name}`, run: async () => { await safely(() => (x.rootId ? store.updateTree : store.updateZone)(x.id, { archived: false })); refresh(); } }))) },
     "-", S.view === "isles" && { label: "Import map", run: importMap }, { label: "Import exam", run: importExam }, { label: "Export backup", run: exportBackup }, { label: "Restore backup", run: () => $("#importFile").click() },
     CHANNEL && { label: "Reset demo data", run: resetDemo },
@@ -841,7 +842,7 @@ function shortcuts() {
       ["⇧Tab", "Garden, Knowledge, Library (Knowledge shows what's picked; Tab alone in the garden)"], ["[  ]", "The panel on the left, on the right"], ["/", "Search"], ["I", "Capture a thought"], ["K", "Tech tree"], ["O", "Notes beside a graph"], ["Y", "Today: the day's questions, streak, calendar"], ["U", "Sunday session (Bonsai Desktop)"], ["?", "These keys"]]],
     ["Building a graph", [["Tab", "Add under"], ["↵", "Add beside"], ["R", "Rename"], ["Del", "Delete (a picked link too)"], ["L", "Link"], ["G", "Graft"], ["X", "Make its own graph"], ["C", "Colour"], ["Q", "Add a question"], ["Space", "Notes"], ["⇧↵", "Open the board's graph in 3D"],
       ["Drag", "Move an idea; drop it on another to graft"], ["+ or Alt-drag", "Pull out a new idea, or a link"]]],
-    ["Today", [["↵", "Start the day's questions"], ["Space  1–4", "Show the answer, rate it"], ["← →", "A month back or on"], ["↑ ↓", "A day back or on"], ["0", "Back to today"], ["Esc", "Close"]]],
+    ["Today", [["↵", "Start the day's questions; send an answer"], ["Space", "Show the answer"], ["1–3", "Right, partly, missed (Got it, missed without Claude)"], ["← →", "A month back or on"], ["↑ ↓", "A day back or on"], ["0", "Back to today"], ["Esc", "Close"]]],
     ["Garden", [["D", "Day or night"], ["N  Z", "New graph, new topic"], ["S", "Split a full topic"], ["⇧1–3  ⇧0", "Focus, Keep, Settled; a topic back to its island's"]]],
     ["Timelapse", [["T", "Open or close"], ["Space", "Play or pause"], ["← →", "A day back or on"], ["⇧← ⇧→", "The marks: Sundays and big days"], ["⇧T", "Save as video"], ["Esc", "Back to now"]]],
     ["Tech tree", [["Space", "Open or close"], ["↵", "Put in the middle; again to open"], ["H  A", "Whole tree, everything open"], ["B", "What an island grows from"]]],
@@ -1231,12 +1232,12 @@ function startReview(treeId) {
   let q = dueList(treeId);
   if (!q.length && treeId) q = (S.byTree.get(treeId) || []).filter((n) => srs.reviewable(n, kidsOf(n.id).length));
   if (!q.length) return toast("Nothing to water");
-  S.review = { ids: q.map((n) => n.id), i: 0, shown: false, n: 0 }; S.panel = null; S.quick = null;
+  bankStop(); S.review = { ids: q.map((n) => n.id), i: 0, shown: false, n: 0 }; S.panel = null; S.quick = null;
   stepReview();
 }
 function reviewIds(ids) {
   if (!ids.length) return toast("Nothing due");
-  S.review = { ids, i: 0, shown: false, n: 0 }; S.panel = null; S.quick = null;
+  bankStop(); S.review = { ids, i: 0, shown: false, n: 0 }; S.panel = null; S.quick = null;
   stepReview();
 }
 function stepReview() {
@@ -1293,7 +1294,7 @@ async function rateNow(rating) {
   stepReview();
 }
 async function endReview() {
-  const n = S.review?.n, today = S.review?.today; S.review = null;
+  const n = S.review?.n, today = S.review?.today; S.review = null; setTimeout(bankAuto, 0);
   await refresh({ animate: true }); renderReview();
   if (today) return todayShow();   // back to Today, with the score
   if (n) toast(`Reviewed ${n}`);
@@ -1371,7 +1372,7 @@ async function writeQuestions(treeId) {
   const all = (S.byTree.get(tree.id) || []).filter((n) => !n.ghost && !(n.qs || []).length);
   if (!all.length) return toast("Every idea has a question");
   const pick = all.slice(0, WRITE_MAX), zone = S.zones.find((z) => z.id === tree.zoneId);
-  const ideas = pick.map((n) => { const c = qctx(n); return { id: n.id, title: n.title, note: n.note || "", parent: S.byId.get(n.parentId)?.title || "", kids: c.kids.map((k) => ({ id: k.id, title: k.title })), links: c.links.map((l) => ({ id: l.id, other: l.other.title, label: l.label })) }; });
+  const ideas = pick.map((n) => ideaSheet(n));
   const status = el("p", { class: "muted", id: "wqStatus", text: "Claude is writing" }), list = el("div", { class: "wqlist", id: "wqList" });
   let found = [];
   const body = el("div", { class: "wq" }, status, list);
@@ -1399,6 +1400,73 @@ async function writeQuestions(treeId) {
   await afterQuestion();
   toast(`Kept ${keep.length} question${keep.length === 1 ? "" : "s"}`, { label: "Undo", run: async () => { await safely(() => store.restoreRows({ nodes: before })); afterQuestion(); } });
 }
+
+// What Claude is told about an idea when writing its questions: its note and notes, what it hangs from, what hangs
+// from it, its links, and (for the bank) how many it still needs and what it has.
+function ideaSheet(n, need) {
+  const c = qctx(n), have = usableQs(n, c);
+  return { id: n.id, title: n.title, note: n.note || "", body: n.body || "", graph: treeOf(n.treeId)?.name || "", parent: S.byId.get(n.parentId)?.title || "",
+    kids: c.kids.map((k) => ({ id: k.id, title: k.title })), links: c.links.map((l) => ({ id: l.id, other: l.other.title, label: l.label })),
+    have: (n.qs || []).map((q) => q.q), hasKinds: [...new Set(have.map((q) => q.kind))], ...(need != null ? { need } : {}) };
+}
+
+// ---------- the question bank (Bonsai Desktop) ----------
+// Every idea that can be reviewed should carry BANK_PER written questions of different kinds (questions.js). On the
+// laptop Claude writes them in the background, a topic at a time in batches of BANK_BATCH, one call at a time; each
+// batch is saved as it arrives (store.addQuestions, by Claude), so closing the app loses at most the batch under way,
+// and the questions sync to the phone with the rest of the idea. It starts when Bonsai Desktop opens and after Grow
+// or an exam adds ideas, and stops while a review or Today's round runs (each answer there is marked by Claude, so
+// the two don't queue behind each other). Menu → Write questions runs it now for everything, including ideas Claude
+// couldn't write for earlier in this session. Tests switch the automatic start on with pref `bankauto` = 1.
+const bank = { on: false, job: null, tried: new Set() };
+const haveQs = (n) => usableQs(n, qctx(n)).length;
+const bankPool = () => { const live = new Set(S.trees.map((t) => t.id)); return S.nodes.filter((n) => live.has(n.treeId) && srs.reviewable(n, kidsOf(n.id).length)); };
+// How far the bank has got: questions written of those wanted (BANK_PER per idea).
+function bankCount() { const pool = bankPool(); return { done: pool.reduce((a, n) => a + Math.min(BANK_PER, haveQs(n)), 0), total: pool.length * BANK_PER }; }
+const bankLabel = () => { const c = bankCount(); return `Questions ${c.done} of ${c.total}`; };
+const bankBusy = () => !!(S.review || S.oral || S.sun || S.tq);
+// The next batch: ideas short of questions, by topic and graph in the order they're shown, at most BANK_BATCH and one topic.
+function bankNext() {
+  const order = new Map(S.trees.map((t, i) => [t.id, i])), zord = new Map(S.zones.map((z, i) => [z.id, i]));
+  const short = bankPool().filter((n) => !bank.tried.has(n.id) && haveQs(n) < BANK_PER);
+  if (!short.length) return null;
+  const zoneOf = (n) => treeOf(n.treeId)?.zoneId;
+  short.sort((a, b) => (zord.get(zoneOf(a)) ?? 0) - (zord.get(zoneOf(b)) ?? 0) || order.get(a.treeId) - order.get(b.treeId) || byOrder(a, b));
+  const zone = zoneOf(short[0]);
+  return { zone: S.zones.find((z) => z.id === zone), nodes: short.filter((n) => zoneOf(n) === zone).slice(0, BANK_BATCH) };
+}
+function bankShow() {
+  const line = $("#bankLine"); if (line) { line.hidden = !bank.on; line.textContent = bank.on ? bankLabel() : ""; }
+}
+async function bankRun({ all = false } = {}) {
+  if (!desktop || bank.on) return;
+  if (bankBusy()) return;
+  const bad = liveProblem(await liveStatus()); if (bad) { if (all) toast(bad); return; }
+  if (all) bank.tried.clear();
+  if (!bankNext()) { if (all) toast("Every idea has its questions"); return; }
+  bank.on = true; bankShow();
+  try {
+    for (let b = bankNext(); b && !bankBusy(); b = bankNext()) {
+      const ideas = b.nodes.map((n) => ideaSheet(n, BANK_PER - haveQs(n)));
+      const job = askClaude(questionsPrompt({ topic: b.zone?.name || "", ideas, per: BANK_PER })); bank.job = job;
+      const r = await job.done; bank.job = null;
+      if (!r.ok) break;   // stopped, or Claude can't be reached: try again next time
+      let read; try { read = readQuestions(r.text, ideas); } catch { read = { list: [] }; }
+      for (const x of ideas) bank.tried.add(x.id);   // asked once a session; Write questions asks again
+      const by = new Map(); for (const f of read.list) { if (!by.has(f.id)) by.set(f.id, []); by.get(f.id).push(f.q); }
+      if (!by.size) continue;
+      const rows = [...by].map(([id, qs]) => ({ id, qs }));
+      if (!(await safely(() => store.addQuestions(rows)))) break;
+      // the same change in memory, so nothing has to redraw under whatever he's doing
+      for (const { id, qs } of rows) { const n = S.byId.get(id); if (n) n.qs = cleanQs([...(n.qs || []), ...cleanQs(qs, "claude")]); }
+      bankShow();
+    }
+  } finally { bank.on = false; bank.job = null; bankShow(); if (S.todayOpen && !S.tq) renderToday(); }
+}
+// The automatic start: Bonsai Desktop only, quietly, and not under a test unless it asks for it.
+const bankAuto = () => { if (desktop && (!navigator.webdriver || pref("bankauto", "") === "1")) bankRun(); };
+// A review or Today's round is starting: the batch under way is let go (it's asked again later).
+const bankStop = () => { bank.job?.cancel(); };
 
 // ---------- oral ----------
 // Watering by talking (Bonsai Desktop, card t-examport): Claude asks about the ideas waiting in a graph, one
@@ -1429,6 +1497,7 @@ async function startOral(treeId, ids) {
   const tree = treeOf(treeId); if (!tree) return toast("Pick a graph first");
   if (!desktop) return toast("Orals run in Bonsai Desktop");
   const bad = liveProblem(await liveStatus()); if (bad) return toast(bad);
+  bankStop();
   const all = S.byTree.get(tree.id) || [], due = new Set(dueList(tree.id).map((n) => n.id));
   let pick = ids?.length ? ids.map((id) => S.byId.get(id)).filter(Boolean) : all.filter((n) => n.ghost || due.has(n.id));
   if (!pick.length) pick = all;   // nothing waiting: practise the whole graph
@@ -1520,6 +1589,7 @@ async function startSunday() {
   if (S.sun) return;
   if (!desktop) return toast("Sunday sessions run in Bonsai Desktop");
   const bad = liveProblem(await liveStatus()); if (bad) return toast(bad);
+  bankStop();
   const at = clockNow(), events = await store.eventsSince(new Date(at - 7 * DAY).toISOString()).catch(() => []);
   const week = weekOf({ zones: S.allZones, trees: S.allTrees, nodes: S.nodes, events, links: S.links }, at);
   if (S.oral) stopOral(); S.review = null;
@@ -1676,22 +1746,119 @@ async function todayShow() {
 }
 function todayClose(quiet = false) {
   if (!S.todayOpen) return; S.todayOpen = false;
+  if (S.tq) { S.tq.job?.cancel(); S.tq = null; }
   const box = $("#today"); if (box) { box.hidden = true; box.replaceChildren(); }
+  const blur = $("#todayBlur"); if (blur) blur.hidden = true;
   if (quiet) return;
   if (S.view === "isles") isles?.setActive(true);
   renderTop();
 }
-function todayStart() {
-  const p = S.todayPick, live = liveIds(); if (!p || p.day !== dayKey()) return;
+// The round stays in the Today box (his ask, after trying 0.35.0): each question, then in Bonsai Desktop an answer
+// typed or dictated (Win+H) that Claude marks Right, Partly or Missed with a line of why, his to overrule (1–3);
+// elsewhere Space shows the answer and he says Got it or Missed. right → good, partly → hard, missed → again.
+// An idea with no written question yet is asked by its note with the name kept back; with no note, by its name.
+// S.tq = { ids, i, phase: ask | marking | marked | shown, answer, mark, why, claude, asks, prefer, day }.
+async function todayStart() {
+  const p = S.todayPick, live = liveIds(); if (!p || p.day !== dayKey() || S.tq) return;
   const ids = p.ids.filter((id) => live.has(id) && !p.rated?.[id]); if (!ids.length) return;
-  todayClose();
-  S.review = { ids, i: 0, shown: false, n: 0, today: true, prefer: p.kinds || {}, day: dayNumber(clockNow()) }; S.panel = null; S.quick = null;
-  stepReview();
+  bankStop();
+  const claude = desktop && !liveProblem(await liveStatus());
+  if (!S.todayOpen) return;
+  S.tq = { ids, i: 0, phase: "ask", answer: "", mark: null, why: "", claude, asks: {}, prefer: p.kinds || {}, day: dayNumber(clockNow()) };
+  renderToday();
+}
+const tqNode = () => S.tq && S.byId.get(S.tq.ids[S.tq.i]);
+function tqAsk() {
+  const q = S.tq, n = tqNode(); if (!n) return null;
+  return (q.asks[q.i] ||= (() => { const a = askFor(n, q.day, q.prefer[n.id]); return !a.fallback ? a : (n.note || "").trim() ? { ...a, cue: "note", q: n.note.trim(), a: n.title } : { ...a, cue: "title" }; })());
+}
+const tqSet = (x) => { Object.assign(S.tq, x); renderToday(); };
+function tqShow() { const q = S.tq; if (q?.phase === "ask") tqSet({ phase: "shown" }); }
+async function tqSend() {
+  const q = S.tq, n = tqNode(), a = tqAsk(); if (!q || !n || q.phase !== "ask") return;
+  const text = q.answer.trim(); if (!text) return tqShow();
+  if (!q.claude) return tqShow();
+  const at = q.i, kids = kidsOf(n.id), zone = S.zones.find((z) => z.id === treeOf(n.treeId)?.zoneId);
+  const expected = a.kind === "rebuild" ? a.hide.map((id) => S.byId.get(id)?.title).filter(Boolean).join("; ") : a.cue === "title" ? [n.body, kids.map((k) => k.title).join("; ")].filter(Boolean).join(" · ") : a.a;
+  tqSet({ phase: "marking" });
+  const job = askClaude(markPrompt({ topic: zone?.name || "", title: n.title, note: a.cue === "note" ? "" : n.note || "", kind: a.cue ? "name the idea" : a.kind, q: a.kind === "rebuild" ? `Name the ideas hidden under ${n.title}` : a.q, a: expected, answer: text }));
+  q.job = job;
+  const r = await job.done; q.job = null;
+  if (S.tq !== q || q.i !== at || q.phase !== "marking") return;
+  const m = r.ok ? readMark(r.text) : null;
+  tqSet(m ? { phase: "marked", mark: m.mark, why: m.why } : { phase: "shown" });
+}
+async function tqRate(mark) {
+  const q = S.tq; if (!q || q.busy || !MARK_RATING[mark]) return; q.busy = true;
+  const id = q.ids[q.i], a = tqAsk(), rating = MARK_RATING[mark];
+  await safely(() => store.reviewNode(id, rating, { asked: a && !a.fallback ? a.kind : "" }));
+  await todayRated(id, rating);
+  q.i++; Object.assign(q, { phase: "ask", answer: "", mark: null, why: "", busy: false });
+  await load();
+  if (S.tq !== q) return;
+  if (q.i >= q.ids.length) return tqEnd();
+  renderToday();
+}
+// The round over or stopped: back to Today with the score; the bank may carry on.
+async function tqEnd() {
+  const q = S.tq; if (!q) return; q.job?.cancel(); S.tq = null;
+  await refresh({ animate: true }); if (S.todayOpen) renderToday();
+  setTimeout(bankAuto, 0);
+}
+// The question, then the answer box or the answer, in the Today box.
+function renderRound(box) {
+  const q = S.tq, n = tqNode(), a = tqAsk(), key = (k) => el("kbd", { text: k });
+  if (!n || !a) { tqEnd(); return; }
+  const kids = kidsOf(n.id), open = q.phase === "shown" || q.phase === "marked";
+  const tag = a.cue === "note" ? "Name" : a.cue ? "" : KIND_NAME[a.kind];
+  const head = el("div", { class: "tdhead" }, tag ? el("span", { class: "qkind", id: "tqKind", text: tag }) : null,
+    el("span", { class: "muted grow tqpath", text: pathOf(n) }), el("span", { class: "muted", id: "tqCount", text: `${q.i + 1}/${q.ids.length}` }), closeBtn("tqStop", "Stop", "Esc", tqEnd));
+  let ask;
+  if (a.kind === "rebuild") {
+    const hid = new Set(a.hide);
+    ask = [el("h2", { id: "tqQ", text: n.title }), a.q !== REBUILD_Q ? el("p", { class: "muted", text: a.q }) : null,
+      el("ul", { class: "rv-kids rebuild", id: "tqList" }, kids.map((k) => hid.has(k.id) ? el("li", { class: open ? "hid" : "blank", text: open ? k.title : "" }) : el("li", { text: k.title })))];
+  } else ask = [el("h2", { id: "tqQ", class: a.cue === "note" ? "tqcue" : "", text: a.q })];
+  const ans = !open || a.kind === "rebuild" ? null : el("div", { class: "rv-ans", id: "tqAns" },
+    el("b", { text: n.title }), n.note && a.cue !== "note" ? el("span", { text: n.note }) : null, a.a && !a.cue ? el("p", { text: a.a }) : null);
+  const more = open && a.cue === "title" ? [n.body ? el("div", { class: "md", html: md(n.body) }) : null, kids.length ? el("ul", { class: "rv-kids" }, kids.map((k) => el("li", { text: k.title }))) : null] : [];
+  const said = q.answer.trim() && q.phase !== "ask" ? el("p", { class: "tqsaid", id: "tqSaid", text: q.answer.trim() }) : null;
+  const marks = q.claude ? ["right", "partly", "missed"] : ["right", "missed"];
+  const names = q.claude ? MARK_NAME : { right: "Got it", missed: "Missed" };
+  const rateRow = () => el("div", { class: "row tqrate", id: "tqRate" }, marks.map((m, i) => el("button", { class: "btn" + (q.mark === m ? " on" : ""), type: "button", dataset: { mark: m }, onclick: () => tqRate(m) }, names[m], key(String(i + 1)))),
+    q.phase === "marked" ? el("button", { class: "btn primary", id: "tqNext", type: "button", onclick: () => tqRate(q.mark) }, "Next", key("↵")) : null);
+  let foot;
+  if (q.phase === "ask" && q.claude) {
+    const box = el("textarea", { id: "tqAnswer", rows: 3, placeholder: "Answer", "aria-label": "Answer", value: q.answer,
+      oninput: (e) => { q.answer = e.target.value; },
+      onkeydown: (e) => {
+        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); tqSend(); }
+        else if (e.key === " " && !e.target.value.trim()) { e.preventDefault(); tqShow(); }
+      } });
+    foot = [box, el("div", { class: "row" }, el("button", { class: "btn primary", id: "tqSend", type: "button", onclick: tqSend }, "Send", key("↵")),
+      el("button", { class: "btn", id: "tqShow", type: "button", onclick: tqShow }, "Show", key("Space")), el("span", { class: "grow" }), el("span", { class: "tqdict muted", title: "Dictate (Win+H)" }, "Dictate", key("Win+H")))];
+  } else if (q.phase === "ask") foot = [el("button", { class: "btn primary tqbig", id: "tqShow", type: "button", onclick: tqShow }, "Show", key("Space"))];
+  else if (q.phase === "marking") foot = [el("p", { class: "muted", id: "tqMarking", text: "Marking" })];
+  else if (q.phase === "marked") foot = [el("p", { class: "tqmark " + q.mark, id: "tqMark" }, el("b", { text: MARK_NAME[q.mark] }), q.why ? el("span", { text: q.why }) : null), rateRow()];
+  else foot = [rateRow()];
+  const parts = q.phase === "marked" ? [head, ...ask, said, ...foot.slice(0, 1), ans, ...more, ...foot.slice(1)] : [head, ...ask, said, ans, ...more, ...foot];
+  const typing = document.activeElement?.id === "tqAnswer", caret = typing ? document.activeElement.selectionEnd : 0;
+  put(box, el("div", { class: "tqcard", id: "tq", dataset: { phase: q.phase } }, ...parts.filter(Boolean)));
+  const t = $("#tqAnswer");
+  if (t) setTimeout(() => { if (!t.isConnected) return; t.focus(); if (typing) t.setSelectionRange(caret, caret); }, 0);
 }
 function todayMonth(d) { const [y, m] = S.tdMonth; S.tdMonth = monthOf(dayOf(new Date(y, m + d, 1, 12))); renderToday(); }
 function todayPickDay(key) { S.tdSel = key; const [y, m] = monthOf(key); if (S.tdMonth[0] !== y || S.tdMonth[1] !== m) S.tdMonth = [y, m]; renderToday(); }
 function todayKey(k, stop) {
   const go = (fn) => { stop(); fn(); return true; };
+  const q = S.tq;
+  if (q) {
+    if (q.phase === "ask" && k === " ") return go(tqShow);
+    if (q.phase === "ask" && k === "Enter") return go(() => (q.claude && $("#tqAnswer") ? (q.answer.trim() ? tqSend() : $("#tqAnswer").focus()) : tqShow()));
+    if (q.phase === "marked" && k === "Enter") return go(() => tqRate(q.mark));
+    if (q.phase === "marked" || q.phase === "shown") { const m = (q.claude ? ["right", "partly", "missed"] : ["right", "missed"])[+k - 1]; if (/^[1-3]$/.test(k) && m) return go(() => tqRate(m)); }
+    stop(); return true;   // nothing else while a question is up
+  }
   if (k === "y") return go(todayClose);
   if (k === "Enter") return go(todayStart);
   if (k === "ArrowLeft" || k === "ArrowRight") return go(() => todayMonth(k === "ArrowRight" ? 1 : -1));
@@ -1709,9 +1876,13 @@ async function todayLogLoad(day) {
   if (S.todayOpen) renderToday();
 }
 function renderToday() {
-  let box = $("#today");
-  if (!box) { box = el("section", { class: "tdview", id: "today", "aria-label": "Today" }); $("#app").append(box); }
-  box.hidden = false;
+  let box = $("#today"), blur = $("#todayBlur");
+  // Today floats over everything else, blurred and dimmed behind it, the top bar too
+  if (!blur) { blur = el("div", { class: "tdblur", id: "todayBlur", onclick: () => { if (!S.tq) todayClose(); } }); $("#app").append(blur); }
+  if (!box) { box = el("section", { class: "tdview", id: "today", "aria-label": "Today", role: "dialog" }); $("#app").append(box); }
+  box.hidden = false; blur.hidden = false;
+  box.classList.toggle("round", !!S.tq);
+  if (S.tq) return renderRound(box);
   const day = dayKey(), p = S.todayPick?.day === day ? S.todayPick : null, live = liveIds(), rec = p ? recordOf(p, live) : null;
   const key = (k) => el("kbd", { text: k }), held = new Set(S.sundays.map((r) => r.day));
   // the day's 10: a square each, filled as they're rated; the score once all are
@@ -1720,9 +1891,10 @@ function renderToday() {
     return el("span", { class: "tdq" + (r ? " " + RATED[r] : "") + (id === p.bonus ? " bonus" : ""), dataset: { id, rated: r || "" }, title: r ? `${n?.title || ""} · ${r}` : "" }); }));
   const ten = el("section", { class: "tdten", id: "todayTen" },
     !rec || !rec.n ? el("p", { class: "muted", id: "todayNone", text: "Nothing due" })
-      : rec.done ? el("div", { class: "row" }, el("b", { class: "tdscore", id: "todayScore", text: `${rec.good}/${rec.n}` }), el("span", { class: "grow" }), squares)
+      : rec.done ? el("div", { class: "row" }, el("b", { class: "tdscore " + scoreTier(rec), id: "todayScore", text: String(rec.good) }), el("span", { class: "grow" }), squares)
       : el("div", { class: "row" }, el("button", { class: "btn primary", id: "todayGo", onclick: todayStart }, "Start", key("↵")), el("span", { class: "muted", id: "todayProgress", text: `${rec.asked}/${rec.n}` }), el("span", { class: "grow" }), squares),
-    sundayDue() ? el("div", { class: "row" }, el("button", { class: "btn", id: "todaySunday", onclick: () => { todayClose(); startSunday(); } }, "Sunday", key("U"))) : null);
+    sundayDue() ? el("div", { class: "row" }, el("button", { class: "btn", id: "todaySunday", onclick: () => { todayClose(); startSunday(); } }, "Sunday", key("U"))) : null,
+    el("p", { class: "muted tdbank", id: "bankLine", hidden: !bank.on, text: bank.on ? bankLabel() : "" }));
   const run = streak(S.days, day);
   const top = el("div", { class: "tdstreak", id: "todayStreak" }, el("b", { text: String(run) }), el("span", { class: "muted", text: run === 1 ? "day" : "days" }));
   // the month
@@ -1735,7 +1907,7 @@ function renderToday() {
   const cal = el("div", { class: "tdcal", id: "todayCal", role: "grid" }, wd.map((t) => el("span", { class: "tdwd", text: t })),
     weeks.flat().map((c) => { const r = S.days[c.key];
       return el("button", { type: "button", class: "tdday" + (c.inMonth ? "" : " out") + (c.key === day ? " today" : "") + (c.key === S.tdSel ? " pick" : "") + (held.has(c.key) ? " held" : "") + (r?.done && r.n ? " done" : ""), dataset: { day: c.key }, "aria-pressed": String(c.key === S.tdSel), onclick: () => todayPickDay(c.key) },
-        el("span", { class: "d", text: String(c.d) }), r?.n ? el("span", { class: "s", text: `${r.good}/${r.n}` }) : null); }));
+        el("span", { class: "d", text: String(c.d) }), r?.asked ? el("span", { class: "s " + scoreTier(r), text: String(r.good) }) : null); }));
   // the picked day's log
   const L = S.tdLog?.day === S.tdSel ? S.tdLog : null; if (!L) todayLogLoad(S.tdSel);
   const list = (rows) => el("ul", {}, rows);
@@ -1747,7 +1919,7 @@ function renderToday() {
   if (L) {
     const r = L.record, sun = L.sunday, k = sun?.kept || {};
     logBody = [
-      r?.asked ? el("p", { class: "tdlscore", id: "logScore" }, el("b", { text: `${r.good}/${r.n}` }), r.done ? null : el("span", { class: "muted", text: ` · ${r.asked} asked` })) : null,
+      r?.asked ? el("p", { class: "tdlscore", id: "logScore" }, el("b", { class: scoreTier(r), text: String(r.good) }), r.done ? null : el("span", { class: "muted", text: ` · ${r.asked} asked` })) : null,
       L.reviewed.length ? sec("logReviewed", "Reviewed", L.reviewed.length, el("div", {}, list(cut(L.reviewed).map((x) => item(x.title, go(() => jump(x.id)), el("span", { class: "tdrate " + (RATED[x.rating] || ""), text: x.rating ? x.rating[0].toUpperCase() + x.rating.slice(1) : "" })))), more(L.reviewed))) : null,
       L.added.length || L.graphs.length ? sec("logAdded", "Added", L.added.length, el("div", {}, list([...L.graphs.map((t) => item(t.name, go(() => goTree(t.id)), icon(ICON.graph))), ...cut(L.added).map((n) => item(n.title, go(() => jump(n.id))))]), more(L.added))) : null,
       L.notes.length ? sec("logNotes", "Notes", L.notes.length, el("div", {}, list(cut(L.notes).map((pg) => item(pg.title || "Untitled", go(() => { location.hash = notesHash(pg.id); }), icon(pg.kind === "ink" ? ICON.ink : ICON.page)))), more(L.notes))) : null,
@@ -2250,6 +2422,7 @@ async function applyExam(text) {
   const woke = made.woke.filter((w) => w.ghost).length, grey = made.nodeIds.filter((id) => S.byId.get(id)?.ghost).length, n = made.nodeIds.length - grey + woke;
   toast([`${n} idea${n === 1 ? "" : "s"} shown`, grey ? `${grey} greyed` : "", made.linkIds.length ? `${made.linkIds.length} link${made.linkIds.length === 1 ? "" : "s"}` : ""].filter(Boolean).join(", "),
     { label: "Undo", run: async () => { await safely(() => store.undoExam(made)); refresh(); } });
+  bankAuto();
 }
 
 // ---------- a topic past 200% moves onto an island of its own ----------
@@ -2484,6 +2657,7 @@ function back() {
   if (closeTop()) return;
   if (vocab?.closeTop()) return;
   if (S.pick) return S.pick.finish(null);
+  if (S.tq) return tqEnd();
   if (S.todayOpen) return todayClose();
   if (S.quick) { S.quick = null; return renderActions(); }
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || document.activeElement?.isContentEditable) return document.activeElement.blur();
@@ -3358,6 +3532,7 @@ async function growDialog(id) {
   await refresh(); redrawNotes();
   const n = made.nodeIds.length, l = made.linkIds.length;
   toast(`Grew ${n} idea${n === 1 ? "" : "s"}${l ? `, ${l} link${l === 1 ? "" : "s"}` : ""}`, { label: "Undo", run: () => ungrow(page.id) });
+  bankAuto();
 }
 async function setPageStatus(id, value) {
   await load(); const p = pageOf(id); if (!p) return;
@@ -3723,10 +3898,12 @@ async function init() {
   window.bonsai = { S, store, sync, refresh, get stage() { return stage; }, get isles() { return isles; }, get tech() { return tech; }, get vocab() { return vocab; }, thirst, water, openTree, graphItems, dueByLevel, setLevel, zoneLevel,
     timelapse: { set secs(v) { tlSecs = v; }, get state() { return S.tl; } },
     sunday: { list: () => store.listSundays(), start: startSunday, setClock: (t) => { sunClock = t == null ? null : +new Date(t); renderTop(); }, get due() { return sundayDue(); } },
+    bank: { run: bankRun, count: bankCount, short: () => bankPool().filter((n) => haveQs(n) < BANK_PER).length, get on() { return bank.on; } },
     today: { pick: () => S.todayPick, days: () => S.days, pool: () => todayPool(), show: todayShow, close: todayClose, get open() { return !!S.todayOpen; }, get left() { return todayLeft(); },
       setClock: (t) => { sunClock = t == null ? null : +new Date(t); renderTop(); } } };
   await go();
   document.body.dataset.ready = "1";
   syncStart();
+  if (desktop) setTimeout(bankAuto, 1500);
 }
 init();
