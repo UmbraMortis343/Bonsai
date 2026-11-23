@@ -7,7 +7,7 @@ import { start, state } from "./lib.mjs";
 import { questionsPrompt, readQuestions, cleanQs, markPrompt, readMark, needsRedo } from "../src/questions.js";
 import { recordOf } from "../src/today.js";
 
-const t = await start("run43-qpoints", 4344, { channel: "beta" });
+const t = await start("run43-qpoints", 4345, { channel: "beta" });
 
 // ----- pure -----
 const P = questionsPrompt({ topic: "Maths", ideas: [{ id: "a", title: "Integrals", note: "Area under a curve", need: 3 }], per: 3 });

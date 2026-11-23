@@ -2,6 +2,12 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.38.0 — 2026-11-23
+- Questions say what they want. Claude now writes each question with the shape of its answer ("Give both", "Two reasons") and one reading only, plus 1–3 key points; your answer is marked point by point, with a tick or a gap for each.
+- Missed a point? One nudge, then one more go (right after a nudge counts, but comes back a little sooner). Nudges can be turned off in the round's ⋯ menu.
+- The round's ⋯ menu (Alt+M): Vague question (not counted today), Rewrite now, Edit question, Skip. Overruling a mark flags the question too, and the bank writes flagged and older questions again in the background, never your own.
+- A graph named like its topic shows its name once.
+
 ## 0.37.1 — 2026-11-23
 - Write questions is easier to reach: ⇧W anywhere but the Library, in the menu and in Today (Bonsai Desktop). It writes for every idea still short of questions, asking again any Claude couldn't do earlier; while it runs the same item shows how far it's got and stops it.
 - Beta only: Repick today's questions (⇧R, the menu, or Repick in Today) draws a fresh set at random from every idea that can be asked, due or not, so a round can be tried again.
