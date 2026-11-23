@@ -162,6 +162,7 @@ const grown = await state(page, () => { const by = (x) => bonsai.S.nodes.find((n
   return { inelastic: S.byId.get(by("Perfectly inelastic collision").parentId).title, body: by("Conservation of momentum").body.includes("recoil"), links: S.links.length, page: Object.keys(S.pages.find((p) => p.title.startsWith("Lecture 6"))).filter((k) => /tree|zone/i.test(k)) }; });
 t.eq(grown, { inelastic: "Inelastic collision", body: true, links: before[1] + 2, page: [] }, "ideas strung onto the right ones; the page stays untied");
 await page.waitForFunction(() => bonsai.S.pages.find((p) => p.title.startsWith("Lecture 6")).props.find((x) => x.type === "status")?.value === "Grown");
+await page.waitForFunction(() => document.querySelector('#props .prow[data-type="status"] .stat')?.textContent === "Grown", null, { timeout: 8000 }).catch(() => {});
 t.eq(await page.textContent('#props .prow[data-type="status"] .stat'), "Grown", "growing a page marks it Grown");
 await page.click("#toast .link");
 await page.waitForFunction((n) => bonsai.S.nodes.length === n, before[0]);

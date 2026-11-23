@@ -2,6 +2,11 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.40.0 — 2026-11-23
+- Pen pages: quick actions with the pen. The pen's side (barrel) button opens a quick menu at the nib, ten square tiles for the tools, Undo and Colour; holding the pen still for a moment, or Q, opens it too. The eraser button still erases; Side button (⇧E, on the rail) sets the barrel back to erasing.
+- What the lasso holds gets a bar just under it: To text (X), Discuss (Alt+6), Copy as picture (C), Colour (⇧C), Duplicate (D), Delete.
+- Discuss works on pen pages: Claude is sent a picture of the ink (Bonsai Desktop), or it goes on the clipboard for claude.ai.
+
 ## 0.39.0 — 2026-11-23
 - Pen pages are endless canvases, like a OneNote page: no sheet edge, the paper fills the view, and the page runs on to the right and downward from its top-left corner. The wheel scrolls, Shift+wheel goes across, Ctrl+wheel zooms at the pointer (25%–400%), Space+drag or the middle button pans, and 0 goes back to the top left. Each page opens where you left it.
 - Paper is a small menu off the rail (B): None 1, Ruled 2, Grid 3; new pen pages start on the last one picked, and old dots pages keep their dots.
