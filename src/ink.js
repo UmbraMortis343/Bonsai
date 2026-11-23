@@ -10,7 +10,9 @@
 // clicked; touch pans and pinches (never draws unless Touch draws is on). Palm rejection: while the pen is on the
 // page, and for a moment after it lifts, touch is ignored and any touch in progress is dropped; a touch resting
 // there before the pen came near is dropped when it arrives; a contact patch the size of a palm is ignored; a finger
-// only pans once it has really moved. The pen's eraser end, or its barrel button, erases.
+// only pans once it has really moved. The pen's eraser end erases; its barrel (side) button opens the quick menu at
+// the nib (or erases, if Side button is set to Erase, pref penbtn). Holding the pen still on the page opens the menu
+// too, and the dot it made goes. What the lasso holds gets a bar of actions docked under it.
 
 export const W = 1000;   // the width pages had when they were sheets; nothing is held to it now
 export const PAPERS = ["blank", "lined", "grid", "dots"];
@@ -116,13 +118,15 @@ export function createInk(opts) {
   };
   const pre = (() => { try { return JSON.parse(localStorage.getItem(opts.store || "bonsai.ink") || "null") || {}; } catch { return {}; } })();
   const coarseOnly = matchMedia("(pointer: coarse)").matches && !matchMedia("(any-pointer: fine)").matches;   // a phone: no mouse or pen to draw with
-  const st = { tool: "pen", c: isHex(pre.c) || [0, 1, 2, 3].includes(pre.c) ? pre.c : 0, size: pre.size ?? 1, touchDraws: pre.touchDraws ?? coarseOnly, zoom: 1, sx: 0, sy: 0, extra: isHex(pre.extra) ? pre.extra : null, custom: (pre.custom || []).filter(isHex).slice(0, 4), back: "pen", paper: PAPER_MENU.some(([id]) => id === pre.paper) ? pre.paper : null };
+  const getPref = (k, d) => { try { return opts.prefs?.get(k, d) ?? d; } catch { return d; } };
+  const st = { penbtn: getPref("penbtn", "menu") === "erase" ? "erase" : "menu", tool: "pen", c: isHex(pre.c) || [0, 1, 2, 3].includes(pre.c) ? pre.c : 0, size: pre.size ?? 1, touchDraws: pre.touchDraws ?? coarseOnly, zoom: 1, sx: 0, sy: 0, extra: isHex(pre.extra) ? pre.extra : null, custom: (pre.custom || []).filter(isHex).slice(0, 4), back: "pen", paper: PAPER_MENU.some(([id]) => id === pre.paper) ? pre.paper : null };
   const undo = [], redo = [];
   let sel = null;          // { ids: Set, box }
   let G = null;            // what the pointer on the page is doing: { k: stroke | erase | lasso | drag | resize | snip | tap, id, … }
   let dirty = 0, raf = 0, editing = null, palOpen = false, paperOpen = false, snipped = null, snipTimer = 0, spaceDown = false;
+  let qmOpen = false, qmAt = null, lastPen = null, tapped = null, palAt = null;
   const log = [];          // the last pointer events, for checking a device: bonsai.S.ed.ink.log
-  const note = (e) => { log.push([Math.round(e.timeStamp), e.type.slice(7), e.pointerType, e.pointerId, e.buttons, Math.round((e.pressure || 0) * 100) / 100, Math.round(e.width || 0), Math.round(e.height || 0)]); if (log.length > 240) log.splice(0, 40); };
+  const note = (e) => { log.push([Math.round(e.timeStamp), e.type.slice(7), e.pointerType, e.pointerId, e.buttons, Math.round((e.pressure || 0) * 100) / 100, Math.round(e.width || 0), Math.round(e.height || 0), e.button]); if (log.length > 240) log.splice(0, 40); };
 
   // ---- palm rejection
   const PALM_MS = 300, NEAR_MS = 1500, PALM_PX = 50, SLOP = 10, SLOP_NEAR = 18;
@@ -158,6 +162,9 @@ export function createInk(opts) {
   const handle = el("div", { class: "ihandle", hidden: true, title: "Size" });
   layerEl.append(handle);
   const wrap = el("div", { class: "inkwrap" }, canvas, layerEl);
+  const qm = el("div", { class: "inkqm", hidden: true, role: "menu", "aria-label": "Pen tools" });   // the quick menu at the nib
+  const lb = el("div", { class: "inklb", hidden: true, role: "toolbar", "aria-label": "Selection" });   // the lasso's bar, under what it holds
+  wrap.append(qm, lb);
   const ctx = canvas.getContext("2d");
   const layer = document.createElement("canvas"), lctx = layer.getContext("2d");
   const night = () => !!opts.night?.();
@@ -196,13 +203,14 @@ export function createInk(opts) {
     st.sx = Math.max(0, Math.min(FAR, +st.sx || 0)); st.sy = Math.max(0, Math.min(FAR, +st.sy || 0));
   }
   function zoomAt(z, cx, cy) {
+    closeQm();
     const [px, py] = toPage(cx, cy);
     st.zoom = Math.max(ZOOM[0], Math.min(ZOOM[1], z));
     const s = scale(); st.sx = px - cx / s; st.sy = py - cy / s;
     clampView(); full();
   }
-  function panBy(dx, dy) { const s = scale(); st.sx += dx / s; st.sy += dy / s; clampView(); full(); }   // in screen pixels
-  function home() { st.zoom = 1; st.sx = 0; st.sy = 0; full(); }
+  function panBy(dx, dy) { closeQm(); const s = scale(); st.sx += dx / s; st.sy += dy / s; clampView(); full(); }   // in screen pixels
+  function home() { closeQm(); st.zoom = 1; st.sx = 0; st.sy = 0; full(); }
   clampView();
 
   // ---- drawing
@@ -298,6 +306,16 @@ export function createInk(opts) {
     const one = sel?.ids.size === 1 && itemById([...sel.ids][0]);
     handle.hidden = !one;
     if (one) { const b = boxOf(one); handle.style.left = b.x1 + "px"; handle.style.top = b.y1 + "px"; }
+    placeBar();
+  }
+  // the lasso's bar: just under the box round what's picked (above it when there's no room), on screen, following it
+  function placeBar() {
+    if (!sel || editing) { lb.hidden = true; return; }
+    if (lb.hidden) { drawBar(); lb.hidden = false; }
+    const s = scale(), b = sel.box, W = wrap.clientWidth, H = wrap.clientHeight, w = lb.offsetWidth, h = lb.offsetHeight;
+    const left = (b.x0 - 8 - st.sx) * s, below = (b.y1 + 8 - st.sy) * s + 6, above = (b.y0 - 8 - st.sy) * s - 6 - h;
+    const y = below + h <= H - 4 || above < 4 ? below : above;
+    lb.style.left = Math.round(Math.max(4, Math.min(W - w - 4, left))) + "px"; lb.style.top = Math.round(Math.max(4, Math.min(H - h - 4, y))) + "px";
   }
   const later = () => { if (!raf) raf = requestAnimationFrame(frame); };
   let eraserAt = null;
@@ -428,7 +446,14 @@ export function createInk(opts) {
   // ---- pointers: down on the page; moves and lifts are followed on the window, so none is missed if capture fails
   const capture = (e) => { try { wrap.setPointerCapture(e.pointerId); } catch {} };
   const local = (e) => { const r = canvas.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
-  const erasing = (e) => e.pointerType === "pen" && ((e.buttons & 32) || e.button === 5 || (e.buttons & 2));
+  // The pen's eraser end (or eraser button) always erases; its barrel button opens the quick menu, or erases when set so.
+  const erasing = (e) => e.pointerType === "pen" && ((e.buttons & 32) || e.button === 5 || (st.penbtn === "erase" && ((e.buttons & 2) || e.button === 2)));
+  const barrelOn = (e) => e.pointerType === "pen" && st.penbtn === "menu" && !(e.buttons & 32) && e.button !== 5 && ((e.buttons & 2) || e.button === 2);
+  const btns = new Map();   // each pen's buttons as last seen, so a press of the barrel is caught once, hovering or touching
+  function barrelPress(e) { const was = btns.get(e.pointerId) || 0; btns.set(e.pointerId, e.buttons); return barrelOn(e) && !(was & 2); }
+  const HOLD_MS = 550, HOLD_PX = 4, QM_FAR = 120;
+  // the pointer that opened the menu, or closed it, keeps its press: nothing drawn until it lifts
+  function hold(e) { if (G) end(null); capture(e); G = { k: "held", id: e.pointerId }; }
   const inBox = (b, x, y, pad) => x >= b.x0 - pad && x <= b.x1 + pad && y >= b.y0 - pad && y <= b.y1 + pad;
   const snipBox = (g) => ({ x0: Math.max(0, Math.min(g.x0, g.x)), y0: Math.max(0, Math.min(g.y0, g.y)), x1: Math.max(0, g.x0, g.x), y1: Math.max(0, g.y0, g.y) });
   const onPage = ([x, y]) => [Math.max(0, x), Math.max(0, y)];   // nothing goes left of the page's start or above it
@@ -440,8 +465,12 @@ export function createInk(opts) {
   }
   function down(e) {
     note(e);
-    if (e.target.closest?.(".inksnip, .inkpal, .inkpm")) return;
     const kind = e.pointerType;
+    if (kind === "pen") lastPen = local(e);
+    const barrel = kind === "pen" && barrelPress(e);
+    if (e.target.closest?.(".inksnip, .inkpal, .inkpm, .inkqm, .inklb")) return;
+    if (barrel) { e.preventDefault(); finishEdit(); hold(e); return openQm(...local(e)); }   // the side button: the menu where the pen is
+    if (qmOpen) { e.preventDefault(); closeQm(); if (kind === "pen") penContact(e); return hold(e); }   // a press elsewhere only closes it
     if (palOpen) togglePal(false);
     if (paperOpen) togglePaper(false);
     // the mouse's middle button, or the mouse or pen with Space held, moves the view
@@ -474,11 +503,23 @@ export function createInk(opts) {
     if (tool === "text") { G = { k: "tap", id, x, y, sx: cx, sy: cy, far: 0, ended }; return; }
     if (tool === "snip") { G = { k: "snip", id, x0: x, y0: y, x, y }; frame(); return; }
     clearSel();
-    if (tool === "lasso") { G = { k: "lasso", id, poly: [x, y] }; return; }
-    if (tool === "eraser") { G = { k: "erase", id, gone: [] }; eraserAt = [x, y]; eraseAt(x, y); return; }
+    const still = kind === "pen" && !erasing(e) ? { kind, sx: cx, sy: cy, far: 0 } : {};   // the pen's tip, not its eraser end
+    if (tool === "lasso") { G = { k: "lasso", id, poly: [x, y], ...still }; holdTimer(G); return; }
+    if (tool === "eraser") { G = { k: "erase", id, gone: [], ...still }; holdTimer(G); eraserAt = [x, y]; eraseAt(x, y); return; }
     const t = BRUSHES.includes(st.tool) ? st.tool : "pen";
     G = { k: "stroke", id, kind, touch, ended, at: now(), sx: cx, sy: cy, last: [cx, cy], far: 0, s: { id: sid(), t, c: st.c, p: [x, y, widthFor(SIZES[t][st.size], e, t)] } };
+    holdTimer(G);
     frame();
+  }
+  // Held still (the pen on the page, under HOLD_PX for HOLD_MS): what it began goes and the quick menu opens there.
+  function holdTimer(g) {
+    if (g.kind !== "pen") return;
+    g.hold = setTimeout(() => {
+      g.hold = 0;
+      if (G !== g || g.far > HOLD_PX) return;
+      if (g.k === "erase") { for (const [i, s] of [...g.gone].sort((a, b) => a[0] - b[0])) doc.strokes.splice(Math.min(i, doc.strokes.length), 0, s); eraserAt = null; full(); }
+      G = { k: "held", id: g.id }; frame(); openQm(g.sx, g.sy);
+    }, HOLD_MS);
   }
   // Touch: is this one for drawing (Touch draws, or the Text or Snip tool)? Otherwise it pans, or it's a palm.
   function touchStarts(e) {
@@ -512,8 +553,19 @@ export function createInk(opts) {
     } else if (touches.size === 1) panBy(was[0] - at[0], was[1] - at[1]);
   }
   function move(e) {
-    if (e.pointerType === "pen") penSeen(e);
     const id = e.pointerId;
+    if (e.pointerType === "pen") {
+      penSeen(e);
+      const ours = wrap.isConnected && (wrap.contains(e.target) || G?.id === id);
+      if (ours) lastPen = local(e);
+      if (barrelPress(e) && ours) {   // the side button pressed while hovering or writing: what was begun goes, and the menu opens
+        note(e);
+        if (G?.id === id) { clearTimeout(G.hold); if (G.k === "stroke") G = null; else end(null); }
+        finishEdit(); if (e.buttons & 1) hold(e);
+        frame(); return openQm(...local(e));
+      }
+      if (qmOpen && !G && !e.buttons && qmGap(...local(e)) > QM_FAR) closeQm();   // the pen taken away from the menu
+    }
     if (palms.has(id)) return;
     if (touches.has(id)) { note(e); return touchMove(e); }
     if (!G || G.id !== id) {
@@ -530,9 +582,11 @@ export function createInk(opts) {
     // the pen or mouse has lifted without telling us
     if (e.pointerType !== "touch" && e.buttons === 0 && !e.pressure) return end(e);
     const [cx, cy] = local(e);
+    if (G.k === "held") return;
     if (G.k === "pan") { panBy(G.last[0] - cx, G.last[1] - cy); G.last = [cx, cy]; return; }
     const [x, y] = toPage(cx, cy);
     if (G.sx != null) G.far = Math.max(G.far, Math.hypot(cx - G.sx, cy - G.sy));
+    if (G.hold && G.far > HOLD_PX) { clearTimeout(G.hold); G.hold = 0; }
     if (G.k === "drag") {
       if (G.kind === "mouse" && G.far < 4) return;
       // never past the page's start: the pick stops at its left and top edges
@@ -556,7 +610,7 @@ export function createInk(opts) {
     later();
   }
   function up(e) {
-    if (e.pointerType === "pen" && penDown === e.pointerId) { penDown = 0; penUpAt = now(); }
+    if (e.pointerType === "pen") { btns.set(e.pointerId, e.buttons || 0); if (penDown === e.pointerId) { penDown = 0; penUpAt = now(); } }
     const id = e.pointerId;
     if (palms.delete(id)) return;
     if (touches.delete(id)) { note(e); if (touches.size < 2) pinch = null; if (!touches.size) panning = false; return; }
@@ -565,7 +619,9 @@ export function createInk(opts) {
   // what the pointer was doing, finished (e: the lift, or null when it's being given up)
   function end(e) {
     const g = G; G = null; if (!g) return;
+    clearTimeout(g.hold);
     if (penDown === g.id) { penDown = 0; penUpAt = now(); }
+    if (g.k === "held") return;
     if (g.k === "pan") { if (spaceDown) wrap.dataset.pan = "ready"; else delete wrap.dataset.pan; return; }
     if (g.k === "drag") {
       const moved = g.dx || g.dy;
@@ -607,6 +663,8 @@ export function createInk(opts) {
   addEventListener("pointermove", move, true); addEventListener("pointerup", up, true); addEventListener("pointercancel", up, true);
   const penOver = (e) => { if (e.pointerType === "pen") penSeen(e); };
   document.addEventListener("pointerover", penOver, true);
+  const outside = (e) => { if (qmOpen && !wrap.contains(e.target)) closeQm(); };
+  document.addEventListener("pointerdown", outside, true);
   canvas.addEventListener("pointerleave", () => { if (eraserAt && !G) { eraserAt = null; frame(); } });
   wrap.addEventListener("contextmenu", (e) => { if (!editing?.n.contains(e.target)) e.preventDefault(); });
   wrap.addEventListener("dragstart", (e) => e.preventDefault());
@@ -658,11 +716,12 @@ export function createInk(opts) {
     drawItems(); drawTexts(g, items.filter((it) => it.t === "text"), false);
     return c;
   }
-  function doSnip(b) {
+  // want: only these ids, on white (a lasso's pick); else everything in the box, on its paper
+  function doSnip(b, want = null) {
     const s = scale(), w = b.x1 - b.x0, h = b.y1 - b.y0;
     if (w * s < 6 || h * s < 6) return;
     const k = Math.max(0.5, Math.min(Math.max(2, s * (devicePixelRatio || 1) * 2.5), Math.sqrt(16e6 / (w * h)), 16384 / Math.max(w, h)));
-    const c = render(b, k, true);
+    const c = render(b, k, !want, want);
     const blob = new Promise((res) => c.toBlob(res, "image/png"));
     const shot = { width: c.width, height: c.height, copied: null, blob, url: c.toDataURL("image/png") };
     snipped = shot; showSnip(shot);
@@ -729,12 +788,14 @@ export function createInk(opts) {
       el("div", { class: "igroup" },
         btn("ink-paper", "Paper", "B", PAPER_ICON[doc.paper], null, () => togglePaper()),
         opts.toText ? btn("ink-text", "To text", "X", "M4 6h16M12 6v13M8 19h8", null, () => opts.toText()) : null,
+        btn("ink-penbtn", st.penbtn === "menu" ? "Side button: menu" : "Side button: erase", "⇧E", st.penbtn === "menu" ? "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" : "M8 20h11M4 15l9-9 6 6-7 7H8z", null, () => setPenBtn()),
         btn("ink-touch", st.touchDraws ? "Touch draws" : "Touch pans", "T", "M9 11V5a2 2 0 0 1 4 0v6M13 10a2 2 0 0 1 4 0v2M17 12a2 2 0 0 1 4 0v3a6 6 0 0 1-6 6h-2a6 6 0 0 1-5-3l-2.5-4a2 2 0 0 1 3.4-2L9 14", st.touchDraws, () => { st.touchDraws = !st.touchDraws; keep(); bar(); })));
     rail.querySelector("#ink-undo").disabled = !undo.length; rail.querySelector("#ink-redo").disabled = !redo.length;
     const pb = rail.querySelector("#ink-paper"); pb.setAttribute("aria-haspopup", "menu"); pb.setAttribute("aria-expanded", String(paperOpen)); pb.classList.toggle("open", paperOpen);
     wrap.dataset.tool = st.tool;
     if (palOpen) drawPal();
     if (paperOpen) drawPaperMenu();
+    if (!lb.hidden) drawBar();
   }
   // Paper: a small menu off the rail, None, Ruled, Grid (1–3); an old page on dots shows that too, marked
   function drawPaperMenu() {
@@ -759,9 +820,16 @@ export function createInk(opts) {
     const custom = el("input", { type: "color", id: "ink-custom", value: isHex(st.c) ? st.c : "#3e7a4b", "aria-label": "Your own colour", onchange: (e) => { const c = e.target.value.toLowerCase(); st.custom = [c, ...st.custom.filter((x) => x !== c)].slice(0, 4); setColour(c); togglePal(false); } });
     pal.replaceChildren(...list.map((c, i) => el("button", { type: "button", class: "iswatch" + (st.c === c ? " on" : ""), dataset: { c }, title: `${c} (${i + 1})`, "aria-label": `Colour ${c}`, onclick: () => { setColour(c); togglePal(false); } }, el("span", { style: "background:" + c }), el("kbd", { text: String(i + 1) }))),
       el("label", { class: "iswatch own", title: "Your own colour (0)" }, custom, el("span", { class: "plus", text: "+" }), el("kbd", { text: "0" })));
+    pal.classList.toggle("at", !!palAt);
+    if (palAt) {   // opened from the quick menu or the lasso's bar: there, on screen
+      const W = wrap.clientWidth, H = wrap.clientHeight, w = pal.offsetWidth, h = pal.offsetHeight;
+      pal.style.left = Math.round(Math.max(4, Math.min(W - w - 4, palAt[0]))) + "px"; pal.style.top = Math.round(Math.max(4, Math.min(H - h - 4, palAt[1]))) + "px";
+      return;
+    }
+    pal.style.left = "";
     const b = rail.querySelector("#ink-more"); if (b) pal.style.top = Math.max(4, Math.min(wrap.clientHeight - 140, b.getBoundingClientRect().top - wrap.getBoundingClientRect().top - 6)) + "px";
   }
-  function togglePal(on = !palOpen) { if (on && paperOpen) { paperOpen = false; pmenu.hidden = true; } palOpen = on; pal.hidden = !on; bar(); if (on) pal.querySelector(".iswatch")?.focus({ preventScroll: true }); else canvas.focus({ preventScroll: true }); }
+  function togglePal(on = !palOpen, at = null) { if (on && paperOpen) { paperOpen = false; pmenu.hidden = true; } if (on) closeQm(); palOpen = on; palAt = on ? at : null; pal.hidden = !on; bar(); if (on) pal.querySelector(".iswatch")?.focus({ preventScroll: true }); else canvas.focus({ preventScroll: true }); }
   function setTool(t) { if (t === "snip" && st.tool !== "snip") st.back = st.tool; finishEdit(); st.tool = t; canvas.style.cursor = ""; if (t !== "lasso" && t !== "text") clearSel(); eraserAt = null; bar(); frame(); }
   function setColour(c) {
     st.c = c; if (isHex(c)) st.extra = c; keep();
@@ -770,12 +838,80 @@ export function createInk(opts) {
   function setSize(k) { st.size = k; keep(); bar(); }
   function zoomBy(k) { zoomAt(st.zoom * k, wrap.clientWidth / 2, wrap.clientHeight / 2); }
   function del() { const list = picked(), items = pickedItems(); if (!list.length && !items.length) return false; sel = null; commit(removeOp(list, items)); return true; }
+  function setPenBtn(v = st.penbtn === "menu" ? "erase" : "menu") { st.penbtn = v === "erase" ? "erase" : "menu"; try { opts.prefs?.set("penbtn", st.penbtn); } catch {} bar(); }
+  const selIds = () => (sel ? [...sel.ids].filter((id) => doc.strokes.some((s) => s.id === id) || doc.items.some((it) => it.id === id)) : []);
+  // a copy of what's picked, a little down and right of it, picked in its place
+  function duplicate() {
+    const list = picked(), items = pickedItems(); if (!list.length && !items.length) return false;
+    const d = 24, ns = list.map((k) => ({ id: sid(), t: k.t, c: k.c, p: k.p.map((v, i) => (i % 3 === 2 ? v : v + d)) })), ni = items.map((it) => ({ ...it, id: sid(), x: it.x + d, y: it.y + d }));
+    commit({ redo: () => { doc.strokes.push(...ns); doc.items.push(...ni); }, undo: () => { doc.strokes = doc.strokes.filter((k) => !ns.includes(k)); doc.items = doc.items.filter((it) => !ni.includes(it)); } });
+    select(ns, ni); return true;
+  }
+  // what's picked, sharp, on white, as a PNG on the clipboard (the snip's renderer and bar)
+  function copySel() {
+    const list = picked(), items = pickedItems(); if (!list.length && !items.length) return false;
+    const b = selBox(list, items), p = 16; doSnip({ x0: b.x0 - p, y0: b.y0 - p, x1: b.x1 + p, y1: b.y1 + p }, new Set(sel.ids)); return true;
+  }
+
+  // ---- the quick menu at the nib: two rows of five square tiles, keys in their corners
+  const UNDO_D = "M9 7L4 12l5 5M4 12h10a6 6 0 0 1 0 12";
+  const QM_TILES = () => [...TOOLS, ["undo", "Undo", "Ctrl+Z", UNDO_D], ["colour", "Colour", "⇧C", null]];
+  // a pen or finger acts on lifting off a tile (its click may never come); the mouse and keys by click
+  const tapAct = (fn) => ({ onpointerup: (e) => { if (e.pointerType === "mouse") return; e.preventDefault(); tapped = [e.currentTarget, now()]; fn(); },
+    onclick: (e) => { if (tapped && tapped[0] === e.currentTarget && now() - tapped[1] < 700) return; fn(); } });   // not twice for one tap
+  const swatchOf = () => el("span", { class: "iqsw", style: "background:" + (isHex(st.c) ? st.c : (st.tool === "hl" ? HI : INK)[st.c][night() ? 1 : 0]) });
+  const tile = (id, label, key, d, on, run) => el("button", { type: "button", class: "iqt" + (on ? " on" : ""), id, role: "menuitem", title: `${label} (${key})`, "aria-label": label, ...tapAct(run) }, d ? opts.icon(d) : swatchOf(), el("kbd", { text: key }));
+  function drawQm() { qm.replaceChildren(...QM_TILES().map(([id, label, key, d]) => tile("qm-" + id, label, key, d, st.tool === id, () => qmRun(id)))); }
+  // cx, cy: the nib, in the page's own pixels. Just below and right of it, else wherever it fits.
+  function openQm(cx, cy, keys = false) {
+    if (palOpen) togglePal(false); if (paperOpen) togglePaper(false);
+    qmOpen = true; qmAt = [cx, cy]; drawQm(); qm.hidden = false;
+    const W = wrap.clientWidth, H = wrap.clientHeight, w = qm.offsetWidth, h = qm.offsetHeight, off = 14;
+    let x = cx + off, y = cy + off;
+    if (x + w > W - 4) x = cx - off - w;
+    if (y + h > H - 4) y = cy - off - h;
+    qm.style.left = Math.round(Math.max(4, Math.min(W - w - 4, x))) + "px"; qm.style.top = Math.round(Math.max(4, Math.min(H - h - 4, y))) + "px";
+    if (keys) (qm.querySelector(".iqt.on") || qm.querySelector(".iqt"))?.focus({ preventScroll: true });
+  }
+  function closeQm() { if (!qmOpen) return; qmOpen = false; qm.hidden = true; if (qm.contains(document.activeElement)) canvas.focus({ preventScroll: true }); }
+  // how far a point is from the menu's edge (0 inside it)
+  const qmGap = (x, y) => { const l = qm.offsetLeft, t = qm.offsetTop, r = l + qm.offsetWidth, b = t + qm.offsetHeight; return Math.hypot(Math.max(l - x, 0, x - r), Math.max(t - y, 0, y - b)); };
+  function qmRun(id) {
+    const at = [qm.offsetLeft, qm.offsetTop];
+    closeQm();
+    if (id === "undo") return step(undo, redo);
+    if (id === "colour") return togglePal(true, at);
+    setTool(id);
+  }
+  function qmKeys(k) {   // arrows go round the tiles, five to a row
+    const ts = [...qm.querySelectorAll(".iqt")], i = ts.indexOf(document.activeElement), n = ts.length;
+    const j = k === "ArrowRight" ? i + 1 : k === "ArrowLeft" ? i - 1 : k === "ArrowDown" ? i + 5 : i - 5;
+    ts[((j % n) + n) % n]?.focus({ preventScroll: true });
+  }
+  // ---- the lasso's bar
+  const lbSpot = () => [lb.offsetLeft, lb.offsetTop + lb.offsetHeight + 4];
+  function drawBar() {
+    lb.replaceChildren(...[
+      opts.toText && ["lb-text", "To text", "X", "M4 6h16M12 6v13M8 19h8", () => opts.toText()],
+      opts.discuss && ["lb-talk", "Discuss", "Alt+6", "M4 5h16v11H10l-4 4v-4H4z", () => opts.discuss(selIds())],
+      ["lb-copy", "Copy as picture", "C", "M8 8h11v11H8zM5 15V5h10", copySel],
+      ["lb-colour", "Colour", "⇧C", null, () => togglePal(true, lbSpot())],
+      ["lb-dup", "Duplicate", "D", "M9 9h10v10H9zM5 15V5h10M14 11v6M11 14h6", duplicate],
+      ["lb-del", "Delete", "Del", "M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13", del],
+    ].filter(Boolean).map(([id, label, key, d, run]) => tile(id, label, key, d, false, () => { run(); canvas.focus({ preventScroll: true }); })));
+  }
 
   // keys, while the page is open and you're not typing in a box
   const typing = () => { const a = document.activeElement; return a && a !== canvas && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)); };
   function onKey(e) {
-    if (!wrap.isConnected || document.querySelector(".dialog") || e.altKey) return;
+    if (!wrap.isConnected || document.querySelector(".dialog")) return;
+    if (e.altKey) {   // Alt+6: Discuss what the lasso holds, as on typed pages
+      if (e.code === "Digit6" && !e.ctrlKey && !e.metaKey && sel && opts.discuss && !typing() && (opts.global !== false || wrap.contains(document.activeElement))) { e.preventDefault(); e.stopPropagation(); opts.discuss(selIds()); }
+      return;
+    }
     if (typing() && !(palOpen && pal.contains(document.activeElement))) return;
+    const inMenu = document.activeElement?.closest?.(".inkqm, .inklb");
+    if ((e.key === " " || e.key === "Enter") && inMenu) { e.preventDefault(); e.stopPropagation(); return document.activeElement.click(); }   // the tile's own press
     if (e.key === " " && document.activeElement?.closest?.(".inkpm, .inkpal")) return;   // Space presses the menu's button
     // beside a graph its keys stay the graph's unless you're on the page
     if (opts.global === false && !wrap.contains(document.activeElement) && !rail.contains(document.activeElement)) return;
@@ -790,6 +926,11 @@ export function createInk(opts) {
       const row = PAPER_MENU.find(([, , key]) => key === k); if (row) { done(); return setPaper(row[0]); }
       if (k === "ArrowDown" || k === "ArrowUp") { done(); const rs = [...pmenu.querySelectorAll(".iprow")], i = rs.indexOf(document.activeElement); rs[(i + (k === "ArrowDown" ? 1 : rs.length - 1)) % rs.length]?.focus(); return; }
     }
+    if (qmOpen && !mod) {
+      if (k === "Escape" || k === "q" || k === "Q") { done(); return closeQm(); }
+      if (k.startsWith("Arrow")) { done(); return qmKeys(k); }
+      if (k !== "Shift") closeQm();   // any other key closes it, and does what it does
+    }
     if (!snipBar.hidden && !mod) {
       if (k === "Enter") { done(); return saveSnip(); }
       if (k === "Escape") { done(); return hideSnip(); }
@@ -798,11 +939,17 @@ export function createInk(opts) {
     if (mod && (k === "y" || ((k === "z" || k === "Z") && e.shiftKey))) { done(); return step(redo, undo); }
     if (mod && (k === "=" || k === "+")) { done(); return zoomBy(1.25); }
     if (mod && k === "-") { done(); return zoomBy(0.8); }
+    if (mod && sel && !e.shiftKey && (k === "c" || k === "C")) { done(); return copySel(); }
+    if (mod && sel && !e.shiftKey && (k === "d" || k === "D")) { done(); return duplicate(); }
     if (mod) return;
     const low = k.toLowerCase();
+    if (low === "q" && !e.shiftKey) { done(); return openQm(...(lastPen || [wrap.clientWidth / 2, wrap.clientHeight / 2]), true); }
+    if (low === "e" && e.shiftKey) { done(); return setPenBtn(); }
+    if (sel && !e.shiftKey && low === "c") { done(); return copySel(); }
+    if (sel && !e.shiftKey && low === "d") { done(); return duplicate(); }
     if (low === "p" && e.shiftKey) { done(); return setTool("pencil"); }
     if (low === "s" && e.shiftKey) { done(); return setTool("snip"); }
-    if (low === "c" && e.shiftKey) { done(); return togglePal(); }
+    if (low === "c" && e.shiftKey) { done(); return palOpen ? togglePal(false) : togglePal(true, sel && !lb.hidden ? lbSpot() : null); }
     const tool = { p: "pen", m: "marker", h: "hl", e: "eraser", l: "lasso", a: "text" }[low];
     if (tool && !e.shiftKey) { done(); return setTool(tool); }
     if (low === "c") { done(); return setColour(isHex(st.c) ? 0 : (st.c + 1) % 4); }
@@ -841,7 +988,8 @@ export function createInk(opts) {
     get doc() { return doc; }, get tool() { return st.tool; }, get colour() { return st.c; }, get size() { return st.size; }, get zoom() { return st.zoom; }, get touchDraws() { return st.touchDraws; },
     get selected() { return sel ? [...sel.ids].filter((id) => doc.strokes.some((s) => s.id === id) || doc.items.some((it) => it.id === id)) : []; },
     get view() { return { zoom: st.zoom, sx: st.sx, sy: st.sy, scale: scale(), ox: ox(), oy: oy(), seen: seen() }; },
-    get paperOpen() { return paperOpen; },
+    get paperOpen() { return paperOpen; }, get menuOpen() { return qmOpen; }, get palOpen() { return palOpen; }, get penbtn() { return st.penbtn; },
+    openMenu: (cx, cy) => openQm(cx ?? wrap.clientWidth / 2, cy ?? wrap.clientHeight / 2), closeMenu: closeQm, setPenBtn, duplicate, copySel,
     // the box round everything on the page, in page units (null when it's empty)
     get bounds() { return doc.strokes.length || doc.items.length ? selBox(doc.strokes, doc.items) : null; },
     setView: (v) => { Object.assign(st, v); clampView(); full(); }, setPaper, home,
@@ -862,7 +1010,7 @@ export function createInk(opts) {
     focus: () => canvas.focus({ preventScroll: true }),
     destroy: () => {
       removeEventListener("pointermove", move, true); removeEventListener("pointerup", up, true); removeEventListener("pointercancel", up, true);
-      document.removeEventListener("pointerover", penOver, true); document.removeEventListener("keydown", onKey, true); document.removeEventListener("paste", onPaste);
+      document.removeEventListener("pointerover", penOver, true); document.removeEventListener("pointerdown", outside, true); document.removeEventListener("keydown", onKey, true); document.removeEventListener("paste", onPaste);
       document.removeEventListener("keyup", spaceUp, true); removeEventListener("blur", spaceGone); if (viewTimer) keepView(true);
       ro.disconnect(); mo.disconnect(); mq.removeEventListener?.("change", onMq); cancelAnimationFrame(raf); clearTimeout(snipTimer);
     },
