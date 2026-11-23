@@ -21,7 +21,7 @@ const ink = await state(page, () => bonsai.S.pages.find((p) => p.kind === "ink")
 await page.evaluate((id) => { location.hash = "#/notes/" + id; }, ink);
 await page.waitForSelector(".inkrail"); await page.waitForTimeout(500);
 await page.screenshot({ path: "tests/shots/ink-demo.png" });
-t.eq(await page.$$eval(".inkrail .ibtn kbd", (k) => k.map((x) => x.textContent)), ["P", "⇧P", "M", "H", "E", "L", "A", "⇧S", "S", "Ctrl+Z", "Ctrl+Y", "+", "−", "0", "B", "T"], "every tool on the rail shows its key");
+t.eq(await page.$$eval(".inkrail .ibtn kbd", (k) => k.map((x) => x.textContent)), ["P", "⇧P", "M", "H", "E", "L", "A", "⇧S", "S", "Ctrl+Z", "Ctrl+Y", "+", "−", "0", "B", "⇧E", "T"], "every tool on the rail shows its key");
 const box = await page.$eval(".inkrail", (r) => { const b = r.getBoundingClientRect(); return [Math.round(innerWidth - b.right), Math.round(b.bottom)]; });
 t.eq(box[0], 0, "the rail is docked to the right edge");
 const n0 = await state(page, () => bonsai.S.ed.ink.doc.strokes.length);
@@ -112,8 +112,11 @@ const x0 = await state(page, (id) => bonsai.S.ed.ink.doc.strokes.find((s) => s.i
 await draw("mouse", [[300, 710], [340, 740], [400, 760]]);
 const x1 = await state(page, (id) => bonsai.S.ed.ink.doc.strokes.find((s) => s.id === id).p[0], target);
 if (Math.abs(x1 - x0 - 100) > 2) t.fail(`dragging the pick moves it: ${x0} → ${x1}`);
+await page.click('.inkrail .iswatch[data-c="2"]');
+t.eq(await state(page, (id) => bonsai.S.ed.ink.doc.strokes.find((s) => s.id === id).c, target), 2, "a colour recolours what's picked");
 await page.keyboard.press("c");
-t.eq(await state(page, (id) => bonsai.S.ed.ink.doc.strokes.find((s) => s.id === id).c, target), 2, "C recolours what's picked");
+if (!(await state(page, () => bonsai.S.ed.ink.snip))) t.fail("C with a pick doesn't copy it as a picture");
+await page.keyboard.press("Escape");
 await page.keyboard.press("Delete");
 if (await state(page, (id) => bonsai.S.ed.ink.doc.strokes.some((s) => s.id === id), target)) t.fail("Delete doesn't remove what's picked");
 if (!(await state(page, (id) => bonsai.S.pages.some((p) => p.id === id), ink))) t.fail("Delete took the page");
