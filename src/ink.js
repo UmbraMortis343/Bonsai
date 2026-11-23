@@ -243,10 +243,12 @@ export function createInk(opts) {
   function drawPaper(g, P, s, v) {
     g.fillStyle = P.bg; g.fillRect(v.x0, v.y0, v.x1 - v.x0, v.y1 - v.y0);
     g.strokeStyle = g.fillStyle = P.line; g.lineWidth = Math.max(0.6, 1 / s);
+    g.globalAlpha = Math.max(0.35, Math.min(1, (s - 0.1) / 0.5));   // zoomed far out, the lines close up, so they fade back
     const ys = Math.max(GAP, Math.ceil(v.y0 / GAP) * GAP), xs = Math.max(GAP, Math.ceil(v.x0 / GAP) * GAP);
     if (doc.paper === "lined") { g.beginPath(); for (let y = Math.max(GAP * 2, ys); y <= v.y1; y += GAP) { g.moveTo(v.x0, y); g.lineTo(v.x1, y); } g.stroke(); }
     if (doc.paper === "grid") { g.beginPath(); for (let y = ys; y <= v.y1; y += GAP) { g.moveTo(v.x0, y); g.lineTo(v.x1, y); } for (let x = xs; x <= v.x1; x += GAP) { g.moveTo(x, v.y0); g.lineTo(x, v.y1); } g.stroke(); }
     if (doc.paper === "dots") { const r = Math.max(1.3, 1.4 / s); g.beginPath(); for (let y = ys; y <= v.y1; y += GAP) for (let x = xs; x <= v.x1; x += GAP) { g.moveTo(x + r, y); g.arc(x, y, r, 0, 7); } g.fill(); }
+    g.globalAlpha = 1;
   }
   const imgs = new Map();
   function imgOf(it) {
@@ -738,7 +740,7 @@ export function createInk(opts) {
   function drawPaperMenu() {
     const rows = [...PAPER_MENU, ...(doc.paper === "dots" ? [["dots", "Dots", ""]] : [])];
     pmenu.replaceChildren(...rows.map(([id, label, key]) => el("button", { type: "button", class: "iprow" + (doc.paper === id ? " on" : ""), role: "menuitemradio", "aria-checked": String(doc.paper === id), dataset: { paper: id },
-      onclick: () => setPaper(id) }, opts.icon(PAPER_ICON[id]), el("span", { text: label }), key ? el("kbd", { text: key }) : el("span"))));
+      onclick: () => setPaper(id) }, opts.icon(PAPER_ICON[id]), el("span", { class: "ipl", text: label }), key ? el("kbd", { text: key }) : el("span"))));
     const b = rail.querySelector("#ink-paper"); if (b) pmenu.style.top = Math.max(4, Math.min(wrap.clientHeight - 150, b.getBoundingClientRect().top - wrap.getBoundingClientRect().top - 6)) + "px";
   }
   function togglePaper(on = !paperOpen) {
@@ -760,7 +762,7 @@ export function createInk(opts) {
     const b = rail.querySelector("#ink-more"); if (b) pal.style.top = Math.max(4, Math.min(wrap.clientHeight - 140, b.getBoundingClientRect().top - wrap.getBoundingClientRect().top - 6)) + "px";
   }
   function togglePal(on = !palOpen) { if (on && paperOpen) { paperOpen = false; pmenu.hidden = true; } palOpen = on; pal.hidden = !on; bar(); if (on) pal.querySelector(".iswatch")?.focus({ preventScroll: true }); else canvas.focus({ preventScroll: true }); }
-  function setTool(t) { if (t === "snip" && st.tool !== "snip") st.back = st.tool; finishEdit(); st.tool = t; if (t !== "lasso" && t !== "text") clearSel(); eraserAt = null; bar(); frame(); }
+  function setTool(t) { if (t === "snip" && st.tool !== "snip") st.back = st.tool; finishEdit(); st.tool = t; canvas.style.cursor = ""; if (t !== "lasso" && t !== "text") clearSel(); eraserAt = null; bar(); frame(); }
   function setColour(c) {
     st.c = c; if (isHex(c)) st.extra = c; keep();
     const list = picked(), items = pickedItems(); if (list.length || items.length) commit(colourOp(list, items, c)); else bar();
