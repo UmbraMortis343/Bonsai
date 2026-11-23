@@ -1,7 +1,7 @@
 // Discuss with Claude, pure logic: the prompt for each turn of a conversation about a note page or words picked in it.
 // Bonsai Desktop asks Claude Code with no saved session, so every turn carries the whole conversation, the words
 // and the page (trimmed to fit). Conversations are kept per page in meta "talk:<pageId>" (main.js), which syncs.
-// talk { id, at, quote, blockIds, whole, turns: [{ who: "you" | "claude", text, at }] }
+// talk { id, at, quote, blockIds, whole, inkIds (a pen page's: what the lasso held), turns: [{ who: "you" | "claude", text, at }] }
 export const TALK_SYSTEM = "You are a study partner inside Bonsai, a notes and knowledge-retention app. The person is reading their own notes and wants to understand them. Write plainly and briefly, to them as \"you\". Short paragraphs or a short list; Markdown is fine (bold, lists, inline code), no big headings, no preamble or sign-off.";
 export const PAGE_MAX = 12000, QUOTE_MAX = 4000, TURN_MAX = 4000, TALK_MAX = 24000, TALKS_KEPT = 60;
 
@@ -28,10 +28,13 @@ export function transcript(turns, max = TALK_MAX) {
   return keep.join("\n\n");
 }
 // The message for the next turn. With no turns yet, Claude opens: explains, connects, finds gaps, asks one question.
-export function talkPrompt({ title = "", page = "", quote = "", whole = false, turns = [] } = {}) {
+// picture: a pen page, sent as a picture of the ink (the whole page, or what the lasso holds) in place of its text.
+export function talkPrompt({ title = "", page = "", quote = "", whole = false, turns = [], picture = false } = {}) {
   const part = whole ? "this page" : "the part I picked out";
-  const out = [`My notes page "${title || "Untitled"}":\n<page>\n${trimAround(page, quote) || "(empty)"}\n</page>`];
-  if (!whole && quote) out.push(`The part I picked out:\n<selection>\n${clip(quote, QUOTE_MAX)}\n</selection>`);
+  const out = [picture
+    ? `My handwritten notes page "${title || "Untitled"}". The attached picture shows ${whole ? "the whole page" : "the part I picked out"}: read my handwriting and any drawings from it.`
+    : `My notes page "${title || "Untitled"}":\n<page>\n${trimAround(page, quote) || "(empty)"}\n</page>`];
+  if (!picture && !whole && quote) out.push(`The part I picked out:\n<selection>\n${clip(quote, QUOTE_MAX)}\n</selection>`);
   const said = (turns || []).filter((t) => String(t?.text || "").trim());
   if (!said.length) {
     out.push(`Help me understand and think about ${part}: explain anything unclear, connect it to what else is on the page, point out gaps or mistakes, and end with one question I could test myself with. Keep it concise and plain, and write to me as "you".`);

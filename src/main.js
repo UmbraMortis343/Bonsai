@@ -849,7 +849,9 @@ function shortcuts() {
     ["Garden", [["D", "Day or night"], ["N  Z", "New graph, new topic"], ["S", "Split a full topic"], ["⇧1–3  ⇧0", "Focus, Keep, Settled; a topic back to its island's"]]],
     ["Timelapse", [["T", "Open or close"], ["Space", "Play or pause"], ["← →", "A day back or on"], ["⇧← ⇧→", "The marks: Sundays and big days"], ["⇧T", "Save as video"], ["Esc", "Back to now"]]],
     ["Tech tree", [["Space", "Open or close"], ["↵", "Put in the middle; again to open"], ["H  A", "Whole tree, everything open"], ["B", "What an island grows from"]]],
-    ["Library", [["N  F  W", "New page, folder, pen page"], ["⇧V", "Vocab"], ["]", "Discussions beside a page"], ["Alt+6", "Discuss words or blocks picked"], ["P H E L", "Pen page: pen, highlighter, eraser, lasso"], ["C  S  B  T", "Pen page: colour, size, paper, touch"], ["Space  0", "Pen page: hold to move the page, back to the top left"]]],
+    ["Library", [["N  F  W", "New page, folder, pen page"], ["⇧V", "Vocab"], ["]", "Discussions beside a page"], ["Alt+6", "Discuss words or blocks picked"], ["P H E L", "Pen page: pen, highlighter, eraser, lasso"], ["C  S  B  T", "Pen page: colour, size, paper, touch"],
+      ["Q", "Pen page: the quick menu at the pen (or the side button, or hold the pen still)"], ["⇧E", "Pen page: the side button opens the menu or erases"],
+      ["X  Alt+6  C  D  Del", "Pen page, with the lasso: to text, discuss, copy as picture, duplicate, delete"], ["Space  0", "Pen page: hold to move the page, back to the top left"]]],
   ];
   dialog({ title: "Shortcuts", ok: null, cancel: "Close", body: el("div", { class: "keygroups" }, groups.map(([h, rows]) => el("section", {}, el("h3", { text: h }),
     el("table", { class: "keys" }, rows.map(([k, d]) => el("tr", {}, el("td", {}, el("kbd", { text: k })), el("td", { text: d }))))))) });
@@ -3419,7 +3421,8 @@ function foldInkProps() {
 }
 function inkView(p, side) {
   const area = el("div", { class: "inkarea" });
-  const ink = createInk({ host: area, el, store: PREF + "ink", key: p.id, global: !side, icon: (d) => icon(d), doc: p.ink, night: darkPage, onChange: (doc) => queuePage(p.id, { ink: doc }), toText: desktop ? () => inkToText(p, ink) : null, name: () => pageOf(p.id)?.title || p.title });
+  const ink = createInk({ host: area, el, store: PREF + "ink", key: p.id, global: !side, icon: (d) => icon(d), doc: p.ink, night: darkPage, onChange: (doc) => queuePage(p.id, { ink: doc }), toText: desktop ? () => inkToText(p, ink) : null, name: () => pageOf(p.id)?.title || p.title,
+    prefs: { get: pref, set: setPref }, discuss: (ids) => inkDiscuss(p, ink, ids) });
   S.ed = { destroy: ink.destroy, flush: ink.flush, focus: ink.focus, redraw: ink.redraw, ink };
   const fold = el("button", { class: "inkfold", type: "button", "aria-expanded": String(inkPropsOpen()), title: "Properties (D)", onclick: foldInkProps }, icon(ICON.fold), el("span", { text: "Properties" }), el("kbd", { text: "D" }));
   return el("div", { class: "inkview" + (side ? " side" : "") + (inkPropsOpen() ? " propsopen" : "") }, el("article", { class: "page inkhead" + (side ? " side" : "") }, titleInput(p, side), fold, propsView(p)), area);
@@ -3998,7 +4001,7 @@ function actKey(e) {
 // Claude Code with the whole conversation, the words and the page; conversations are kept per page in meta
 // "talk:<pageId>" ({ list }, newest first), which syncs. Elsewhere Discuss copies a prompt and opens claude.ai.
 const TALKS = new Map(), talkJobs = new Map();   // pageId → its discussions (as last loaded); talk id → the ask under way
-const talkable = (p) => !!p && !isFolder(p) && p.kind !== "ink";
+const talkable = (p) => !!p && !isFolder(p);   // typed pages, and pen pages (Claude is sent a picture of the ink)
 const until = (fn, ms = 3000) => new Promise((done) => { const t0 = Date.now(), tick = () => (fn() || Date.now() - t0 > ms ? done() : setTimeout(tick, 40)); tick(); });
 const talkBusy = () => !!(S.talk?.t && talkJobs.has(S.talk.t.id));
 const squash = (x) => String(x || "").replace(/\s+/g, " ").trim();
@@ -4010,7 +4013,7 @@ async function loadTalks(pageId) {
 }
 async function saveTalks(pageId, list) {
   TALKS.set(pageId, sortTalks(list));
-  await safely(() => store.setMeta("talk:" + pageId, { list: TALKS.get(pageId).map(({ id, at, quote, blockIds, whole, turns }) => ({ id, at, quote, blockIds, whole, turns })) }));
+  await safely(() => store.setMeta("talk:" + pageId, { list: TALKS.get(pageId).map(({ id, at, quote, blockIds, whole, inkIds, turns }) => ({ id, at, quote, blockIds, whole, ...(inkIds ? { inkIds } : {}), turns })) }));
   talkChrome(pageId);
 }
 // the counts in the page bar and the panel, and the marks beside the blocks talked about
@@ -4032,8 +4035,9 @@ function discuss(sel) {
   const got = S.ed?.selection?.();
   startTalk(p, { quote: (got?.text || sel?.text || "").trim(), blockIds: got?.ids || sel?.ids || [] });
 }
-async function startTalk(p, { quote = "", blockIds = [], whole = false } = {}) {
+async function startTalk(p, { quote = "", blockIds = [], whole = false, inkIds = [] } = {}) {
   await flushPage();
+  if (p.kind === "ink") return desktop ? startInkTalk(p, whole ? [] : inkIds) : pasteInkTalk(p, S.ed?.ink, whole ? [] : inkIds);
   const o = { title: p.title, page: blocksToText(pageOf(p.id)?.blocks || [], pageTitle), quote, whole: whole || !quote };
   if (!desktop) return pasteTalk(o);
   const bad = liveProblem(await liveStatus()); if (bad) return toast(bad);
@@ -4041,6 +4045,35 @@ async function startTalk(p, { quote = "", blockIds = [], whole = false } = {}) {
   const t = { id: talkId(), at: new Date().toISOString(), quote: o.whole ? "" : quote, blockIds: o.whole ? [] : blockIds, whole: o.whole, turns: [] };
   S.talk = { pageId: p.id, t, view: "talk", draft: "" }; renderTalk(true);
   talkAsk(p.id, t);
+}
+// Discuss on a pen page: what the lasso holds (ids), or the whole page. Claude is sent a picture of the ink each turn,
+// drawn fresh from the page (talk.inkIds); the talk is kept like a typed page's. No desktop: the picture and the
+// prompt go on the clipboard, and claude.ai opens.
+function inkDiscuss(p, ink, ids = []) {
+  if (!desktop) return pasteInkTalk(p, ink, ids);
+  return startTalk(p, { inkIds: ids, whole: !ids.length });
+}
+const inkPicture = (ink, ids, maxW) => (ids?.length && ink?.picture(ids, maxW)) || ink?.picture(null, maxW) || null;
+async function startInkTalk(p, inkIds) {
+  if (!canSee()) return toast("Update Bonsai Desktop to read handwriting");
+  const bad = liveProblem(await liveStatus()); if (bad) return toast(bad);
+  if (S.view !== "notes" || S.npage !== p.id) { location.hash = notesHash(p.id); await until(() => S.view === "notes" && S.npage === p.id && S.ed?.ink); }
+  if (!inkPicture(S.ed?.ink, inkIds)) return toast("Nothing written yet");
+  const t = { id: talkId(), at: new Date().toISOString(), quote: "", blockIds: [], whole: !inkIds.length, inkIds, turns: [] };
+  S.talk = { pageId: p.id, t, view: "talk", draft: "" }; renderTalk(true);
+  talkAsk(p.id, t);
+}
+async function pasteInkTalk(p, ink, ids) {
+  await flushPage();
+  const pic = inkPicture(ink, ids); if (!pic) return toast("Nothing written yet");
+  const prompt = pastePrompt({ title: p.title, picture: true, whole: !ids.length }); S.lastPrompt = prompt;
+  const png = new Blob([Uint8Array.from(atob(pic.data), (c) => c.charCodeAt(0))], { type: "image/png" });
+  let copied = false;
+  try { await navigator.clipboard.write([new ClipboardItem({ "image/png": png, "text/plain": new Blob([prompt], { type: "text/plain" }) })]); copied = true; } catch {}
+  window.open("https://claude.ai/new", "_blank", "noopener");
+  if (copied) return toast("Picture copied for Claude", { label: "Copy the words", run: () => navigator.clipboard.writeText(prompt).then(() => toast("Copied"), () => toast("It couldn't be copied")) });
+  const box = el("textarea", { id: "talkPrompt", readOnly: true, rows: 6, value: prompt, "aria-label": "For Claude" });
+  dialog({ title: "Discuss", ok: "", cancel: "Done", body: el("div", { class: "growd" }, el("img", { class: "inkshot", alt: "", src: "data:image/png;base64," + pic.data }), box) });
 }
 // No Bonsai Desktop: the opening as a prompt to paste into claude.ai; nothing is kept
 async function pasteTalk(o) {
@@ -4053,10 +4086,13 @@ async function pasteTalk(o) {
   dialog({ title: "Discuss", ok: "", cancel: "Done", body: box });
 }
 async function talkAsk(pageId, t) {
-  const p = pageOf(pageId);
-  const prompt = talkPrompt({ title: p?.title, page: blocksToText(p?.blocks || [], pageTitle), quote: t.quote, whole: t.whole, turns: t.turns });
+  const p = pageOf(pageId), pen = p?.kind === "ink";
+  const pic = pen && S.npage === pageId ? inkPicture(S.ed?.ink, t.inkIds) : null;
+  if (pen && !pic) return toast("Nothing written yet");
+  const prompt = pen ? talkPrompt({ title: p?.title, picture: true, whole: t.whole, turns: t.turns })
+    : talkPrompt({ title: p?.title, page: blocksToText(p?.blocks || [], pageTitle), quote: t.quote, whole: t.whole, turns: t.turns });
   const turn = { who: "claude", text: "", at: new Date().toISOString() }; t.turns.push(turn);
-  const job = askClaude(prompt, { system: TALK_SYSTEM, onText: (x) => { turn.text = x; talkLive(t, turn); } });
+  const job = askClaude(prompt, { system: TALK_SYSTEM, onText: (x) => { turn.text = x; talkLive(t, turn); }, ...(pic ? { images: [{ media_type: pic.media_type, data: pic.data }] } : {}) });
   talkJobs.set(t.id, job); renderTalk();
   const r = await job.done; talkJobs.delete(t.id);
   if (r.ok && r.text) turn.text = r.text;
@@ -4103,6 +4139,12 @@ function talkInsert(t, text) {
   if (made.length) toast("Inserted", { label: "Undo", run: () => S.ed?.undo() });
 }
 async function talkCopy(text) { try { await navigator.clipboard.writeText(text); toast("Copied"); } catch { toast("It couldn't be copied"); } }
+// a pen page's talk shows the ink it's about, drawn once per talk while the panel is open
+const inkShots = new Map();
+function inkShot(t) {
+  if (!inkShots.has(t.id)) { const pic = inkPicture(S.ed?.ink, t.inkIds, 640); if (!pic) return null; inkShots.set(t.id, "data:image/png;base64," + pic.data); }
+  return inkShots.get(t.id);
+}
 // the panel: docked right of the page, full height; ] shows and hides it, Esc closes it (or stops Claude)
 function renderTalk(focusInput = false) {
   const p = S.talk && pageOf(S.talk.pageId), on = S.view === "notes" && !!p && talkable(p) && S.talk.pageId === S.npage;
@@ -4124,13 +4166,14 @@ function renderTalk(focusInput = false) {
       el("button", { class: "btn tkwhole", id: "talkWhole", type: "button", onclick: () => startTalk(p, { whole: true }) }, icon(ICON.talk), "Discuss this page"),
       list.map((x) => el("div", { class: "tkrow", dataset: { id: x.id } },
         el("button", { class: "tkopen", type: "button", onclick: () => { S.talk.t = x; S.talk.view = "talk"; renderTalk(true); } },
-          el("span", { class: "tkq", text: x.whole ? "Whole page" : squash(x.quote).slice(0, 120) || "…" }),
+          el("span", { class: "tkq", text: x.whole ? "Whole page" : x.inkIds?.length ? "Selection" : squash(x.quote).slice(0, 120) || "…" }),
           el("span", { class: "muted", text: `${fmtDate(lastAt(x))} · ${x.turns.filter((c) => c.who === "you").length + 1}` })),
         el("button", { class: "ib tkdel", type: "button", title: "Delete", "aria-label": "Delete the discussion", onclick: () => deleteTalk(p.id, x.id) }, icon(ICON.close))))));
     return;
   }
-  const long = (t.quote || "").length > 280;
-  const quote = t.whole ? el("div", { class: "tkquote whole" }, el("span", { class: "muted", text: "Whole page" }))
+  const long = (t.quote || "").length > 280, pen = p.kind === "ink", shot = pen && inkShot(t);
+  const quote = pen ? el("div", { class: "tkquote whole tkink", id: "talkQuote" }, shot ? el("img", { class: "inkshot", alt: "", src: shot }) : el("span", { class: "muted", text: t.whole ? "Whole page" : "Selection" }))
+    : t.whole ? el("div", { class: "tkquote whole" }, el("span", { class: "muted", text: "Whole page" }))
     : el("blockquote", { class: "tkquote" + (long ? " fold" : ""), id: "talkQuote" }, el("div", { class: "tkqt", text: t.quote }),
       long ? el("button", { class: "link tkmore", type: "button", text: "More", onclick: (e) => { const q = e.currentTarget.parentElement; q.classList.toggle("open"); e.currentTarget.textContent = q.classList.contains("open") ? "Less" : "More"; } }) : null);
   const turns = t.turns.map((x, i) => {
@@ -4138,7 +4181,7 @@ function renderTalk(focusInput = false) {
     if (x.who === "you") return el("div", { class: "tkturn you", text: x.text });
     return el("div", { class: "tkturn claude" + (live ? " live" : "") }, el("div", { class: "md", html: md(x.text) }),
       live ? null : el("div", { class: "tkacts" },
-        el("button", { class: "btn tkins", type: "button", title: "Put it in the page, under what's talked about", onclick: () => talkInsert(t, x.text) }, "Insert"),
+        pen ? null : el("button", { class: "btn tkins", type: "button", title: "Put it in the page, under what's talked about", onclick: () => talkInsert(t, x.text) }, "Insert"),
         el("button", { class: "btn tkcopy", type: "button", onclick: () => talkCopy(x.text) }, "Copy")));
   });
   const input = el("textarea", { id: "talkInput", rows: 2, placeholder: "Reply", "aria-label": "Reply", value: S.talk.draft || "",
