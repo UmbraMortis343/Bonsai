@@ -203,13 +203,13 @@ const pick = (n, a, b) => state(page, ([n, a, b]) => { const t = [...document.qu
 const quick = async () => { await page.waitForSelector(".qpanel"); return page.$$eval(".qpanel button", (b) => b.map((x) => x.dataset.act)); };
 await open("Errands", "Email the lab about the report by Friday and ask whether the deadline can move\nThen buy a notebook\nNothing here");
 await pick(1, 5);
-t.eq(await quick(), ["add", "context", "claude", "google", "action"], "the quick panel has Action last");
+t.eq(await quick(), ["add", "context", "claude", "google", "action", "discuss"], "the quick panel has Action, then Discuss");
 t.eq(await page.textContent('.qpanel button[data-act="action"] kbd'), "Alt+5", "with its key");
 await k("Alt+5");
 t.eq((await htmls())[1].replace(/a[a-z0-9]+"/, 'ID"'), 'Then <mark data-action="ID">buy a notebook</mark>', "Alt+5 marks the words as an action");
 await page.waitForTimeout(300);
 await pick(0, 0);
-t.eq(await quick(), ["action"], "a whole sentence gets only Action");
+t.eq(await quick(), ["action", "discuss"], "a whole sentence gets Action and Discuss");
 await page.click('.qpanel button[data-act="action"]');
 t.eq((await htmls())[0].startsWith("<mark data-action="), true, "the sentence is an action too");
 t.eq(await page.textContent("#actsBtn .acount"), "2", "the Actions row counts what's open");

@@ -26,6 +26,7 @@ import { weekOf, sundayOpen, sundayPrompt, readTurn, stitchPrompt, readStitch, t
 import * as sync from "./sync.js";
 import { KINDS, KIND_NAME, REBUILD_Q, questionFor, usableQs, pickHide, questionsPrompt, readQuestions, dayNumber, cleanQs, BANK_PER, BANK_BATCH, MARK_NAME, MARK_RATING, markPrompt, readMark } from "./questions.js";
 import { createInk } from "./ink.js";
+import { TALK_SYSTEM, talkPrompt, pastePrompt, talkId, lastAt, sortTalks } from "./talk.js";
 import * as focus from "./focus.js";
 import { createHistory } from "./history.js";
 import { pickToday, recordOf, streak, monthGrid, dayLog, addDays, scoreTier } from "./today.js";
@@ -34,6 +35,7 @@ const PALETTE = [["Blue", "#3b82f6"], ["Violet", "#8b5cf6"], ["Pink", "#ec4899"]
 const SWATCHES = [["Auto", ""], ...PALETTE];
 const DAY = 86400000;
 const ICON = {
+  talk: "M4 5h16v11H10l-4 4v-4H4z",
   pin: "M9 3h6l-1 7 3 3H7l3-3zM12 13v8", swap: "M4 8h13l-3-3M20 16H7l3 3", ink: "M6 3h9l4 4v14H6zM9 16c1.5-3 3-1 4-2.5s1-2.5 2-2.5", sideOff: "M4 4h16v16H4zM9 4v16M15 9l-3 3 3 3", sideOn: "M4 4h16v16H4zM9 4v16M12 9l3 3-3 3",
   book: "M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3zM5 17a3 3 0 0 1 3-3h11",
   back: "M15 5l-7 7 7 7", fwd: "M9 5l7 7-7 7", fold: "M6 9l6 6 6-6", unfold: "M6 15l6-6 6 6", close: "M6 6l12 12M18 6L6 18", plus: "M12 5v14M5 12h14", more: "M5 12h.01M12 12h.01M19 12h.01",
@@ -846,7 +848,7 @@ function shortcuts() {
     ["Garden", [["D", "Day or night"], ["N  Z", "New graph, new topic"], ["S", "Split a full topic"], ["⇧1–3  ⇧0", "Focus, Keep, Settled; a topic back to its island's"]]],
     ["Timelapse", [["T", "Open or close"], ["Space", "Play or pause"], ["← →", "A day back or on"], ["⇧← ⇧→", "The marks: Sundays and big days"], ["⇧T", "Save as video"], ["Esc", "Back to now"]]],
     ["Tech tree", [["Space", "Open or close"], ["↵", "Put in the middle; again to open"], ["H  A", "Whole tree, everything open"], ["B", "What an island grows from"]]],
-    ["Library", [["N  F  W", "New page, folder, pen page"], ["⇧V", "Vocab"], ["P H E L", "Pen page: pen, highlighter, eraser, lasso"], ["C  S  B  T", "Pen page: colour, size, paper, touch"]]],
+    ["Library", [["N  F  W", "New page, folder, pen page"], ["⇧V", "Vocab"], ["]", "Discussions beside a page"], ["Alt+6", "Discuss words or blocks picked"], ["P H E L", "Pen page: pen, highlighter, eraser, lasso"], ["C  S  B  T", "Pen page: colour, size, paper, touch"]]],
   ];
   dialog({ title: "Shortcuts", ok: null, cancel: "Close", body: el("div", { class: "keygroups" }, groups.map(([h, rows]) => el("section", {}, el("h3", { text: h }),
     el("table", { class: "keys" }, rows.map(([k, d]) => el("tr", {}, el("td", {}, el("kbd", { text: k })), el("td", { text: d }))))))) });
@@ -2656,6 +2658,7 @@ async function removeLink(id) {
 function back() {
   if (closeTop()) return;
   if (vocab?.closeTop()) return;
+  if (talkBusy()) return talkStop();
   if (S.pick) return S.pick.finish(null);
   if (S.tq) return tqEnd();
   if (S.todayOpen) return todayClose();
@@ -2663,6 +2666,7 @@ function back() {
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || document.activeElement?.isContentEditable) return document.activeElement.blur();
   if (S.move) return toggleMove(false);
   if (S.view === "notes" && (S.gsel || S.glink) && graphPage(S.npage)) return S.boardPick?.(null);
+  if (S.view === "notes" && S.talk) return closeTalk();
   if (S.sun) return stopSunday();
   if (S.oral) return stopOral();
   if (S.review) return endReview();
@@ -3216,11 +3220,15 @@ function drawPageBar() {
       el("span", { class: "here", text: p.title || (isFolder(p) ? "New folder" : "Untitled") })),
     el("span", { class: "grow" }),
     p.grown?.length ? el("span", { class: "muted", text: `Grown ${p.grown.length}×` }) : null,
+    talkable(p) ? el("button", { class: "btn talksb" + (S.talk ? " on" : ""), id: "talksBtn", type: "button", title: "Discussions (])", "aria-label": "Discussions", "aria-pressed": String(!!S.talk), onclick: toggleTalk },
+      icon(ICON.talk), el("span", { class: "tcount", text: String(TALKS.get(p.id)?.length || "") }), el("kbd", { text: "]" })) : null,
     ib("pageMore", "Page menu", ICON.more, (e) => pageMenu(p, e.currentTarget)));
 }
 function drawEditor() {
   const host = $("#nedit"); if (!host) return;
   S.ed?.destroy(); S.ed = null;
+  if (S.talk && S.talk.pageId !== S.npage) S.talk = null;   // the discussion panel goes with its page
+  queueMicrotask(renderTalk);
   drawPageBar();
   for (const [c, id] of [[".nvocab:not(.nacts)", VOCAB], [".nacts", ACTS]]) for (const b of document.querySelectorAll(c)) b.classList.toggle("on", S.view === "notes" && S.npage === id);
   if (S.npage === VOCAB) return put(host, vocabView());
@@ -3288,10 +3296,12 @@ function pageView(p, side) {
   const body = el("div", { class: "pbody" });
   const blocks = (p.blocks || []).filter((b) => b.type !== "page" || pageOf(b.pageId));
   S.ed = createEditor({ host: body, blocks, key: p.id, onChange: (bl) => queuePage(p.id, { blocks: bl }), pageTitle, notify: (m) => toast(m), onTick: (id) => tickAct(id),
+    onPick: () => selPanel?.refresh(), markIcon: () => icon(ICON.talk), onMark: (bid) => openTalkAt(p.id, bid),
     files: { save: (rec) => store.putFile(rec), load: (id) => store.getFile(id) },
     openPage: (id) => (S.view === "notes" ? pickPage(id) : (location.hash = notesHash(id))),
     newSubpage: async () => { const c = await safely(() => store.addPage({ parentId: p.id })); if (!c) return null; S.pages.push(c); setOpen(p.id, true); return c.id; } });
   vocab?.watch(body);
+  loadTalks(p.id);
   return el("article", { class: "page" + (side ? " side" : "") }, titleInput(p, side), propsView(p), body);
 }
 // ---- properties at the top of a page, as in Notion ----
@@ -3467,6 +3477,7 @@ function shelfMenu(key, e) {
 function pageMenu(p, anchor) {
   menu(anchor, [
     !isFolder(p) && p.kind !== "ink" && { label: "Grow into a knowledge graph", key: "G", run: () => growDialog(p.id) },
+    talkable(p) && { label: "Discuss this page", run: () => startTalk(p, { whole: true }) },
     p.grown?.length && { label: "Take back the last grow", run: () => ungrow(p.id) },
     { label: isFolder(p) ? "New page in this folder" : "New page inside", run: () => newPage(p.id) },
     { label: "Move to", run: () => moveMenu(p, anchor) },
@@ -3610,20 +3621,29 @@ const google = (q) => window.open("https://www.google.com/search?q=" + encodeURI
 const notePageTitle = () => (S.view === "notes" ? pageOf(S.npage) : pageOf(S.sp))?.title || "";
 // The quick panel on words selected in a note (Alt+1… while it shows). Over a term already kept, it opens that term instead of adding.
 function selActions(sel) {
-  const a = actAt(sel.range), act = { id: "action", label: a ? "Not an action" : "Action", run: () => markAct(sel) };
-  if (sel.long) return [act];   // a sentence: only an action
+  const talk = { id: "discuss", label: "Discuss", key: 6, run: () => discuss(sel) };
+  if (sel.blocks) return [   // whole blocks picked
+    !sel.long && { id: "claude", label: "Flesh out", key: 3, run: () => fleshOut({ term: sel.text, source: notePageTitle() }) },
+    { id: "action", label: "Action", key: 5, run: markPicked }, talk];
   const id = vocab.termFor(sel.text), g = id && S.vocab.find((t) => t.id === id);
-  return (g ? [
-    { id: "open", label: g.term, run: () => { getSelection()?.collapseToEnd(); vocab.open(g.id, { range: sel.range }, { locked: true }); } },
-    { id: "context", label: "Add context", run: () => editTerm({ id: g.id, focus: "def" }) },
-    { id: "claude", label: "Flesh out", run: () => fleshOut({ termId: g.id }) },
-    { id: "google", label: "Google", run: () => google(sel.text) },
-  ] : [
-    { id: "add", label: "Add to vocab", run: () => quickAdd(sel) },
-    { id: "context", label: "Add context", run: () => editTerm({ term: sel.text, quote: sel.quote, source: notePageTitle(), focus: "def" }) },
-    { id: "claude", label: "Flesh out", run: () => fleshOut({ term: sel.text, quote: sel.quote, source: notePageTitle() }) },
-    { id: "google", label: "Google", run: () => google(sel.text) },
-  ]).concat(act);
+  const open = g && { id: "open", label: g.term, key: 1, run: () => { getSelection()?.collapseToEnd(); vocab.open(g.id, { range: sel.range }, { locked: true }); } };
+  const add = { id: "add", label: "Add to vocab", key: 1, run: () => quickAdd(sel) }, goog = { id: "google", label: "Google", key: 4, run: () => google(sel.text) };
+  if (inTalk(sel.range)) return sel.long ? [] : [open || add, goog];   // words in Claude's reply
+  const a = actAt(sel.range), act = { id: "action", label: a ? "Not an action" : "Action", key: 5, run: () => markAct(sel) };
+  if (sel.long) return [act, talk];   // a sentence: an action, or something to talk over
+  return (g ? [open,
+    { id: "context", label: "Add context", key: 2, run: () => editTerm({ id: g.id, focus: "def" }) },
+    { id: "claude", label: "Flesh out", key: 3, run: () => fleshOut({ termId: g.id }) }, goog,
+  ] : [add,
+    { id: "context", label: "Add context", key: 2, run: () => editTerm({ term: sel.text, quote: sel.quote, source: notePageTitle(), focus: "def" }) },
+    { id: "claude", label: "Flesh out", key: 3, run: () => fleshOut({ term: sel.text, quote: sel.quote, source: notePageTitle() }) }, goog,
+  ]).concat(act, talk);
+}
+const inTalk = (range) => { const n = range?.commonAncestorContainer; return !!(n?.nodeType === 1 ? n : n?.parentElement)?.closest?.(".talkp"); };
+function markPicked() {
+  const id = S.ed?.markPicked?.();
+  if (id == null) return toast("Nothing to mark");
+  actCount(); if (id) toast("Action", { label: "Actions", run: openActs });
 }
 async function quickAdd(sel) {
   const term = sel.text.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
@@ -3814,6 +3834,167 @@ function actKey(e) {
   else if (e.key === " " && i >= 0) { e.preventDefault(); e.stopPropagation(); tickAct(rows[i].closest(".arow").dataset.id, i); }
 }
 
+// ---------- Discuss: talking a note over with Claude (talk.js), in a panel docked right of the page ----------
+// Words or blocks picked (Alt+6 on the quick bar) or the whole page (its menu). In Bonsai Desktop each turn asks
+// Claude Code with the whole conversation, the words and the page; conversations are kept per page in meta
+// "talk:<pageId>" ({ list }, newest first), which syncs. Elsewhere Discuss copies a prompt and opens claude.ai.
+const TALKS = new Map(), talkJobs = new Map();   // pageId → its discussions (as last loaded); talk id → the ask under way
+const talkable = (p) => !!p && !isFolder(p) && p.kind !== "ink";
+const until = (fn, ms = 3000) => new Promise((done) => { const t0 = Date.now(), tick = () => (fn() || Date.now() - t0 > ms ? done() : setTimeout(tick, 40)); tick(); });
+const talkBusy = () => !!(S.talk?.t && talkJobs.has(S.talk.t.id));
+const squash = (x) => String(x || "").replace(/\s+/g, " ").trim();
+async function loadTalks(pageId) {
+  const v = await store.getMeta("talk:" + pageId).catch(() => null);
+  TALKS.set(pageId, sortTalks(v?.list || []));
+  talkChrome(pageId);
+  return TALKS.get(pageId);
+}
+async function saveTalks(pageId, list) {
+  TALKS.set(pageId, sortTalks(list));
+  await safely(() => store.setMeta("talk:" + pageId, { list: TALKS.get(pageId).map(({ id, at, quote, blockIds, whole, turns }) => ({ id, at, quote, blockIds, whole, turns })) }));
+  talkChrome(pageId);
+}
+// the counts in the page bar and the panel, and the marks beside the blocks talked about
+function talkChrome(pageId) {
+  const list = TALKS.get(pageId) || [], n = String(list.length || "");
+  if ((S.view === "notes" ? S.npage : S.sp) === pageId) {
+    for (const c of document.querySelectorAll("#talksBtn .tcount, #talkList .tcount")) c.textContent = n;
+    const marks = new Map(); for (const t of list) { const b = !t.whole && t.blockIds?.[0]; if (b && !marks.has(b)) marks.set(b, { title: "Discussion" }); }
+    S.ed?.setMarks?.(marks);
+  }
+}
+async function keepTalk(pageId, t) {
+  const list = (TALKS.get(pageId) || (await loadTalks(pageId))).filter((x) => x.id !== t.id);
+  await saveTalks(pageId, [t, ...list]);
+}
+// Discuss on the quick bar: what's picked, and the blocks it's in
+function discuss(sel) {
+  const p = pageOf(S.view === "notes" ? S.npage : S.sp); if (!talkable(p)) return;
+  const got = S.ed?.selection?.();
+  startTalk(p, { quote: (got?.text || sel?.text || "").trim(), blockIds: got?.ids || sel?.ids || [] });
+}
+async function startTalk(p, { quote = "", blockIds = [], whole = false } = {}) {
+  await flushPage();
+  const o = { title: p.title, page: blocksToText(pageOf(p.id)?.blocks || [], pageTitle), quote, whole: whole || !quote };
+  if (!desktop) return pasteTalk(o);
+  const bad = liveProblem(await liveStatus()); if (bad) return toast(bad);
+  if (S.view !== "notes" || S.npage !== p.id) { location.hash = notesHash(p.id); await until(() => S.view === "notes" && S.npage === p.id && S.ed?.selection); }
+  const t = { id: talkId(), at: new Date().toISOString(), quote: o.whole ? "" : quote, blockIds: o.whole ? [] : blockIds, whole: o.whole, turns: [] };
+  S.talk = { pageId: p.id, t, view: "talk", draft: "" }; renderTalk(true);
+  talkAsk(p.id, t);
+}
+// No Bonsai Desktop: the opening as a prompt to paste into claude.ai; nothing is kept
+async function pasteTalk(o) {
+  const prompt = pastePrompt(o); S.lastPrompt = prompt;
+  let copied = false; try { await navigator.clipboard.writeText(prompt); copied = true; } catch {}
+  window.open("https://claude.ai/new", "_blank", "noopener");
+  if (copied) return toast("Copied for Claude");
+  const box = el("textarea", { id: "talkPrompt", readOnly: true, rows: 8, value: prompt, "aria-label": "For Claude" });
+  setTimeout(() => box.select(), 0);
+  dialog({ title: "Discuss", ok: "", cancel: "Done", body: box });
+}
+async function talkAsk(pageId, t) {
+  const p = pageOf(pageId);
+  const prompt = talkPrompt({ title: p?.title, page: blocksToText(p?.blocks || [], pageTitle), quote: t.quote, whole: t.whole, turns: t.turns });
+  const turn = { who: "claude", text: "", at: new Date().toISOString() }; t.turns.push(turn);
+  const job = askClaude(prompt, { system: TALK_SYSTEM, onText: (x) => { turn.text = x; talkLive(t, turn); } });
+  talkJobs.set(t.id, job); renderTalk();
+  const r = await job.done; talkJobs.delete(t.id);
+  if (r.ok && r.text) turn.text = r.text;
+  if (!turn.text.trim()) { t.turns.splice(t.turns.indexOf(turn), 1); if (!r.ok && r.code !== "cancelled") toast(r.message || "Claude didn't answer"); }
+  turn.at = new Date().toISOString();
+  if (t.turns.some((x) => x.who === "claude" && x.text.trim())) await keepTalk(pageId, t);
+  renderTalk();
+}
+function talkStop() { const t = S.talk?.t; if (t) talkJobs.get(t.id)?.cancel(); }
+function talkSend() {
+  const t = S.talk?.t; if (!t || talkJobs.has(t.id)) return;
+  const text = ($("#talkInput")?.value || "").trim();
+  if (!text) { if (!t.turns.some((x) => x.who === "claude")) talkAsk(S.talk.pageId, t); return; }   // the opening never came: ask again
+  t.turns.push({ who: "you", text, at: new Date().toISOString() }); S.talk.draft = "";
+  talkAsk(S.talk.pageId, t);
+}
+function talkLive(t, turn) {   // the reply as it streams, without drawing the panel again
+  if (S.talk?.t !== t) return;
+  const m = $("#talk .tkturn.live .md"); if (!m) return renderTalk();
+  m.innerHTML = md(turn.text);
+  const sc = $("#talk .tkbody"); if (sc && sc.scrollHeight - sc.scrollTop - sc.clientHeight < 80) sc.scrollTop = sc.scrollHeight;
+}
+function toggleTalk() { if (S.talk) return closeTalk(); const p = pageOf(S.npage); if (!talkable(p)) return; S.talk = { pageId: p.id, t: null, view: "list", draft: "" }; renderTalk(); loadTalks(p.id).then(() => renderTalk()); }
+function closeTalk() { S.talk = null; renderTalk(); drawPageBarTalk(); }
+const drawPageBarTalk = () => { const b = $("#talksBtn"); if (b) { b.classList.toggle("on", !!S.talk); b.setAttribute("aria-pressed", String(!!S.talk)); } };
+// a mark in the margin: the newest discussion of that block
+async function openTalkAt(pageId, blockId) {
+  const list = TALKS.get(pageId) || (await loadTalks(pageId)), t = list.find((x) => x.blockIds?.[0] === blockId) || list.find((x) => x.blockIds?.includes(blockId));
+  if (!t) return;
+  if (S.view !== "notes" || S.npage !== pageId) { location.hash = notesHash(pageId); await until(() => S.view === "notes" && S.npage === pageId && S.ed?.selection); }
+  S.talk = { pageId, t, view: "talk", draft: "" }; renderTalk(true);
+}
+async function deleteTalk(pageId, id) {
+  const list = TALKS.get(pageId) || [], gone = list.find((x) => x.id === id); if (!gone) return;
+  if (talkJobs.has(id)) talkJobs.get(id).cancel();
+  await saveTalks(pageId, list.filter((x) => x.id !== id));
+  if (S.talk?.t?.id === id) { S.talk.t = null; S.talk.view = "list"; }
+  renderTalk();
+  toast("Discussion deleted", { label: "Undo", run: async () => { await saveTalks(pageId, [gone, ...(TALKS.get(pageId) || []).filter((x) => x.id !== id)]); renderTalk(); } });
+}
+function talkInsert(t, text) {
+  if (S.view !== "notes" || S.npage !== S.talk?.pageId || !S.ed?.insertBlocks) return;
+  const made = S.ed.insertBlocks(t.blockIds, textToBlocks(text));
+  if (made.length) toast("Inserted", { label: "Undo", run: () => S.ed?.undo() });
+}
+async function talkCopy(text) { try { await navigator.clipboard.writeText(text); toast("Copied"); } catch { toast("It couldn't be copied"); } }
+// the panel: docked right of the page, full height; ] shows and hides it, Esc closes it (or stops Claude)
+function renderTalk(focusInput = false) {
+  const p = S.talk && pageOf(S.talk.pageId), on = S.view === "notes" && !!p && talkable(p) && S.talk.pageId === S.npage;
+  document.body.dataset.talk = on ? "1" : "";
+  drawPageBarTalk();
+  if (!on) { S.talkEl?.remove(); return; }
+  const host = $("#notes"); if (!host) return;
+  const box = (S.talkEl ||= el("aside", { class: "talkp", id: "talk", "aria-label": "Discuss" }));
+  if (box.parentElement !== host) host.append(box);
+  const list = TALKS.get(p.id) || [], t = S.talk.view === "talk" ? S.talk.t : null, busy = !!t && talkJobs.has(t.id);
+  const hadFocus = document.activeElement?.id === "talkInput", scrolled = $("#talk .tkbody")?.scrollTop;
+  const head = el("div", { class: "tkhead" },
+    el("button", { class: "btn tklistb" + (t ? "" : " on"), id: "talkList", type: "button", title: "Discussions", "aria-label": "Discussions", onclick: () => { S.talk.view = "list"; renderTalk(); } },
+      icon(ICON.talk), el("span", { class: "tcount", text: String(list.length || "") })),
+    el("span", { class: "tktitle", text: p.title || "Untitled" }),
+    closeBtn("talkClose", "Close", "Esc", closeTalk));
+  if (!t) {
+    put(box, head, el("div", { class: "tkbody tklist", id: "talkRows" },
+      el("button", { class: "btn tkwhole", id: "talkWhole", type: "button", onclick: () => startTalk(p, { whole: true }) }, icon(ICON.talk), "Discuss this page"),
+      list.map((x) => el("div", { class: "tkrow", dataset: { id: x.id } },
+        el("button", { class: "tkopen", type: "button", onclick: () => { S.talk.t = x; S.talk.view = "talk"; renderTalk(true); } },
+          el("span", { class: "tkq", text: x.whole ? "Whole page" : squash(x.quote).slice(0, 120) || "…" }),
+          el("span", { class: "muted", text: `${fmtDate(lastAt(x))} · ${x.turns.filter((c) => c.who === "you").length + 1}` })),
+        el("button", { class: "ib tkdel", type: "button", title: "Delete", "aria-label": "Delete the discussion", onclick: () => deleteTalk(p.id, x.id) }, icon(ICON.close))))));
+    return;
+  }
+  const long = (t.quote || "").length > 280;
+  const quote = t.whole ? el("div", { class: "tkquote whole" }, el("span", { class: "muted", text: "Whole page" }))
+    : el("blockquote", { class: "tkquote" + (long ? " fold" : ""), id: "talkQuote" }, el("div", { class: "tkqt", text: t.quote }),
+      long ? el("button", { class: "link tkmore", type: "button", text: "More", onclick: (e) => { const q = e.currentTarget.parentElement; q.classList.toggle("open"); e.currentTarget.textContent = q.classList.contains("open") ? "Less" : "More"; } }) : null);
+  const turns = t.turns.map((x, i) => {
+    const live = busy && i === t.turns.length - 1;
+    if (x.who === "you") return el("div", { class: "tkturn you", text: x.text });
+    return el("div", { class: "tkturn claude" + (live ? " live" : "") }, el("div", { class: "md", html: md(x.text) }),
+      live ? null : el("div", { class: "tkacts" },
+        el("button", { class: "btn tkins", type: "button", title: "Put it in the page, under what's talked about", onclick: () => talkInsert(t, x.text) }, "Insert"),
+        el("button", { class: "btn tkcopy", type: "button", onclick: () => talkCopy(x.text) }, "Copy")));
+  });
+  const input = el("textarea", { id: "talkInput", rows: 2, placeholder: "Reply", "aria-label": "Reply", value: S.talk.draft || "",
+    oninput: (e) => { S.talk.draft = e.target.value; },
+    onkeydown: (e) => {
+      if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); talkSend(); }
+      else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); if (talkBusy()) talkStop(); else closeTalk(); }
+    } });
+  const send = el("button", { class: "btn" + (busy ? "" : " primary"), id: "talkSend", type: "button", onclick: () => (busy ? talkStop() : talkSend()) }, busy ? "Stop" : "Send", el("kbd", { text: busy ? "Esc" : "↵" }));
+  put(box, head, el("div", { class: "tkbody" }, quote, el("div", { class: "tkturns", id: "talkTurns" }, turns)),
+    el("div", { class: "tkfoot" }, input, el("div", { class: "tkhints" }, el("span", {}, el("kbd", { text: "⇧↵" }), " line"), el("span", {}, el("kbd", { text: "Win+H" }), " dictate"), el("span", { class: "grow" }), send)));
+  const sc = $("#talk .tkbody"); if (sc) sc.scrollTop = focusInput || scrolled == null ? sc.scrollHeight : scrolled;
+  if (focusInput || hadFocus) { input.focus({ preventScroll: true }); input.setSelectionRange(input.value.length, input.value.length); }
+}
+
 // In a knowledge graph, O pulls notes up beside it: the same sidebar as the notes window, and a page beside it once one is picked.
 function toggleSide() { S.nside = !S.nside; S.sp = null; S.sideFor = null; if (!S.nside) flushPage(); renderSide(); renderTop(); }
 function renderSide() {
@@ -3839,6 +4020,7 @@ function sideKey(left) {
   if (S.view === "tree") { if (left) return toggleSide(); if (S.panel) { S.panel = null; return renderPanel(); } return togglePanel(); }
   if (S.view === "meaning" && !left) { if (S.panel) { S.panel = null; return renderPanel(); } return togglePanel(); }
   if (S.view === "notes" && !left && graphPage(S.npage)) return toggleDock();
+  if (S.view === "notes" && !left && talkable(pageOf(S.npage))) return toggleTalk();
   if (S.view === "notes" && left && drawerMode()) return setDrawer(document.body.dataset.ndrawer !== "open");
   if (S.view === "notes" && left) { const off = document.body.dataset.nbar !== "off"; document.body.dataset.nbar = off ? "off" : ""; drawPageBar(); return; }
   if (S.view === "isles" && !left) { gfold = !gfold; renderGarden(); renderTop(); return; }
@@ -3874,7 +4056,7 @@ async function init() {
   stage.isPaused = () => overlayOpen() || !!S.review || S.view === "tech";
   stage.onTap = onTap; stage.labelOpacity = labelOpacity; stage.onGrab = grabIdea; stage.onDouble = onDouble; stage.onMenu = onMenu;
   vocab = createVocab({ el, pinIcon: () => icon(ICON.pin), panelActions: (g, done) => [el("button", { class: "btn", type: "button", dataset: { act: "claude" }, onclick: () => { done(); fleshOut({ termId: g.id }); } }, "Claude"), el("button", { class: "btn", type: "button", dataset: { act: "google" }, onclick: () => google(g.term) }, "Google")], terms: () => S.vocab || [], onEdit: (id) => editTerm({ id }), seenIn, openPage: (id) => { if (S.view === "notes") pickPage(id); else location.hash = notesHash(id); } }); vocab.reindex();
-  selPanel = createQuick({ el, roots: () => [...document.querySelectorAll(".page .blocks")], actions: selActions });
+  selPanel = createQuick({ el, roots: () => [...document.querySelectorAll(".page .blocks, .talkp .tkturn.claude .md")], actions: selActions, blockSel: () => (document.activeElement?.classList.contains("bkeys") && S.ed?.picked?.()) || null });   // picked blocks, while they have the keys
   S.joined = pref("joined", "0") === "1"; S.thirsty = pref("thirsty", "0") === "1";   // off since the day's 10 took over from watering; H shows it
   if (desktop) desktopUpdate().then((u) => { S.desk = u; });
   stage.labelRank = (L) => (L.id === S.sel || (!ideaView() && L.id === S.fsel) ? 0 : S.near.has(L.id) ? 1 + L.depth * 0.01 : 2 + L.depth);
