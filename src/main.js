@@ -25,7 +25,7 @@ import { oralOpen, oralPrompt, readOral, oralMarkPrompt, readMarks } from "./pap
 import { weekOf, sundayOpen, sundayPrompt, readTurn, stitchPrompt, readStitch, tally, isSunday, dayOf, SUNDAY_MAX } from "./sunday.js";
 import * as sync from "./sync.js";
 import { KINDS, KIND_NAME, REBUILD_Q, questionFor, usableQs, pickHide, questionsPrompt, readQuestions, dayNumber, cleanQs, BANK_PER, BANK_BATCH, MARK_NAME, MARK_RATING, markPrompt, readMark, needsRedo, isStale, pointsOf, cleanPts } from "./questions.js";
-import { createInk } from "./ink.js";
+import { createInk, lastPaper } from "./ink.js";
 import { TALK_SYSTEM, talkPrompt, pastePrompt, talkId, lastAt, sortTalks } from "./talk.js";
 import * as focus from "./focus.js";
 import { createHistory } from "./history.js";
@@ -849,7 +849,7 @@ function shortcuts() {
     ["Garden", [["D", "Day or night"], ["N  Z", "New graph, new topic"], ["S", "Split a full topic"], ["⇧1–3  ⇧0", "Focus, Keep, Settled; a topic back to its island's"]]],
     ["Timelapse", [["T", "Open or close"], ["Space", "Play or pause"], ["← →", "A day back or on"], ["⇧← ⇧→", "The marks: Sundays and big days"], ["⇧T", "Save as video"], ["Esc", "Back to now"]]],
     ["Tech tree", [["Space", "Open or close"], ["↵", "Put in the middle; again to open"], ["H  A", "Whole tree, everything open"], ["B", "What an island grows from"]]],
-    ["Library", [["N  F  W", "New page, folder, pen page"], ["⇧V", "Vocab"], ["]", "Discussions beside a page"], ["Alt+6", "Discuss words or blocks picked"], ["P H E L", "Pen page: pen, highlighter, eraser, lasso"], ["C  S  B  T", "Pen page: colour, size, paper, touch"]]],
+    ["Library", [["N  F  W", "New page, folder, pen page"], ["⇧V", "Vocab"], ["]", "Discussions beside a page"], ["Alt+6", "Discuss words or blocks picked"], ["P H E L", "Pen page: pen, highlighter, eraser, lasso"], ["C  S  B  T", "Pen page: colour, size, paper, touch"], ["Space  0", "Pen page: hold to move the page, back to the top left"]]],
   ];
   dialog({ title: "Shortcuts", ok: null, cancel: "Close", body: el("div", { class: "keygroups" }, groups.map(([h, rows]) => el("section", {}, el("h3", { text: h }),
     el("table", { class: "keys" }, rows.map(([k, d]) => el("tr", {}, el("td", {}, el("kbd", { text: k })), el("td", { text: d }))))))) });
@@ -3419,7 +3419,7 @@ function foldInkProps() {
 }
 function inkView(p, side) {
   const area = el("div", { class: "inkarea" });
-  const ink = createInk({ host: area, el, store: PREF + "ink", global: !side, icon: (d) => icon(d), doc: p.ink, night: darkPage, onChange: (doc) => queuePage(p.id, { ink: doc }), toText: desktop ? () => inkToText(p, ink) : null, name: () => pageOf(p.id)?.title || p.title });
+  const ink = createInk({ host: area, el, store: PREF + "ink", key: p.id, global: !side, icon: (d) => icon(d), doc: p.ink, night: darkPage, onChange: (doc) => queuePage(p.id, { ink: doc }), toText: desktop ? () => inkToText(p, ink) : null, name: () => pageOf(p.id)?.title || p.title });
   S.ed = { destroy: ink.destroy, flush: ink.flush, focus: ink.focus, redraw: ink.redraw, ink };
   const fold = el("button", { class: "inkfold", type: "button", "aria-expanded": String(inkPropsOpen()), title: "Properties (D)", onclick: foldInkProps }, icon(ICON.fold), el("span", { text: "Properties" }), el("kbd", { text: "D" }));
   return el("div", { class: "inkview" + (side ? " side" : "") + (inkPropsOpen() ? " propsopen" : "") }, el("article", { class: "page inkhead" + (side ? " side" : "") }, titleInput(p, side), fold, propsView(p)), area);
@@ -3575,7 +3575,7 @@ function queuePage(id, patch) {
 async function newPage(parentId = null, kind = "page") {
   if (parentId === null && S.view === "notes" && isFolder(pageOf(S.npage)) && kind !== "folder") parentId = S.npage;   // new pages go in the open folder
   await flushPage();
-  const p = await safely(() => store.addPage({ parentId, kind })); if (!p) return;
+  const p = await safely(() => store.addPage({ parentId, kind, ...(kind === "ink" ? { ink: { paper: lastPaper(PREF + "ink"), strokes: [], items: [] } } : {}) })); if (!p) return;
   const par = pageOf(parentId);
   if (par && !isFolder(par)) await safely(() => store.updatePage(parentId, { blocks: [...(par.blocks || []), { id: "b" + Date.now().toString(36), type: "page", pageId: p.id, html: "", indent: 0 }] }));   // like Notion: a link in the page it's in
   if (parentId) setOpen(parentId, true);

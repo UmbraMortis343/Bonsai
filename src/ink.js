@@ -1,6 +1,8 @@
 // Pen pages: a canvas you write on, after reMarkable and OneNote, with the tools on a rail docked right.
-// Ink is kept as strokes in page units (the page is W wide and grows downward), so it stays sharp at any zoom
-// and can be moved. A stroke: { id, t: "pen" | "pencil" | "marker" | "hl", c, p: [x, y, w, x, y, w, …] }, where c is a
+// Ink is kept as strokes in page units, so it stays sharp at any zoom and can be moved. The page is an endless canvas,
+// like a OneNote page: it starts at its top-left corner (0, 0) and runs on without end to the right and downward; the
+// paper fills the view wherever you are. At 100% a page unit is a CSS pixel. Pages made when the page was a sheet W
+// wide keep their ink where it was. A stroke: { id, t: "pen" | "pencil" | "marker" | "hl", c, p: [x, y, w, x, y, w, …] }, where c is a
 // colour role 0–3 (drawn per theme, so writing reads the same by day and night) or a fixed "#rrggbb".
 // Beside the ink the page holds items: text boxes { id, t: "text", x, y, w, html, c } and pictures
 // { id, t: "img", x, y, w, h, src }. Pictures are drawn under the ink, text boxes over it.
@@ -10,8 +12,17 @@
 // there before the pen came near is dropped when it arrives; a contact patch the size of a palm is ignored; a finger
 // only pans once it has really moved. The pen's eraser end, or its barrel button, erases.
 
-export const W = 1000;
-export const PAPERS = ["lined", "grid", "dots", "blank"];
+export const W = 1000;   // the width pages had when they were sheets; nothing is held to it now
+export const PAPERS = ["blank", "lined", "grid", "dots"];
+// what the paper menu offers, with its keys; dots stays for old pages that have it
+export const PAPER_MENU = [["blank", "None", "1"], ["lined", "Ruled", "2"], ["grid", "Grid", "3"]];
+const PAPER_ICON = { lined: "M4 7h16M4 12h16M4 17h16", grid: "M4 4h16v16H4zM4 12h16M12 4v16", dots: "M7 7h.01M12 7h.01M17 7h.01M7 12h.01M12 12h.01M17 12h.01M7 17h.01M12 17h.01M17 17h.01", blank: "M5 4h14v16H5z" };
+export const ZOOM = [0.25, 4];
+const FAR = 1e6;   // as far as the view goes: endless for any page anyone writes
+// The paper a new pen page starts on: the one last picked (kept with the pen's settings), else ruled.
+export function lastPaper(store = "bonsai.ink") {
+  try { const p = JSON.parse(localStorage.getItem(store) || "null")?.paper; return PAPER_MENU.some(([id]) => id === p) ? p : "lined"; } catch { return "lined"; }
+}
 export const BRUSHES = ["pen", "pencil", "marker", "hl"];
 const SIZES = { pen: [1.6, 2.8, 5], pencil: [1.4, 2.4, 3.8], marker: [3.2, 5.5, 9], hl: [14, 22, 34] };
 // [day, night] per role
@@ -19,7 +30,7 @@ const INK = [["#1f1e1b", "#ecebe6"], ["#3d6a37", "#93c383"], ["#a06d24", "#dcab5
 const HI = [["#e6be4e", "#b8913a"], ["#a9d095", "#5e8a4f"], ["#d9cfbf", "#5b574f"], ["#e9a58c", "#9a5a46"]];
 // fixed colours, the same by day and night: earth tones from the app's palette family
 export const EXTRA = ["#b5483e", "#c46a3a", "#c9962e", "#6f7a35", "#2f6b45", "#2f5d5a", "#7a4a68", "#5b4636"];
-const PAPER = { day: { bg: "#fbfaf7", line: "#e4e0d6", edge: "#ece9e1" }, night: { bg: "#1d1d1b", line: "#34332f", edge: "#2a2a27" } };
+const PAPER = { day: { bg: "#fbfaf7", line: "#e4e0d6" }, night: { bg: "#1d1d1b", line: "#34332f" } };
 const GAP = 36;   // between lines, grid squares and dots; a text box's line height, so typing sits on the lines
 const FONT = 22;
 
@@ -95,21 +106,21 @@ function grainTile(col) {
 }
 function grain(g, col, px) { const pat = g.createPattern(grainTile(col), "repeat"); pat.setTransform?.(new DOMMatrix().scale(1 / px)); return pat; }
 
-// opts: { host, el, icon, doc: { paper, strokes, items }, onChange(doc), night(), store, global, toText, name() }
+// opts: { host, el, icon, doc: { paper, strokes, items }, onChange(doc), night(), store, key (the page's id, for its view), global, toText, name() }
 export function createInk(opts) {
   const { el } = opts;
   const doc = {
-    paper: PAPERS.includes(opts.doc?.paper) ? opts.doc.paper : "lined",
+    paper: PAPERS.includes(opts.doc?.paper) ? opts.doc.paper : lastPaper(opts.store),
     strokes: (opts.doc?.strokes || []).filter((s) => s && Array.isArray(s.p) && s.p.length >= 3).map((s) => ({ ...s, t: BRUSHES.includes(s.t) ? s.t : "pen", p: s.p.slice() })),
     items: (opts.doc?.items || []).filter(okItem).map((it) => ({ ...it })),
   };
   const pre = (() => { try { return JSON.parse(localStorage.getItem(opts.store || "bonsai.ink") || "null") || {}; } catch { return {}; } })();
   const coarseOnly = matchMedia("(pointer: coarse)").matches && !matchMedia("(any-pointer: fine)").matches;   // a phone: no mouse or pen to draw with
-  const st = { tool: "pen", c: isHex(pre.c) || [0, 1, 2, 3].includes(pre.c) ? pre.c : 0, size: pre.size ?? 1, touchDraws: pre.touchDraws ?? coarseOnly, zoom: 1, sx: 0, sy: 0, extra: isHex(pre.extra) ? pre.extra : null, custom: (pre.custom || []).filter(isHex).slice(0, 4), back: "pen" };
+  const st = { tool: "pen", c: isHex(pre.c) || [0, 1, 2, 3].includes(pre.c) ? pre.c : 0, size: pre.size ?? 1, touchDraws: pre.touchDraws ?? coarseOnly, zoom: 1, sx: 0, sy: 0, extra: isHex(pre.extra) ? pre.extra : null, custom: (pre.custom || []).filter(isHex).slice(0, 4), back: "pen", paper: PAPER_MENU.some(([id]) => id === pre.paper) ? pre.paper : null };
   const undo = [], redo = [];
   let sel = null;          // { ids: Set, box }
   let G = null;            // what the pointer on the page is doing: { k: stroke | erase | lasso | drag | resize | snip | tap, id, … }
-  let dirty = 0, raf = 0, editing = null, palOpen = false, snipped = null, snipTimer = 0;
+  let dirty = 0, raf = 0, editing = null, palOpen = false, paperOpen = false, snipped = null, snipTimer = 0, spaceDown = false;
   const log = [];          // the last pointer events, for checking a device: bonsai.S.ed.ink.log
   const note = (e) => { log.push([Math.round(e.timeStamp), e.type.slice(7), e.pointerType, e.pointerId, e.buttons, Math.round((e.pressure || 0) * 100) / 100, Math.round(e.width || 0), Math.round(e.height || 0)]); if (log.length > 240) log.splice(0, 40); };
 
@@ -156,33 +167,43 @@ export function createInk(opts) {
     items: doc.items.map((it) => (it.t === "img" ? { id: it.id, t: "img", x: r1(it.x), y: r1(it.y), w: r1(it.w), h: r1(it.h), src: it.src } : { id: it.id, t: "text", x: r1(it.x), y: r1(it.y), w: r1(it.w), html: it.html, c: it.c ?? 0 })),
   });
   const save = () => { clearTimeout(dirty); dirty = setTimeout(() => { dirty = 0; opts.onChange?.(out()); }, 400); };
-  const keep = () => { try { localStorage.setItem(opts.store || "bonsai.ink", JSON.stringify({ c: st.c, size: st.size, touchDraws: st.touchDraws, extra: st.extra, custom: st.custom })); } catch {} };
+  const keep = () => { try { localStorage.setItem(opts.store || "bonsai.ink", JSON.stringify({ c: st.c, size: st.size, touchDraws: st.touchDraws, extra: st.extra, custom: st.custom, paper: st.paper })); } catch {} };
+  // where each page was looked at, kept on this device: { pageId: [sx, sy, zoom, at] }, the latest 200
+  const VIEWS = (opts.store || "bonsai.ink") + "view";
+  const views = () => { try { return JSON.parse(localStorage.getItem(VIEWS) || "null") || {}; } catch { return {}; } };
+  let viewTimer = 0, viewWas = "";
+  function keepView(now) {
+    if (!opts.key) return;
+    const v = [Math.round(st.sx * 10) / 10, Math.round(st.sy * 10) / 10, Math.round(st.zoom * 1000) / 1000], k = v.join();
+    if (k === viewWas) return;
+    clearTimeout(viewTimer);
+    const put = () => { viewTimer = 0; viewWas = k; const all = views(); all[opts.key] = [...v, Date.now()]; const ids = Object.keys(all); if (ids.length > 200) ids.sort((a, b) => (all[a][3] || 0) - (all[b][3] || 0)).slice(0, ids.length - 200).forEach((id) => delete all[id]); try { localStorage.setItem(VIEWS, JSON.stringify(all)); } catch {} };
+    if (now) put(); else viewTimer = setTimeout(put, 300);
+  }
+  { const v = opts.key && views()[opts.key]; if (Array.isArray(v) && v.slice(0, 3).every(isFinite)) { st.sx = v[0]; st.sy = v[1]; st.zoom = v[2]; viewWas = v.slice(0, 3).join(); } }
 
-  // ---- view: page units → canvas pixels
-  const fit = () => Math.max(0.2, (wrap.clientWidth - 32) / W);
-  const scale = () => fit() * st.zoom;
-  const ox = () => { const s = scale(), w = wrap.clientWidth; return W * s < w ? (w - W * s) / 2 : 16 - st.sx * s; };
-  const toPage = (cx, cy) => { const s = scale(); return [(cx - ox()) / s, (cy - 16) / s + st.sy]; };
+  // ---- view: page units → canvas pixels. (sx, sy) is the page point at the view's top-left corner; never left of 0 or above it.
+  const scale = () => st.zoom;
+  const ox = () => -st.sx * scale(), oy = () => -st.sy * scale();
+  const toPage = (cx, cy) => { const s = scale(); return [cx / s + st.sx, cy / s + st.sy]; };
+  const seen = () => { const s = scale(); return { x0: st.sx, y0: st.sy, x1: st.sx + wrap.clientWidth / s, y1: st.sy + wrap.clientHeight / s }; };
   const nodes = new Map();   // text item id → its element
   const hOf = (it) => (it.t === "img" ? it.h : Math.max(GAP, nodes.get(it.id)?.offsetHeight || GAP));
   const boxOf = (it) => ({ x0: it.x, y0: it.y, x1: it.x + it.w, y1: it.y + hOf(it) });
-  const pageH = () => {
-    let h = 1400;
-    for (const s of doc.strokes) for (let i = 1; i < s.p.length; i += 3) h = Math.max(h, s.p[i] + 700);
-    for (const it of doc.items) h = Math.max(h, it.y + hOf(it) + 700);
-    return Math.ceil(h / GAP) * GAP;
-  };
+  const meets = (b, v) => b.x1 >= v.x0 && b.x0 <= v.x1 && b.y1 >= v.y0 && b.y0 <= v.y1;
   function clampView() {
-    const s = scale(), H = pageH();
-    st.sy = Math.max(0, Math.min(st.sy, H - (wrap.clientHeight - 32) / s));
-    const over = W - (wrap.clientWidth - 32) / s; st.sx = over > 0 ? Math.max(0, Math.min(st.sx, over)) : 0;
+    st.zoom = Math.max(ZOOM[0], Math.min(ZOOM[1], +st.zoom || 1));
+    st.sx = Math.max(0, Math.min(FAR, +st.sx || 0)); st.sy = Math.max(0, Math.min(FAR, +st.sy || 0));
   }
   function zoomAt(z, cx, cy) {
     const [px, py] = toPage(cx, cy);
-    st.zoom = Math.max(0.5, Math.min(6, z));
-    const s = scale(); st.sy = py - (cy - 16) / s; st.sx = px - (cx - 16) / s;
+    st.zoom = Math.max(ZOOM[0], Math.min(ZOOM[1], z));
+    const s = scale(); st.sx = px - cx / s; st.sy = py - cy / s;
     clampView(); full();
   }
+  function panBy(dx, dy) { const s = scale(); st.sx += dx / s; st.sy += dy / s; clampView(); full(); }   // in screen pixels
+  function home() { st.zoom = 1; st.sx = 0; st.sy = 0; full(); }
+  clampView();
 
   // ---- drawing
   function size() {
@@ -218,13 +239,14 @@ export function createInk(opts) {
     trace(g, s);
     g.globalAlpha = 1; g.globalCompositeOperation = "source-over";
   }
-  function drawPaper(g, P, s, top, bot, H, x0 = 0, x1 = W) {
-    g.fillStyle = P.bg; g.fillRect(0, 0, W, H);
+  // the paper over v (page units), wherever that is: ruled lines run the whole width; a grid and dots every GAP
+  function drawPaper(g, P, s, v) {
+    g.fillStyle = P.bg; g.fillRect(v.x0, v.y0, v.x1 - v.x0, v.y1 - v.y0);
     g.strokeStyle = g.fillStyle = P.line; g.lineWidth = Math.max(0.6, 1 / s);
-    const y0 = Math.max(GAP, Math.floor(top / GAP) * GAP), y1 = Math.min(H, bot);
-    if (doc.paper === "lined") { g.beginPath(); for (let y = Math.max(GAP * 2, y0); y < y1; y += GAP) { g.moveTo(GAP, y); g.lineTo(W - GAP, y); } g.stroke(); }
-    if (doc.paper === "grid") { g.beginPath(); for (let y = y0; y < y1; y += GAP) { g.moveTo(0, y); g.lineTo(W, y); } for (let x = GAP; x < W; x += GAP) if (x >= x0 - GAP && x <= x1 + GAP) { g.moveTo(x, Math.max(0, top)); g.lineTo(x, y1); } g.stroke(); }
-    if (doc.paper === "dots") for (let y = y0; y < y1; y += GAP) for (let x = GAP; x < W; x += GAP) if (x >= x0 - GAP && x <= x1 + GAP) { g.beginPath(); g.arc(x, y, Math.max(1.3, 1.4 / s), 0, 7); g.fill(); }
+    const ys = Math.max(GAP, Math.ceil(v.y0 / GAP) * GAP), xs = Math.max(GAP, Math.ceil(v.x0 / GAP) * GAP);
+    if (doc.paper === "lined") { g.beginPath(); for (let y = Math.max(GAP * 2, ys); y <= v.y1; y += GAP) { g.moveTo(v.x0, y); g.lineTo(v.x1, y); } g.stroke(); }
+    if (doc.paper === "grid") { g.beginPath(); for (let y = ys; y <= v.y1; y += GAP) { g.moveTo(v.x0, y); g.lineTo(v.x1, y); } for (let x = xs; x <= v.x1; x += GAP) { g.moveTo(x, v.y0); g.lineTo(x, v.y1); } g.stroke(); }
+    if (doc.paper === "dots") { const r = Math.max(1.3, 1.4 / s); g.beginPath(); for (let y = ys; y <= v.y1; y += GAP) for (let x = xs; x <= v.x1; x += GAP) { g.moveTo(x + r, y); g.arc(x, y, r, 0, 7); } g.fill(); }
   }
   const imgs = new Map();
   function imgOf(it) {
@@ -232,37 +254,37 @@ export function createInk(opts) {
     if (!m) { m = new Image(); m.onload = () => full(); m.src = it.src; imgs.set(it.src, m); }
     return m.complete && m.naturalWidth ? m : null;
   }
-  function drawImages(g, top, bot, nt) {
-    for (const it of doc.items) if (it.t === "img" && it.y + it.h >= top && it.y <= bot) {
+  function drawImages(g, v, nt) {
+    for (const it of doc.items) if (it.t === "img" && meets(boxOf(it), v)) {
       const m = imgOf(it);
       if (m) g.drawImage(m, it.x, it.y, it.w, it.h); else { g.fillStyle = PAPER[nt ? "night" : "day"].line; g.fillRect(it.x, it.y, it.w, it.h); }
     }
   }
-  function drawStrokes(g, top, bot, nt, px, only) {
+  function drawStrokes(g, v, nt, px, only) {
     g.lineCap = g.lineJoin = "round";
-    for (const hl of [true, false]) for (const k of doc.strokes) if ((k.t === "hl") === hl && (!only || only.has(k.id))) { const b = k._b || (k._b = strokeBox(k)); if (b.y1 >= top && b.y0 <= bot) paint(g, k, nt, px); }
+    for (const hl of [true, false]) for (const k of doc.strokes) if ((k.t === "hl") === hl && (!only || only.has(k.id))) { const b = k._b || (k._b = strokeBox(k)); if (meets(b, v)) paint(g, k, nt, px); }
   }
-  // the page and everything kept on it, into the layer; text boxes are elements over it, moved with the view
+  // the paper and everything kept on it, into the layer; text boxes are elements over it, moved with the view
   function full() {
     if (!size()) return;
     const r = devicePixelRatio || 1, s = scale(), nt = night(), P = PAPER[nt ? "night" : "day"], w = wrap.clientWidth, h = wrap.clientHeight;
     const g = lctx; g.setTransform(r, 0, 0, r, 0, 0); g.clearRect(0, 0, w, h);
-    g.translate(ox(), 16); g.scale(s, s); g.translate(0, -st.sy);
-    const top = st.sy, bot = st.sy + h / s, H = pageH();
-    drawPaper(g, P, s, top, bot, H);
-    g.strokeStyle = P.edge; g.lineWidth = 1 / s; g.strokeRect(0, 0, W, H);
-    drawImages(g, top, bot, nt);
-    drawStrokes(g, top, bot, nt, r * s);
-    layerEl.style.transform = `translate(${ox()}px,${16 - st.sy * s}px) scale(${s})`; layerEl.style.setProperty("--s", s);
+    g.scale(s, s); g.translate(-st.sx, -st.sy);
+    const v = seen();
+    drawPaper(g, P, s, v);
+    drawImages(g, v, nt);
+    drawStrokes(g, v, nt, r * s);
+    layerEl.style.transform = `translate(${ox()}px,${oy()}px) scale(${s})`; layerEl.style.setProperty("--s", s);
     drawItems();
     frame();
+    keepView();
   }
   // the layer, then what's being drawn now
   function frame() {
     cancelAnimationFrame(raf); raf = 0;
     const r = devicePixelRatio || 1, s = scale();
     ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.drawImage(layer, 0, 0);
-    ctx.setTransform(r, 0, 0, r, 0, 0); ctx.translate(ox(), 16); ctx.scale(s, s); ctx.translate(0, -st.sy);
+    ctx.setTransform(r, 0, 0, r, 0, 0); ctx.scale(s, s); ctx.translate(-st.sx, -st.sy);
     ctx.lineCap = ctx.lineJoin = "round";
     if (G?.k === "stroke") paint(ctx, G.s, night(), r * s);
     const acc = getComputedStyle(wrap).getPropertyValue("--accent").trim() || "#3d6a37";
@@ -340,8 +362,8 @@ export function createInk(opts) {
     full(); if (pick) select([], [it]); else bar();
   }
   function newText(x, y, html = "") {
-    const w = Math.max(160, Math.min(440, W - 24 - x));
-    const it = { id: sid(), t: "text", x: Math.max(8, Math.min(x - 4, W - w - 8)), y: Math.max(0, Math.floor(y / GAP) * GAP), w, html, c: 0 };
+    const w = Math.max(160, Math.min(440, seen().x1 - 12 - x));   // as wide as the view leaves room for
+    const it = { id: sid(), t: "text", x: Math.max(0, x - 4), y: Math.max(0, Math.floor(y / GAP) * GAP), w, html, c: 0 };
     doc.items.push(it); drawItems();
     return it;
   }
@@ -355,7 +377,7 @@ export function createInk(opts) {
     const src = webp.startsWith("data:image/webp") && webp.length < png.length ? webp : png;
     const s = scale(), dw = Math.max(60, Math.min(600, bmp.width / (devicePixelRatio || 1) / s)), dh = dw * bmp.height / bmp.width;
     const [cx, cy] = toPage(wrap.clientWidth / 2, wrap.clientHeight / 2);
-    const it = { id: sid(), t: "img", x: Math.max(0, Math.min(W - dw, cx - dw / 2)), y: Math.max(0, cy - dh / 2), w: dw, h: dh, src };
+    const it = { id: sid(), t: "img", x: Math.max(0, cx - dw / 2), y: Math.max(0, cy - dh / 2), w: dw, h: dh, src };
     finishEdit(); commit(addItemOp(it)); select([], [it]);
   }
   function onPaste(e) {
@@ -370,7 +392,7 @@ export function createInk(opts) {
     e.preventDefault();
     if (inBox) { document.execCommand("insertText", false, text); return; }
     const [cx, cy] = toPage(wrap.clientWidth / 2, wrap.clientHeight / 3);
-    const it = newText(cx - 200, cy, textHtml(text.trim()));
+    const it = newText(Math.max(0, cx - 200), cy, textHtml(text.trim()));
     doc.items.pop(); commit(addItemOp(it)); select([], [it]);
   }
 
@@ -406,7 +428,8 @@ export function createInk(opts) {
   const local = (e) => { const r = canvas.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
   const erasing = (e) => e.pointerType === "pen" && ((e.buttons & 32) || e.button === 5 || (e.buttons & 2));
   const inBox = (b, x, y, pad) => x >= b.x0 - pad && x <= b.x1 + pad && y >= b.y0 - pad && y <= b.y1 + pad;
-  const snipBox = (g) => ({ x0: Math.max(0, Math.min(g.x0, g.x)), y0: Math.max(0, Math.min(g.y0, g.y)), x1: Math.min(W, Math.max(g.x0, g.x)), y1: Math.max(g.y0, g.y) });
+  const snipBox = (g) => ({ x0: Math.max(0, Math.min(g.x0, g.x)), y0: Math.max(0, Math.min(g.y0, g.y)), x1: Math.max(0, g.x0, g.x), y1: Math.max(0, g.y0, g.y) });
+  const onPage = ([x, y]) => [Math.max(0, x), Math.max(0, y)];   // nothing goes left of the page's start or above it
   function eraseAt(x, y) {
     const r = eraseR(), hit = doc.strokes.filter((s) => { const b = s._b || (s._b = strokeBox(s)); return inBox(b, x, y, r) && strokeNear(s, x, y, r); });
     if (!hit.length) return;
@@ -415,9 +438,18 @@ export function createInk(opts) {
   }
   function down(e) {
     note(e);
-    if (e.target.closest?.(".inksnip, .inkpal")) return;
+    if (e.target.closest?.(".inksnip, .inkpal, .inkpm")) return;
     const kind = e.pointerType;
     if (palOpen) togglePal(false);
+    if (paperOpen) togglePaper(false);
+    // the mouse's middle button, or the mouse or pen with Space held, moves the view
+    if (kind !== "touch" && (spaceDown || (kind === "mouse" && e.button === 1))) {
+      if (kind === "pen") penContact(e);
+      if (G) end(null);
+      e.preventDefault(); capture(e);
+      G = { k: "pan", id: e.pointerId, last: local(e) }; wrap.dataset.pan = "grab";
+      return;
+    }
     const grip = e.target.closest?.(".igrip, .iwid, .ihandle");
     // a text box being written in keeps the mouse, a finger and the Text tool for itself; the pen writes over it
     if (!grip && editing && editing.n.contains(e.target) && (kind !== "pen" || st.tool === "text")) return;
@@ -428,7 +460,7 @@ export function createInk(opts) {
     if (G) { if (G.id === e.pointerId || kind !== "touch") end(null); else return; }   // a lift we never heard about
     hideSnip();
     e.preventDefault(); canvas.focus({ preventScroll: true }); capture(e);
-    const [cx, cy] = local(e), [x, y] = toPage(cx, cy), id = e.pointerId, touch = kind === "touch";
+    const [cx, cy] = local(e), [x, y] = onPage(toPage(cx, cy)), id = e.pointerId, touch = kind === "touch";
     if (grip) {
       const it = itemById(grip.closest(".inktext")?.dataset.id || [...(sel?.ids || [])][0]); if (!it) return;
       select([], [it]);
@@ -475,7 +507,7 @@ export function createInk(opts) {
       if (!pinch.on) { pinch.on = true; pinch.d = d || 1; pinch.m = m; pinch.z = st.zoom; return; }   // start from here, not from where the fingers landed
       const s = scale(); st.sy -= (m[1] - pinch.m[1]) / s; st.sx -= (m[0] - pinch.m[0]) / s; pinch.m = m;
       zoomAt(pinch.z * d / pinch.d, m[0], m[1]);
-    } else if (touches.size === 1) { const s = scale(); st.sy -= (at[1] - was[1]) / s; st.sx -= (at[0] - was[0]) / s; clampView(); full(); }
+    } else if (touches.size === 1) panBy(was[0] - at[0], was[1] - at[1]);
   }
   function move(e) {
     if (e.pointerType === "pen") penSeen(e);
@@ -489,20 +521,24 @@ export function createInk(opts) {
       if (e.pointerType === "touch" || e.buttons) return;
       const [x, y] = toPage(...local(e));
       if (st.tool === "eraser") { eraserAt = [x, y]; later(); }
-      if (e.target === canvas) { const it = BRUSHES.includes(st.tool) && e.pointerType === "mouse" ? itemAt(x, y) : null; canvas.style.cursor = it ? (it.t === "text" ? "text" : "move") : ""; }
+      if (e.target === canvas) { const it = !wrap.dataset.pan && BRUSHES.includes(st.tool) && e.pointerType === "mouse" ? itemAt(x, y) : null; canvas.style.cursor = it ? (it.t === "text" ? "text" : "move") : ""; }
       return;
     }
     note(e);
     // the pen or mouse has lifted without telling us
     if (e.pointerType !== "touch" && e.buttons === 0 && !e.pressure) return end(e);
-    const [cx, cy] = local(e), [x, y] = toPage(cx, cy);
+    const [cx, cy] = local(e);
+    if (G.k === "pan") { panBy(G.last[0] - cx, G.last[1] - cy); G.last = [cx, cy]; return; }
+    const [x, y] = toPage(cx, cy);
     if (G.sx != null) G.far = Math.max(G.far, Math.hypot(cx - G.sx, cy - G.sy));
     if (G.k === "drag") {
       if (G.kind === "mouse" && G.far < 4) return;
-      const ddx = x - G.x, ddy = y - G.y; G.x = x; G.y = y; G.dx += ddx; G.dy += ddy; moveOp(picked(), pickedItems(), ddx, ddy).redo(); sel.box = selBox(picked(), pickedItems()); full(); return;
+      // never past the page's start: the pick stops at its left and top edges
+      const b = G.b || (G.b = { ...sel.box }), tx = Math.max(x - G.x, -b.x0), ty = Math.max(y - G.y, -b.y0), ddx = tx - G.dx, ddy = ty - G.dy;
+      G.dx = tx; G.dy = ty; moveOp(picked(), pickedItems(), ddx, ddy).redo(); sel.box = selBox(picked(), pickedItems()); full(); return;
     }
-    if (G.k === "resize") { const it = G.it, w = Math.max(it.t === "img" ? 40 : 80, Math.min(W - it.x, G.from.w + x - G.x)); it.w = w; if (it.t === "img") it.h = w * G.from.h / G.from.w; full(); sel && (sel.box = selBox([], [it])); frame(); return; }
-    if (G.k === "snip") { G.x = x; G.y = y; later(); return; }
+    if (G.k === "resize") { const it = G.it, w = Math.max(it.t === "img" ? 40 : 80, Math.min(4000, G.from.w + x - G.x)); it.w = w; if (it.t === "img") it.h = w * G.from.h / G.from.w; full(); sel && (sel.box = selBox([], [it])); frame(); return; }
+    if (G.k === "snip") { [G.x, G.y] = onPage([x, y]); later(); return; }
     if (G.k === "tap") return;
     if (G.k === "lasso") { G.poly.push(x, y); later(); return; }
     if (G.k === "erase") { eraserAt = [x, y]; eraseAt(x, y); return; }
@@ -510,7 +546,7 @@ export function createInk(opts) {
     const t = G.s.t, base = SIZES[t][st.size];
     const co = e.getCoalescedEvents?.();
     for (const c of co?.length ? co : [e]) {
-      const [px, py] = toPage(...local(c)), p = G.s.p, lx = p[p.length - 3], ly = p[p.length - 2];
+      const [px, py] = onPage(toPage(...local(c))), p = G.s.p, lx = p[p.length - 3], ly = p[p.length - 2];
       if ((px - lx) ** 2 + (py - ly) ** 2 < 0.5) continue;
       const w = widthFor(base, c, t), lw = p[p.length - 1];
       p.push(px, py, t === "marker" || t === "hl" ? base : lw + (w - lw) * 0.35);   // ease the width so a pressure jitter doesn't show
@@ -528,6 +564,7 @@ export function createInk(opts) {
   function end(e) {
     const g = G; G = null; if (!g) return;
     if (penDown === g.id) { penDown = 0; penUpAt = now(); }
+    if (g.k === "pan") { if (spaceDown) wrap.dataset.pan = "ready"; else delete wrap.dataset.pan; return; }
     if (g.k === "drag") {
       const moved = g.dx || g.dy;
       if (moved) { undo.push(moveOp(picked(), pickedItems(), g.dx, g.dy)); redo.length = 0; save(); bar(); }   // already moved while dragging
@@ -575,9 +612,9 @@ export function createInk(opts) {
     e.preventDefault();
     const [cx, cy] = local(e);
     if (e.ctrlKey || e.metaKey) return zoomAt(st.zoom * Math.exp(-e.deltaY * 0.0022), cx, cy);
-    const s = scale(), k = e.deltaMode === 1 ? 32 : 1;
-    if (e.shiftKey) st.sx += (e.deltaY * k) / s; else { st.sy += (e.deltaY * k) / s; st.sx += (e.deltaX * k) / s; }
-    clampView(); full();
+    // the wheel scrolls down and up; Shift+wheel, or a trackpad sideways, goes across
+    const k = e.deltaMode === 1 ? 32 : e.deltaMode === 2 ? wrap.clientHeight : 1;
+    if (e.shiftKey && !e.deltaX) panBy(e.deltaY * k, 0); else panBy(e.deltaX * k, e.deltaY * k);
   }, { passive: false });
   document.addEventListener("paste", onPaste);
 
@@ -612,10 +649,10 @@ export function createInk(opts) {
     const c = document.createElement("canvas"); c.width = w; c.height = h; const g = c.getContext("2d");
     g.fillStyle = "#fff"; g.fillRect(0, 0, w, h);
     g.scale(k, k); g.translate(-b.x0, -b.y0);
-    if (paper) drawPaper(g, PAPER.day, k, b.y0, b.y1, Math.max(pageH(), b.y1), b.x0, b.x1);
+    if (paper) drawPaper(g, PAPER.day, k, b);
     const items = want ? doc.items.filter((it) => want.has(it.id)) : doc.items;
     for (const it of items) if (it.t === "img") { const m = imgOf(it); if (m) g.drawImage(m, it.x, it.y, it.w, it.h); }
-    drawStrokes(g, b.y0, b.y1, false, k, want);
+    drawStrokes(g, b, false, k, want);
     drawItems(); drawTexts(g, items.filter((it) => it.t === "text"), false);
     return c;
   }
@@ -664,10 +701,11 @@ export function createInk(opts) {
   ];
   const rail = el("aside", { class: "inkrail", "aria-label": "Pen tools" });
   const pal = el("div", { class: "inkpal", hidden: true, role: "dialog", "aria-label": "Colours" });
-  wrap.append(pal);
+  const pmenu = el("div", { class: "inkpm", hidden: true, role: "menu", "aria-label": "Paper" });
+  wrap.append(pal, pmenu);
   const palette = () => [...EXTRA, ...st.custom.filter((c) => !EXTRA.includes(c))];
   function bar() {
-    const nt = night(), btn = (id, label, key, d, on, run, extra) => el("button", { class: "ibtn" + (on ? " on" : ""), type: "button", id, title: `${label} (${key})`, "aria-label": label, "aria-pressed": on == null ? null : String(!!on), onclick: () => { run(); if (!palOpen) canvas.focus({ preventScroll: true }); } },
+    const nt = night(), btn = (id, label, key, d, on, run, extra) => el("button", { class: "ibtn" + (on ? " on" : ""), type: "button", id, title: `${label} (${key})`, "aria-label": label, "aria-pressed": on == null ? null : String(!!on), onclick: () => { run(); if (!palOpen && !paperOpen) canvas.focus({ preventScroll: true }); } },
       extra || opts.icon(d), el("kbd", { text: key }));
     const sw = (c) => el("button", { class: "iswatch" + (st.c === c ? " on" : ""), type: "button", dataset: { c }, title: `Colour ${c + 1} (C)`, "aria-label": `Colour ${c + 1}`, "aria-pressed": String(st.c === c),
       onclick: () => { setColour(c); canvas.focus({ preventScroll: true }); } }, el("span", { style: "background:" + (st.tool === "hl" ? HI : INK)[c][nt ? 1 : 0] }));
@@ -685,14 +723,33 @@ export function createInk(opts) {
       el("div", { class: "igroup" },
         btn("ink-in", "Zoom in", "+", "M11 5v12M5 11h12M16 16l4 4", null, () => zoomBy(1.25)),
         btn("ink-out", "Zoom out", "−", "M5 11h12M16 16l4 4", null, () => zoomBy(0.8)),
-        btn("ink-fit", "Fit width", "0", "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5", null, () => { st.zoom = 1; st.sx = 0; clampView(); full(); })),
+        btn("ink-home", "Top left, 100%", "0", "M4 20V4h16M4 4l7 7M8 4H4v4", null, home)),
       el("div", { class: "igroup" },
-        btn("ink-paper", "Paper: " + doc.paper, "B", { lined: "M4 7h16M4 12h16M4 17h16", grid: "M4 4h16v16H4zM4 12h16M12 4v16", dots: "M7 7h.01M12 7h.01M17 7h.01M7 12h.01M12 12h.01M17 12h.01M7 17h.01M12 17h.01M17 17h.01", blank: "M5 4h14v16H5z" }[doc.paper], null, nextPaper),
+        btn("ink-paper", "Paper", "B", PAPER_ICON[doc.paper], null, () => togglePaper()),
         opts.toText ? btn("ink-text", "To text", "X", "M4 6h16M12 6v13M8 19h8", null, () => opts.toText()) : null,
         btn("ink-touch", st.touchDraws ? "Touch draws" : "Touch pans", "T", "M9 11V5a2 2 0 0 1 4 0v6M13 10a2 2 0 0 1 4 0v2M17 12a2 2 0 0 1 4 0v3a6 6 0 0 1-6 6h-2a6 6 0 0 1-5-3l-2.5-4a2 2 0 0 1 3.4-2L9 14", st.touchDraws, () => { st.touchDraws = !st.touchDraws; keep(); bar(); })));
     rail.querySelector("#ink-undo").disabled = !undo.length; rail.querySelector("#ink-redo").disabled = !redo.length;
+    const pb = rail.querySelector("#ink-paper"); pb.setAttribute("aria-haspopup", "menu"); pb.setAttribute("aria-expanded", String(paperOpen)); pb.classList.toggle("open", paperOpen);
     wrap.dataset.tool = st.tool;
     if (palOpen) drawPal();
+    if (paperOpen) drawPaperMenu();
+  }
+  // Paper: a small menu off the rail, None, Ruled, Grid (1–3); an old page on dots shows that too, marked
+  function drawPaperMenu() {
+    const rows = [...PAPER_MENU, ...(doc.paper === "dots" ? [["dots", "Dots", ""]] : [])];
+    pmenu.replaceChildren(...rows.map(([id, label, key]) => el("button", { type: "button", class: "iprow" + (doc.paper === id ? " on" : ""), role: "menuitemradio", "aria-checked": String(doc.paper === id), dataset: { paper: id },
+      onclick: () => setPaper(id) }, opts.icon(PAPER_ICON[id]), el("span", { text: label }), key ? el("kbd", { text: key }) : el("span"))));
+    const b = rail.querySelector("#ink-paper"); if (b) pmenu.style.top = Math.max(4, Math.min(wrap.clientHeight - 150, b.getBoundingClientRect().top - wrap.getBoundingClientRect().top - 6)) + "px";
+  }
+  function togglePaper(on = !paperOpen) {
+    if (on && palOpen) { palOpen = false; pal.hidden = true; }
+    paperOpen = on; pmenu.hidden = !on; bar();
+    if (on) (pmenu.querySelector(".iprow.on") || pmenu.querySelector(".iprow"))?.focus({ preventScroll: true }); else canvas.focus({ preventScroll: true });
+  }
+  function setPaper(p) {
+    if (PAPER_MENU.some(([id]) => id === p)) { st.paper = p; keep(); }   // new pen pages start on it
+    if (doc.paper !== p) { doc.paper = p; save(); full(); }
+    togglePaper(false);
   }
   // More colours: the fixed ones, then any picked by hand (1–9); the last cell picks a colour of your own (0).
   function drawPal() {
@@ -702,14 +759,13 @@ export function createInk(opts) {
       el("label", { class: "iswatch own", title: "Your own colour (0)" }, custom, el("span", { class: "plus", text: "+" }), el("kbd", { text: "0" })));
     const b = rail.querySelector("#ink-more"); if (b) pal.style.top = Math.max(4, Math.min(wrap.clientHeight - 140, b.getBoundingClientRect().top - wrap.getBoundingClientRect().top - 6)) + "px";
   }
-  function togglePal(on = !palOpen) { palOpen = on; pal.hidden = !on; bar(); if (on) pal.querySelector(".iswatch")?.focus({ preventScroll: true }); else canvas.focus({ preventScroll: true }); }
+  function togglePal(on = !palOpen) { if (on && paperOpen) { paperOpen = false; pmenu.hidden = true; } palOpen = on; pal.hidden = !on; bar(); if (on) pal.querySelector(".iswatch")?.focus({ preventScroll: true }); else canvas.focus({ preventScroll: true }); }
   function setTool(t) { if (t === "snip" && st.tool !== "snip") st.back = st.tool; finishEdit(); st.tool = t; if (t !== "lasso" && t !== "text") clearSel(); eraserAt = null; bar(); frame(); }
   function setColour(c) {
     st.c = c; if (isHex(c)) st.extra = c; keep();
     const list = picked(), items = pickedItems(); if (list.length || items.length) commit(colourOp(list, items, c)); else bar();
   }
   function setSize(k) { st.size = k; keep(); bar(); }
-  function nextPaper() { doc.paper = PAPERS[(PAPERS.indexOf(doc.paper) + 1) % PAPERS.length]; save(); full(); bar(); }
   function zoomBy(k) { zoomAt(st.zoom * k, wrap.clientWidth / 2, wrap.clientHeight / 2); }
   function del() { const list = picked(), items = pickedItems(); if (!list.length && !items.length) return false; sel = null; commit(removeOp(list, items)); return true; }
 
@@ -718,6 +774,7 @@ export function createInk(opts) {
   function onKey(e) {
     if (!wrap.isConnected || document.querySelector(".dialog") || e.altKey) return;
     if (typing() && !(palOpen && pal.contains(document.activeElement))) return;
+    if (e.key === " " && document.activeElement?.closest?.(".inkpm, .inkpal")) return;   // Space presses the menu's button
     // beside a graph its keys stay the graph's unless you're on the page
     if (opts.global === false && !wrap.contains(document.activeElement) && !rail.contains(document.activeElement)) return;
     const k = e.key, mod = e.ctrlKey || e.metaKey, done = () => { e.preventDefault(); e.stopPropagation(); };
@@ -725,6 +782,11 @@ export function createInk(opts) {
       if (k === "Escape" || (k === "C" && e.shiftKey)) { done(); return togglePal(false); }
       if (/^[1-9]$/.test(k)) { const c = palette()[+k - 1]; done(); if (c) { setColour(c); togglePal(false); } return; }
       if (k === "0") { done(); const i = pal.querySelector("#ink-custom"); try { i.showPicker(); } catch { i.click(); } return; }
+    }
+    if (paperOpen && !mod) {
+      if (k === "Escape" || k === "b" || k === "B") { done(); return togglePaper(false); }
+      const row = PAPER_MENU.find(([, , key]) => key === k); if (row) { done(); return setPaper(row[0]); }
+      if (k === "ArrowDown" || k === "ArrowUp") { done(); const rs = [...pmenu.querySelectorAll(".iprow")], i = rs.indexOf(document.activeElement); rs[(i + (k === "ArrowDown" ? 1 : rs.length - 1)) % rs.length]?.focus(); return; }
     }
     if (!snipBar.hidden && !mod) {
       if (k === "Enter") { done(); return saveSnip(); }
@@ -743,12 +805,13 @@ export function createInk(opts) {
     if (tool && !e.shiftKey) { done(); return setTool(tool); }
     if (low === "c") { done(); return setColour(isHex(st.c) ? 0 : (st.c + 1) % 4); }
     if (k === "s") { done(); return setSize((st.size + 1) % 3); }
-    if (k === "b") { done(); return nextPaper(); }
+    if (k === "b") { done(); return togglePaper(); }
+    if (k === " ") { done(); if (!spaceDown) { spaceDown = true; wrap.dataset.pan = G?.k === "pan" ? "grab" : "ready"; } return; }   // held: the mouse or pen moves the view
     if (k === "t") { done(); st.touchDraws = !st.touchDraws; keep(); return bar(); }
     if (k === "x" && opts.toText) { done(); return opts.toText(); }
     if (k === "+" || k === "=") { done(); return zoomBy(1.25); }
     if (k === "-") { done(); return zoomBy(0.8); }
-    if (k === "0") { done(); st.zoom = 1; st.sx = 0; clampView(); return full(); }
+    if (k === "0") { done(); return home(); }
     if ((k === "Delete" || k === "Backspace") && (sel || document.activeElement === canvas)) { done(); return del(); }   // never the page itself from here
     if (k === "Enter" && sel?.ids.size === 1) { const it = itemById([...sel.ids][0]); if (it?.t === "text") { done(); return editText(it); } }
     if (k === "Escape" && !e.shiftKey) {
@@ -757,10 +820,14 @@ export function createInk(opts) {
       if (sel) { done(); return clearSel(); }
     }
     if (k === "PageDown" || k === "PageUp" || (document.activeElement === canvas && (k === "ArrowDown" || k === "ArrowUp"))) {
-      done(); st.sy += ((k === "PageDown" || k === "ArrowDown" ? 1 : -1) * (k.startsWith("Page") ? wrap.clientHeight * 0.85 : 60)) / scale(); clampView(); return full();
+      done(); return panBy(0, (k === "PageDown" || k === "ArrowDown" ? 1 : -1) * (k.startsWith("Page") ? wrap.clientHeight * 0.85 : 60));
     }
+    if (document.activeElement === canvas && (k === "ArrowLeft" || k === "ArrowRight")) { done(); return panBy((k === "ArrowRight" ? 1 : -1) * 60, 0); }
   }
+  const spaceUp = (e) => { if (e.key !== " " || !spaceDown) return; spaceDown = false; if (G?.k !== "pan") delete wrap.dataset.pan; e.preventDefault(); };
+  const spaceGone = () => { spaceDown = false; if (G?.k !== "pan") delete wrap.dataset.pan; };
   document.addEventListener("keydown", onKey, true);
+  document.addEventListener("keyup", spaceUp, true); addEventListener("blur", spaceGone);
   const ro = new ResizeObserver(() => { clampView(); full(); }); ro.observe(wrap);
   const mo = new MutationObserver(() => { full(); bar(); }); mo.observe(document.body, { attributes: true, attributeFilter: ["class"] });
   const mq = matchMedia("(prefers-color-scheme: dark)"), onMq = () => { full(); bar(); }; mq.addEventListener?.("change", onMq);
@@ -771,7 +838,11 @@ export function createInk(opts) {
     wrap, rail, canvas, log,
     get doc() { return doc; }, get tool() { return st.tool; }, get colour() { return st.c; }, get size() { return st.size; }, get zoom() { return st.zoom; }, get touchDraws() { return st.touchDraws; },
     get selected() { return sel ? [...sel.ids].filter((id) => doc.strokes.some((s) => s.id === id) || doc.items.some((it) => it.id === id)) : []; },
-    get view() { return { zoom: st.zoom, sx: st.sx, sy: st.sy, scale: scale(), ox: ox() }; },
+    get view() { return { zoom: st.zoom, sx: st.sx, sy: st.sy, scale: scale(), ox: ox(), oy: oy(), seen: seen() }; },
+    get paperOpen() { return paperOpen; },
+    // the box round everything on the page, in page units (null when it's empty)
+    get bounds() { return doc.strokes.length || doc.items.length ? selBox(doc.strokes, doc.items) : null; },
+    setView: (v) => { Object.assign(st, v); clampView(); full(); }, setPaper, home,
     get editing() { return editing?.it.id || null; }, get snip() { return snipped && { width: snipped.width, height: snipped.height, copied: snipped.copied }; },
     // A picture of some strokes and items (all when none are named) in day ink on white, for Claude to read: PNG as base64.
     picture(ids, maxW = 1600) {
@@ -783,13 +854,14 @@ export function createInk(opts) {
       const c = render(box, k, false, new Set([...list, ...items].map((x) => x.id)));
       return { media_type: "image/png", data: c.toDataURL("image/png").split(",")[1], width: c.width, height: c.height };
     },
-    toScreen: (x, y) => { const r = canvas.getBoundingClientRect(), s = scale(); return [r.left + ox() + x * s, r.top + 16 + (y - st.sy) * s]; },
+    toScreen: (x, y) => { const r = canvas.getBoundingClientRect(), s = scale(); return [r.left + (x - st.sx) * s, r.top + (y - st.sy) * s]; },
     setTool, setColour, setSize, undo: () => step(undo, redo), redo: () => step(redo, undo), redraw: () => { full(); bar(); }, addImage,
     flush: () => { if (editing) { editing.it.html = cleanText(editing.n.firstChild.innerHTML); save(); } if (dirty) { clearTimeout(dirty); dirty = 0; opts.onChange?.(out()); } },
     focus: () => canvas.focus({ preventScroll: true }),
     destroy: () => {
       removeEventListener("pointermove", move, true); removeEventListener("pointerup", up, true); removeEventListener("pointercancel", up, true);
       document.removeEventListener("pointerover", penOver, true); document.removeEventListener("keydown", onKey, true); document.removeEventListener("paste", onPaste);
+      document.removeEventListener("keyup", spaceUp, true); removeEventListener("blur", spaceGone); if (viewTimer) keepView(true);
       ro.disconnect(); mo.disconnect(); mq.removeEventListener?.("change", onMq); cancelAnimationFrame(raf); clearTimeout(snipTimer);
     },
   };

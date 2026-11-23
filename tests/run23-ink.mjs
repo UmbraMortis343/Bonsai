@@ -120,15 +120,17 @@ if (!(await state(page, (id) => bonsai.S.pages.some((p) => p.id === id), ink))) 
 await page.keyboard.press("Control+z");
 if (!(await state(page, (id) => bonsai.S.ed.ink.doc.strokes.some((s) => s.id === id), target))) t.fail("undo doesn't bring it back");
 
-// Paper (B), zoom (+, 0)
-const paper = await state(page, () => bonsai.S.ed.ink.doc.paper);
+// Paper (B, then 1–3), zoom (+, 0)
+t.eq(await state(page, () => bonsai.S.ed.ink.doc.paper), "lined", "the demo page is ruled");
 await page.keyboard.press("b");
-t.eq(await state(page, () => bonsai.S.ed.ink.doc.paper), paper === "lined" ? "grid" : "dots", "B changes the paper");
+t.eq(await page.$$eval(".inkpm .iprow", (r) => r.map((x) => [x.textContent, x.classList.contains("on")])), [["None1", false], ["Ruled2", true], ["Grid3", false]], "B opens the paper menu with the page's own marked");
+await page.keyboard.press("3");
+t.eq([await state(page, () => bonsai.S.ed.ink.doc.paper), await page.isVisible(".inkpm")], ["grid", false], "3 picks the grid and closes the menu");
 await page.keyboard.press("+");
 if (!((await state(page, () => bonsai.S.ed.ink.zoom)) > 1)) t.fail("+ doesn't zoom in");
 await page.keyboard.press("0");
-t.eq(await state(page, () => bonsai.S.ed.ink.zoom), 1, "0 fits the width");
-await page.keyboard.press("b"); await page.keyboard.press("b"); await page.keyboard.press("b");
+t.eq(await state(page, () => [bonsai.S.ed.ink.zoom, bonsai.S.ed.ink.view.sx, bonsai.S.ed.ink.view.sy]), [1, 0, 0], "0 goes back to the top left at 100%");
+await page.keyboard.press("b"); await page.keyboard.press("2");
 
 // Saved as strokes, and still there after a reload
 await page.keyboard.press("p");

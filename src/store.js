@@ -503,10 +503,11 @@ export const deleteLink = (id) => tx(["links", "events"], "readwrite", (s) => { 
 
 // ---------- notes pages ----------
 export const listPages = async () => (await tx(["pages"], "readonly", (s) => reqP(s.pages.getAll()))).sort((a, b) => a.order - b.order || a.createdAt.localeCompare(b.createdAt));
-export async function addPage({ title = "", blocks = [], parentId = null, kind = "page", props = [] } = {}) {
+export async function addPage({ title = "", blocks = [], parentId = null, kind = "page", props = [], ink = null } = {}) {
   return tx(["pages"], "readwrite", async (s) => {
     const all = await reqP(s.pages.getAll()), sibs = all.filter((x) => (x.parentId || null) === parentId);
     const p = { id: uid(), kind, parentId, title: clean(title, 120), blocks, props, order: sibs.length ? Math.max(...sibs.map((x) => x.order || 0)) + 1 : 1, createdAt: now(), updatedAt: now(), grown: [] };
+    if (kind === "ink" && ink) p.ink = ink;
     s.pages.put(p); return p;
   });
 }

@@ -701,8 +701,10 @@ body[data-nbar="off"] .notes .nside-bar{display:none}
 .inkc{position:absolute;inset:0;touch-action:none;outline:none;cursor:crosshair}
 .inkwrap[data-tool=text] .inkc{cursor:text}
 .inkwrap[data-tool=lasso] .inkc,.inkwrap[data-tool=snip] .inkc{cursor:cell}
+.inkwrap[data-pan] .inkc{cursor:grab}
+.inkwrap[data-pan=grab] .inkc{cursor:grabbing}
 /* what sits on the page besides ink: text boxes over it, moved and scaled with the view (--s); never a touch gesture */
-.inkitems{position:absolute;left:0;top:0;width:1000px;height:0;transform-origin:0 0;pointer-events:none;touch-action:none;z-index:1}
+.inkitems{position:absolute;left:0;top:0;width:0;height:0;transform-origin:0 0;pointer-events:none;touch-action:none;z-index:1}
 .inktext{position:absolute;min-height:36px;font:400 22px/36px var(--font);pointer-events:none;touch-action:none;overflow-wrap:anywhere}
 .inktext .itx{min-height:36px;outline:none;white-space:pre-wrap;touch-action:none}
 .inktext.edit{pointer-events:auto}
@@ -729,6 +731,16 @@ body[data-nbar="off"] .notes .nside-bar{display:none}
 .inkpal .own input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer}
 .inkpal .own .plus{width:20px;height:14px;display:grid;place-items:center;box-shadow:inset 0 0 0 1px var(--line);font-size:13px;line-height:1}
 .iswatch.more.open{border-color:var(--accent)}
+/* paper: a small menu docked against the rail */
+.inkpm{position:absolute;right:0;z-index:3;display:flex;flex-direction:column;gap:2px;min-width:150px;padding:6px;background:var(--card);border:1px solid var(--line);border-right:0;border-radius:4px 0 0 4px;box-shadow:var(--shadow)}
+.inkpm[hidden]{display:none}
+.iprow{display:flex;align-items:center;gap:10px;padding:6px 8px;border:0;border-radius:4px;background:none;color:var(--ink);font:inherit;font-size:14px;text-align:left;cursor:pointer}
+.iprow:hover,.iprow:focus-visible{background:var(--hover);outline:none}
+.iprow svg{width:18px;height:18px;flex:none}
+.iprow span{flex:1}
+.iprow kbd{font-size:10px;opacity:.7}
+.iprow.on{box-shadow:inset 3px 0 0 var(--accent);font-weight:600}
+.ibtn.open{background:var(--hover)}
 .inkrail{width:58px;flex:none;display:flex;flex-direction:column;gap:2px;padding:6px 0;background:var(--card);border-left:1px solid var(--line);overflow-y:auto}
 .igroup{display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 0;border-bottom:1px solid var(--line)}
 .igroup:last-child{border-bottom:0}
@@ -747,7 +759,7 @@ body[data-nbar="off"] .notes .nside-bar{display:none}
 .isize i.on{opacity:1}
 .pbar .sidehide{width:auto;padding:0 6px;gap:4px;display:inline-flex;align-items:center}
 .pbar .sidehide kbd{font-size:10px}
-@media (pointer:coarse){.ibtn kbd,.ikey,.pbar .sidehide kbd,.inkfold kbd,.inkpal kbd,.inksnip kbd{display:none}}
+@media (pointer:coarse){.ibtn kbd,.ikey,.pbar .sidehide kbd,.inkfold kbd,.inkpal kbd,.inksnip kbd,.iprow kbd{display:none}}
 /* a short screen: the tools sit two to a row so the rail needn't scroll */
 @media (max-height:940px){.inkrail{width:106px}.inkrail .igroup{flex-direction:row;flex-wrap:wrap;justify-content:center;padding:4px}.inkrail .ikey{width:100%;text-align:center;border-color:transparent;background:none}}
 .ibtn,.iswatch,.inkfold{border:0;background:none}
