@@ -2,6 +2,11 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.39.0 — 2026-11-23
+- Pen pages are endless canvases, like a OneNote page: no sheet edge, the paper fills the view, and the page runs on to the right and downward from its top-left corner. The wheel scrolls, Shift+wheel goes across, Ctrl+wheel zooms at the pointer (25%–400%), Space+drag or the middle button pans, and 0 goes back to the top left. Each page opens where you left it.
+- Paper is a small menu off the rail (B): None 1, Ruled 2, Grid 3; new pen pages start on the last one picked, and old dots pages keep their dots.
+- With the Text tool on, the paper shows an I-beam and text boxes show their edges.
+
 ## 0.38.0 — 2026-11-23
 - Questions say what they want. Claude now writes each question with the shape of its answer ("Give both", "Two reasons") and one reading only, plus 1–3 key points; your answer is marked point by point, with a tick or a gap for each.
 - Missed a point? One nudge, then one more go (right after a nudge counts, but comes back a little sooner). Nudges can be turned off in the round's ⋯ menu.
