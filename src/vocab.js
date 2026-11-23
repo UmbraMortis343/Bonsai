@@ -211,12 +211,14 @@ export function readFlesh(text, term = "") {
 }
 
 // ---------- the quick panel on selected words ----------
-// opts: { el, roots() → elements the panel works in, actions(sel) → [{ id, label, key, run }] }, where sel is
-// { text, quote, long (more than a term could be), range, rect }. Alt+1… run them while the panel shows, so typing over the selection still works.
+// opts: { el, roots() → elements the panel works in, actions(sel) → [{ id, label, key, run }], blockSel() → picked blocks or null },
+// where sel is { text, quote, long (more than a term could be), range, rect } for words, or { text, long, rect, blocks, ids }
+// for whole blocks picked in the editor. Alt+<key> (an action's own key, else its place) runs one while the panel shows,
+// so typing over the selection still works.
 export function createQuick(opts) {
   const el = opts.el; let box = null, sel = null, timer = 0, acts = [];
   const inside = (node) => { const e = node?.nodeType === 1 ? node : node?.parentElement; return e && opts.roots().some((r) => r.contains(e)); };
-  function read() {
+  function words() {
     const s = getSelection(); if (!s || s.isCollapsed || !s.rangeCount) return null;
     const r = s.getRangeAt(0); if (!inside(r.commonAncestorContainer)) return null;
     const text = s.toString().replace(/\s+/g, " ").trim(); if (!text || text.length > 600) return null;
@@ -226,21 +228,32 @@ export function createQuick(opts) {
     if (blk) { const pre = document.createRange(); pre.selectNodeContents(blk); pre.setEnd(r.startContainer, r.startOffset); const a = pre.toString().length, full = blk.textContent; quote = sentenceAround(full, a, a + s.toString().length); }
     return { text, quote, long, range: r.cloneRange(), rect: r.getBoundingClientRect() };
   }
+  const read = () => words() || opts.blockSel?.() || null;
+  const keyOf = (a, i) => a.key || i + 1;
   function show() {
     sel = read(); if (!sel) return hide();
     acts = opts.actions(sel).filter(Boolean);
-    const n = el("div", { class: "qpanel", role: "toolbar", "aria-label": "Selection" }, acts.map((a, i) => el("button", { class: "btn", type: "button", dataset: { act: a.id }, title: `${a.label} (Alt+${i + 1})`,
-      onmousedown: (e) => e.preventDefault(), onclick: () => run(i) }, a.label, el("kbd", { text: "Alt+" + (i + 1) }))));
+    if (!acts.length) return hide();
+    const n = el("div", { class: "qpanel", role: "toolbar", "aria-label": "Selection" }, acts.map((a, i) => el("button", { class: "btn", type: "button", dataset: { act: a.id }, title: `${a.label} (Alt+${keyOf(a, i)})`,
+      onmousedown: (e) => e.preventDefault(), onclick: () => run(i) }, a.label, el("kbd", { text: "Alt+" + keyOf(a, i) }))));
     box?.remove(); box = n; document.body.append(n);
     const w = n.offsetWidth, h = n.offsetHeight, r = sel.rect;
     // below the words, since the editor's format bar sits above them
     let y = r.bottom + 8; if (y + h > innerHeight - 8) y = r.top - h - 8;
+    y = Math.max(8, Math.min(innerHeight - h - 8, y));
     n.style.left = Math.max(8, Math.min(innerWidth - w - 8, r.left + r.width / 2 - w / 2)) + "px"; n.style.top = y + "px";
   }
   function hide() { box?.remove(); box = null; sel = null; acts = []; }
   function run(i) { const a = acts[i], s = sel; if (!a) return; hide(); a.run(s); }
-  document.addEventListener("selectionchange", () => { clearTimeout(timer); timer = setTimeout(() => { if (document.querySelector(".dialog")) return; show(); }, 180); });
-  document.addEventListener("keydown", (e) => { if (box && e.key === "Escape" && !e.shiftKey) { e.preventDefault(); e.stopPropagation(); return hide(); } if (!box || !e.altKey || e.ctrlKey || e.metaKey) return; const i = +e.key - 1; if (i >= 0 && i < acts.length) { e.preventDefault(); e.stopPropagation(); run(i); } }, true);
+  const soon = () => { clearTimeout(timer); timer = setTimeout(() => { if (document.querySelector(".dialog")) return; show(); }, 180); };
+  document.addEventListener("selectionchange", soon);
+  document.addEventListener("keydown", (e) => {
+    if (box && e.key === "Escape" && !e.shiftKey) { e.preventDefault(); e.stopPropagation(); return hide(); }
+    if (!box || !e.altKey || e.ctrlKey || e.metaKey) return;
+    const d = /^Digit([1-9])$/.exec(e.code || "")?.[1] || (/^[1-9]$/.test(e.key) ? e.key : null); if (!d) return;
+    const i = acts.findIndex((a, j) => String(keyOf(a, j)) === d);
+    if (i >= 0) { e.preventDefault(); e.stopPropagation(); run(i); }
+  }, true);
   addEventListener("scroll", hide, true); addEventListener("resize", hide);
-  return { hide, get shown() { return !!box; }, get sel() { return sel; } };
+  return { hide, refresh: soon, get shown() { return !!box; }, get sel() { return sel; } };
 }

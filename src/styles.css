@@ -954,3 +954,14 @@ input.bask::placeholder{color:var(--muted)}
   .tstats,.winseg .wsk,.top .btn.water .wl,.top .btn.water kbd{display:none}
 }
 @media (min-width:701px) and (max-width:900px){ .brand h1{display:none} }
+
+/* picking whole blocks (blocks.js): a soft accent tint behind them, a box drawn from the margin */
+.bkeys{position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none;resize:none;border:0;padding:0;overflow:hidden}
+.blk.picked::after{content:"";position:absolute;inset:0 0 0 22px;background:color-mix(in srgb,var(--accent) 15%,transparent);border-radius:3px;pointer-events:none}
+.blk.picked:has(+ .blk.picked)::after{border-bottom-left-radius:0;border-bottom-right-radius:0}
+.blk.picked + .blk.picked::after{border-top-left-radius:0;border-top-right-radius:0}
+.blocks.sweeping ::selection,.blocks.haspick ::selection{background:transparent}
+.blocks.sweeping .tx,.blocks.sweeping .cell{caret-color:transparent}
+.boxing,.boxing *{user-select:none!important;-webkit-user-select:none!important}
+.bbox{position:fixed;z-index:30;border:1px solid var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent);border-radius:3px;pointer-events:none}
+@media (max-width:700px){ .blk.picked::after{left:18px} }

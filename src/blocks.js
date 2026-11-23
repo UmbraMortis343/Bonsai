@@ -5,7 +5,7 @@
 //   type: text h1 h2 h3 bullet number todo toggle quote callout code divider page table
 //   a table keeps its cells as rows: [[html, …], …] and head (the first row is a header)
 //   an image keeps fileId (the picture, saved apart: opts.files), w and h (its pixels), width (% of the page) and caption
-import { el, put, menu, dialog } from "./dom.js";
+import { el, put, menu, dialog, overlayOpen } from "./dom.js";
 import { datePicker, isoDay, relDate, longDate } from "./datepick.js";
 import { shrinkImage, urlOf, pngOf, isImage } from "./images.js";
 
@@ -85,6 +85,15 @@ const atLine = (node, top) => {   // is the caret on the first (top) or last lin
   return top ? r.top - box.top < lh * 0.8 : box.bottom - r.bottom < lh * 0.8;
 };
 
+const focusAtLine = (node, top) => {   // is the selection's moving end on the block's first (top) or last line?
+  const s = getSelection(); if (!s.rangeCount || !s.focusNode) return true;
+  const r = document.createRange(); try { r.setStart(s.focusNode, s.focusOffset); } catch { return true; }
+  r.collapse(true);
+  let rect = r.getClientRects()[0]; if (!rect) { rect = r.getBoundingClientRect(); if (!rect.height) return true; }
+  const box = node.getBoundingClientRect(), lh = parseFloat(getComputedStyle(node).lineHeight) || 22;
+  return top ? rect.top - box.top < lh * 0.8 : box.bottom - rect.bottom < lh * 0.8;
+};
+
 // ---------- undo ----------
 // The editor keeps its own history: each step is the whole list of blocks plus where the caret was. The browser's
 // own undo can't be used, since every structural change draws the blocks afresh and its history points at gone nodes.
@@ -120,7 +129,7 @@ export function createEditor(opts) {
     save();
   };
   function travel(from, to) {
-    closeSlash();
+    closeSlash(); clearPick(true);
     const s = from.pop(); if (!s) return false;
     to.push(H.cur); H.cur = s; H.burst = null;
     B = clone(s.blocks); save();
@@ -143,6 +152,7 @@ export function createEditor(opts) {
   root.addEventListener("keydown", (e) => {
     if (e.isComposing || undoKey(e)) return;
     const x = crossSel(); if (!x) return;   // words selected across blocks: the editor deletes them itself
+    if (e.key === "Escape" && !e.shiftKey) { e.preventDefault(); e.stopPropagation(); return setPick(x.a.dataset.id, x.z.dataset.id); }
     const mod = e.ctrlKey || e.metaKey, ch = e.key.length === 1 && !mod && !e.altKey;
     if (e.key === "Backspace" || e.key === "Delete" || e.key === "Enter" || ch) {
       e.preventDefault(); e.stopPropagation();
@@ -211,6 +221,8 @@ export function createEditor(opts) {
   function render(focus) {
     const hide = hidden();
     put(root, B.map((b, i) => rowFor(b, i, hide.has(b.id))));
+    if (pick) showPick();
+    drawMarks();
     if (focus) { place(focus.id, focus.at, focus.cell); H.cur.focus = { ...focus }; }
   }
   function rowFor(b, i, isHidden) {
@@ -239,7 +251,7 @@ export function createEditor(opts) {
     tx.addEventListener("beforeinput", (e) => onBefore(e, b, tx));
     tx.addEventListener("keydown", (e) => onKey(e, b, tx));
     tx.addEventListener("paste", (e) => onPaste(e, b, tx));
-    tx.addEventListener("focus", () => { root.querySelectorAll(".blk.focus").forEach((x) => x.classList.remove("focus")); row.classList.add("focus"); });
+    tx.addEventListener("focus", () => { clearPick(true); root.querySelectorAll(".blk.focus").forEach((x) => x.classList.remove("focus")); row.classList.add("focus"); });
     tx.addEventListener("blur", () => { row.classList.remove("focus"); setTimeout(() => { if (!root.contains(document.activeElement)) closeSlash(); }, 150); });
     row.append(tx);
     return row;
@@ -294,6 +306,13 @@ export function createEditor(opts) {
   }
   function onPaste(e, b, tx) {
     const x = crossSel(); if (x) cutAcross(x);
+    const got = b.type === "code" ? null : blocksFrom(e.clipboardData);
+    if (got) {   // blocks copied from a page: they come back as blocks, after this one (in place of an empty line)
+      e.preventDefault();
+      const cur = B[idx(caretNow()?.id)] || B[idx(b.id)] || B.at(-1), i = idx(cur.id), made = rebase(got, cur.indent);
+      if (TEXTY.has(cur.type) && !plain(cur.html).trim()) B.splice(i, 1, ...made); else B.splice(kidsEnd(i), 0, ...made);
+      changed(true); return render({ id: made.at(-1).id, at: "end" });
+    }
     const grid = b.type === "code" ? null : gridFrom(e.clipboardData);
     if (grid) {   // a table from a web page or a spreadsheet: a table block (in place of an empty line)
       e.preventDefault();
@@ -316,6 +335,16 @@ export function createEditor(opts) {
   function onKey(e, b, tx) {
     if (slash && slashKey(e)) return;
     const i = idx(b.id), k = e.key, mod = e.ctrlKey || e.metaKey;
+    if (k === "Escape" && !e.shiftKey && !getSelection().isCollapsed) { e.preventDefault(); e.stopPropagation(); return setPick(b.id); }   // words picked: now the block
+    if (mod && !e.shiftKey && !e.altKey && k.toLowerCase() === "a") {   // Ctrl+A: the block's words, then every block
+      e.preventDefault(); const s = getSelection();
+      if (!tx.textContent || s.toString().length >= tx.textContent.length) return pickAll();
+      const r = document.createRange(); r.selectNodeContents(tx); s.removeAllRanges(); s.addRange(r); return;
+    }
+    if ((k === "ArrowUp" || k === "ArrowDown") && e.shiftKey && !mod && !e.altKey && focusAtLine(tx, k === "ArrowUp")) {   // off the block's edge: whole blocks
+      const j = k === "ArrowUp" ? prevVisible(i) : nextVisible(i);
+      if (j >= 0) { e.preventDefault(); return setPick(b.id, B[j].id); }
+    }
     if (mod && !e.shiftKey && !e.altKey) {
       const cmd = { b: "bold", i: "italic", u: "underline" }[k.toLowerCase()];
       if (cmd && b.type !== "code") { e.preventDefault(); document.execCommand(cmd); sync(b, tx); return changed(); }
@@ -473,7 +502,7 @@ export function createEditor(opts) {
       cell.addEventListener("input", (e) => { sync(b, cell); if (quiet) return; const it = e.inputType || ""; if (/Paste|Drop|Cut|format|history/.test(it)) return changed(true); changed(false, { id: `${b.id}:${r}:${c}`, bid: b.id, kind: it.startsWith("delete") ? "del" : "ins" }); });
       cell.addEventListener("keydown", (e) => cellKey(e, b, cell));
       cell.addEventListener("paste", (e) => cellPaste(e, b, cell));
-      cell.addEventListener("focus", () => { tcur.set(b.id, [r, c]); root.querySelectorAll(".blk.focus").forEach((x) => x.classList.remove("focus")); cell.closest(".blk").classList.add("focus"); });
+      cell.addEventListener("focus", () => { clearPick(true); tcur.set(b.id, [r, c]); root.querySelectorAll(".blk.focus").forEach((x) => x.classList.remove("focus")); cell.closest(".blk").classList.add("focus"); });
       return el(b.head && r === 0 ? "th" : "td", {}, cell);
     }))));
     const add = (cls, label, key, run) => el("button", { class: "tadd " + cls, type: "button", tabIndex: -1, title: `${label} (${key})`, "aria-label": label, text: "+", onpointerdown: (e) => { e.preventDefault(); run(); } });
@@ -503,6 +532,8 @@ export function createEditor(opts) {
   function cellKey(e, b, cell) {
     if (slash && slashKey(e)) return;
     const r = +cell.dataset.r, c = +cell.dataset.c, R = b.rows.length, C = b.rows[0].length, k = e.key, mod = e.ctrlKey || e.metaKey;
+    if (k === "Escape" && !e.shiftKey && !getSelection().isCollapsed) { e.preventDefault(); e.stopPropagation(); return setPick(b.id); }
+    if (mod && !e.shiftKey && !e.altKey && k.toLowerCase() === "a" && getSelection().toString().length >= cell.textContent.length) { e.preventDefault(); return pickAll(); }
     const go = (rr, cc, at = "end") => { e.preventDefault(); tcur.set(b.id, [rr, cc]); const x = cellOf(b.id, rr, cc); if (x) { x.focus(); setCaret(x, at); } };
     const out = (dir) => { const i = idx(b.id), j = dir < 0 ? prevVisible(i) : nextVisible(i); e.preventDefault(); if (j >= 0) return place(B[j].id, dir < 0 ? "end" : 0); if (dir > 0) { const n = insertAfter(i, newBlock("text", { indent: b.indent })); changed(true); render({ id: n.id }); } };
     if (e.altKey && e.shiftKey && !mod) {
@@ -714,10 +745,11 @@ export function createEditor(opts) {
     e.preventDefault();
     const h = e.currentTarget, x0 = e.clientX, y0 = e.clientY;
     h.setPointerCapture(e.pointerId);
+    const span = () => { const pr = pick && pickedIds().includes(id) ? pickRange() : null, i = pr ? pr[0] : idx(id); return [i, pr ? pr[1] + 1 : kidsEnd(i)]; };   // the picked blocks go together
     drag = { id, moved: false, line: null, to: null };
     const move = (ev) => {
       if (!drag.moved && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 5) return;
-      if (!drag.moved) { drag.moved = true; root.classList.add("dragging"); const i = idx(id); for (let j = i; j < kidsEnd(i); j++) rowOf(B[j].id)?.classList.add("lift"); drag.line = el("div", { class: "dropline" }); root.append(drag.line); }
+      if (!drag.moved) { drag.moved = true; root.classList.add("dragging"); const [i, end] = span(); for (let j = i; j < end; j++) rowOf(B[j].id)?.classList.add("lift"); drag.line = el("div", { class: "dropline" }); root.append(drag.line); }
       const rows = [...root.querySelectorAll(".blk:not([hidden]):not(.lift)")];
       let to = null, y = 0;
       for (const r of rows) { const b = r.getBoundingClientRect(); if (ev.clientY < b.top + b.height / 2) { to = r.dataset.id; y = b.top; break; } y = b.bottom; }
@@ -729,17 +761,29 @@ export function createEditor(opts) {
       root.classList.remove("dragging"); drag.line?.remove();
       const d = drag; drag = null;
       if (!d.moved) { root.querySelectorAll(".lift").forEach((r) => r.classList.remove("lift")); return blockMenu(id, h); }
-      const i = idx(id), group = B.splice(i, kidsEnd(i) - i);
+      const [i, end] = span(), group = B.splice(i, end - i), kept = !!pick;
       let at = d.to ? idx(d.to) : B.length; if (at < 0) at = B.length;
       const above = B[at - 1], base = above ? (above.type === "toggle" && above.open ? above.indent + 1 : Math.min(above.indent + (LISTS.has(above.type) ? 0 : 0), MAX_INDENT)) : 0;
       const shift = (above ? Math.min(group[0].indent, base) : 0) - group[0].indent;
       for (const g of group) g.indent = Math.max(0, g.indent + shift);
-      B.splice(at, 0, ...group); changed(true); render({ id, at: "end" });
+      B.splice(at, 0, ...group); changed(true);
+      if (kept && pick) { render(); armTrap(); } else render({ id, at: "end" });
     };
     h.addEventListener("pointermove", move); h.addEventListener("pointerup", up); h.addEventListener("pointercancel", up);
   }
   function blockMenu(id, anchor) {
     const b = B[idx(id)]; if (!b) return;
+    const ids = pickedIds();
+    if (ids.length > 1 && ids.includes(id)) return menu(anchor, [   // several blocks picked: the menu is for them all
+      { label: "Turn into", run: () => menu(anchor, TYPES.filter(([t]) => TEXTY.has(t)).map(([t, name]) => ({ label: name, run: () => eachPicked((x) => retype(x, t)) }))) },
+      { label: "Colour", run: () => menu(anchor, [{ label: "Default", run: () => eachPicked((x) => { delete x.color; }) },
+        ...COLORS.map((c) => ({ label: c[0].toUpperCase() + c.slice(1), run: () => eachPicked((x) => { x.color = c; }) })),
+        "-", ...COLORS.map((c) => ({ label: c[0].toUpperCase() + c.slice(1) + " background", run: () => eachPicked((x) => { x.color = c + "-bg"; }) }))]) },
+      { label: "Duplicate", key: "Ctrl+D", run: dupRange },
+      { label: "Move up", key: "Ctrl+Shift+↑", run: () => moveRange(-1) },
+      { label: "Move down", key: "Ctrl+Shift+↓", run: () => moveRange(1) },
+      "-", { label: "Delete", key: "Del", danger: true, run: deleteRange },
+    ]);
     menu(anchor, [
       ...(b.type === "table" ? tableItems(b) : []),
       ...(b.type === "image" ? [{ label: "View larger", key: IKEYS.view, run: () => viewImage(b) }, { label: "Copy image", key: IKEYS.copy, run: () => copyImage(b) },
@@ -785,15 +829,217 @@ export function createEditor(opts) {
     datePicker(t, t.getAttribute("datetime"), (iso) => { if (iso) { t.setAttribute("datetime", iso); t.textContent = relDate(iso); } else t.remove(); sync(b, tx); b.html = cleanHtml(b.html); changed(); });
   });
   // clicking below the last block puts the caret at the end, or starts a new block after a heading, list or solid block
+  const belowLast = () => {
+    const last = B.at(-1);
+    if (last.type === "text" && !plain(last.html)) return place(last.id);
+    const n = B.push(newBlock()) && B.at(-1); changed(true); render({ id: n.id });
+  };
+
+  // ---------- picking whole blocks, as in Notion ----------
+  // A drag out of one block's words into another, a box drawn from the margin, Shift+click, Shift+↑↓ off a block's edge,
+  // Ctrl+A twice and Esc over words all pick whole blocks; a block's children come with it (a closed toggle's hidden ones too).
+  // While blocks are picked the keys go to a hidden box holding their text, so copy, cut and paste come as events.
+  let pick = null, sweep = null, box = null, marks = new Map();   // pick: { a: where it started, z: where it reaches }
+  const trap = el("textarea", { class: "bkeys", tabIndex: -1, "aria-label": "Picked blocks", spellcheck: false });
+  opts.host.append(trap);
+  function pickRange() {
+    if (!pick) return null;
+    let i = idx(pick.a), j = idx(pick.z); if (i < 0 || j < 0) return null;
+    if (i > j) [i, j] = [j, i];
+    let end = j; for (let k = i; k <= end; k++) end = Math.max(end, kidsEnd(k) - 1);
+    return [i, end];
+  }
+  const pickedIds = () => { const r = pickRange(); return r ? B.slice(r[0], r[1] + 1).map((b) => b.id) : []; };
+  function showPick() {
+    const ids = new Set(pickedIds());
+    root.querySelectorAll(".blk").forEach((r) => r.classList.toggle("picked", ids.has(r.dataset.id)));
+    root.classList.toggle("haspick", ids.size > 0);
+  }
+  function setPick(a, z, { focus = true } = {}) {
+    if (idx(a) < 0) return;
+    pick = { a, z: z && idx(z) >= 0 ? z : a }; showPick();
+    if (focus) { armTrap(); opts.onPick?.(); }
+  }
+  function armTrap() {
+    const r = pickRange(); if (!r) return;
+    trap.value = blocksToText(B.slice(r[0], r[1] + 1), opts.pageTitle) || " ";
+    getSelection().removeAllRanges(); trap.focus({ preventScroll: true }); trap.select();
+  }
+  function clearPick(quiet) {
+    if (!pick) return;
+    pick = null; showPick();
+    if (document.activeElement === trap && !quiet) trap.blur();
+    opts.onPick?.();
+  }
+  const pickAll = () => setPick(B[0].id, B.at(-1).id);
+  const visRows = () => [...root.querySelectorAll(".blk:not([hidden])")];
+  function rowAtY(y) { const rows = visRows(); for (const r of rows) if (y < r.getBoundingClientRect().bottom) return r; return rows.at(-1) || null; }
+  const scroller = () => root.closest(".nedit") || opts.host.parentElement;
+  function edgeScroll(y) { const l = scroller(); if (!l) return; const r = l.getBoundingClientRect(); if (y < r.top + 32) l.scrollTop -= 16; else if (y > r.bottom - 32) l.scrollTop += 16; }
+  // what's picked, for the quick bar: its text, and the last block reached (the bar goes under it)
+  function picked() {
+    const r = pickRange(); if (!r) return null;
+    const list = B.slice(r[0], r[1] + 1), text = blocksToText(list, opts.pageTitle), flat = text.replace(/\s+/g, " ").trim();
+    const at = rowOf(pick.z) || rowOf(list[0].id);
+    return { text: flat, full: text, ids: list.map((b) => b.id), blocks: list.map((b) => clone(b)), long: flat.length > 120 || flat.split(" ").length > 8, rect: at?.getBoundingClientRect() || root.getBoundingClientRect() };
+  }
+
+  // a press in a block's words may become a sweep across blocks; Shift+click reaches from the caret's block to this one
   root.addEventListener("pointerdown", (e) => {
-    if (e.target !== root) return;
-    const last = B.at(-1), lastRow = rowOf(last.id);
-    if (lastRow && e.clientY > lastRow.getBoundingClientRect().bottom) {
-      e.preventDefault();
-      if (last.type === "text" && !plain(last.html)) return place(last.id);
-      const n = B.push(newBlock()) && B.at(-1); changed(true); render({ id: n.id });
+    if (e.button !== 0 || e.pointerType === "touch" || opts.readOnly) return;
+    const row = e.target.closest?.(".blk"); if (!row || !root.contains(row) || e.target.closest(".hdl, .tmark")) return;
+    if (e.shiftKey) {
+      const from = pick ? pick.a : caretNow()?.id || H.cur.focus?.id;
+      if (from && idx(from) >= 0 && (from !== row.dataset.id || pick)) { e.preventDefault(); return setPick(from, row.dataset.id); }
+      return;
     }
+    if (e.target.closest(".tx, .cell, .cap")) sweep = { from: row.dataset.id, on: false };
   });
+  // anywhere else on the page: let go of what's picked, and a press in the margin may draw a box
+  const onDown = (e) => {
+    if (!root.isConnected) return;
+    if (pick && !e.shiftKey && !e.target.closest?.(".qpanel, .menu, .dialog, .talkp, .blk.picked .hdl")) clearPick(true);
+    if (e.button !== 0 || e.pointerType === "touch" || opts.readOnly || box) return;
+    const lane = scroller(); if (!lane?.contains(e.target)) return;
+    if (e.target.closest?.(".tx, .cell, .cap, button, input, textarea, select, a, label, .props, .imgfig, [contenteditable]")) return;
+    const lr = lane.getBoundingClientRect(); if (e.clientX >= lr.left + lane.clientWidth || e.clientY >= lr.top + lane.clientHeight) return;   // its scrollbar
+    if (e.clientY < root.getBoundingClientRect().top - 4) return;   // the title and properties
+    const lastRow = rowOf(B.at(-1).id), below = e.target === root && lastRow && e.clientY > lastRow.getBoundingClientRect().bottom;
+    if (below) e.preventDefault();
+    box = { x: e.clientX, y: e.clientY + lane.scrollTop, lane, on: false, el: null, click: below ? belowLast : null };
+  };
+  const onMove = (e) => {
+    if (sweep) {
+      if (!(e.buttons & 1)) { sweep = null; root.classList.remove("sweeping"); return; }
+      const r = rowAtY(e.clientY); if (!r) return;
+      if (r.dataset.id !== sweep.from) {
+        if (!sweep.on) { sweep.on = true; root.classList.add("sweeping"); }
+        setPick(sweep.from, r.dataset.id, { focus: false }); getSelection().removeAllRanges();
+      } else if (sweep.on) { sweep.on = false; root.classList.remove("sweeping"); clearPick(true); }   // back in the first block: words again
+      edgeScroll(e.clientY);
+      return;
+    }
+    if (!box) return;
+    if (!(e.buttons & 1)) return onUp();
+    const y0 = box.y - box.lane.scrollTop;
+    if (!box.on) {
+      if (Math.hypot(e.clientX - box.x, e.clientY - y0) < 6) return;
+      box.on = true; box.click = null; box.lane.classList.add("boxing"); box.el = el("div", { class: "bbox" }); document.body.append(box.el); getSelection().removeAllRanges();
+    }
+    const top = Math.min(y0, e.clientY), bot = Math.max(y0, e.clientY), left = Math.min(box.x, e.clientX);
+    Object.assign(box.el.style, { left: left + "px", top: top + "px", width: Math.abs(e.clientX - box.x) + "px", height: bot - top + "px" });
+    const hit = visRows().filter((r) => { const b = r.getBoundingClientRect(); return b.bottom > top && b.top < bot; });
+    if (!hit.length) clearPick(true);
+    else if (e.clientY < y0) setPick(hit.at(-1).dataset.id, hit[0].dataset.id, { focus: false });
+    else setPick(hit[0].dataset.id, hit.at(-1).dataset.id, { focus: false });
+    edgeScroll(e.clientY);
+  };
+  const onUp = () => {
+    if (sweep) { const s = sweep; sweep = null; root.classList.remove("sweeping"); if (s.on && pick) { armTrap(); opts.onPick?.(); } }
+    if (box) { const b = box; box = null; b.el?.remove(); b.lane.classList.remove("boxing"); if (b.on) { if (pick) { armTrap(); opts.onPick?.(); } } else b.click?.(); }
+  };
+  const onCancel = () => { sweep = null; root.classList.remove("sweeping"); if (box) { box.el?.remove(); box.lane.classList.remove("boxing"); box = null; } };
+  document.addEventListener("pointerdown", onDown);
+  addEventListener("pointermove", onMove); addEventListener("pointerup", onUp); addEventListener("pointercancel", onCancel); root.addEventListener("dragstart", onCancel);
+
+  // keys while blocks are picked
+  trap.addEventListener("keydown", (e) => {
+    if (e.isComposing || overlayOpen()) return;
+    if (undoKey(e)) return;
+    const r = pickRange(); if (!r) return;
+    const k = e.key, mod = e.ctrlKey || e.metaKey, stop = () => { e.preventDefault(); e.stopPropagation(); }, [i, j] = r;
+    if (k === "Escape" && !e.shiftKey) { stop(); return clearPick(); }
+    if (mod && !e.altKey && ["c", "x", "v"].includes(k.toLowerCase())) return;   // they come as copy, cut and paste
+    if (mod && !e.shiftKey && !e.altKey && k.toLowerCase() === "a") { stop(); return pickAll(); }
+    if (mod && !e.shiftKey && !e.altKey && k.toLowerCase() === "d") { stop(); return dupRange(); }
+    if (mod && e.shiftKey && (k === "ArrowUp" || k === "ArrowDown")) { stop(); return moveRange(k === "ArrowUp" ? -1 : 1); }
+    if (mod || e.altKey) return;
+    if (k === "Tab") { stop(); return indentRange(e.shiftKey ? -1 : 1); }
+    if (k === "Backspace" || k === "Delete") { stop(); return deleteRange(); }
+    if (k === "ArrowUp" || k === "ArrowDown") {
+      stop(); const up = k === "ArrowUp";
+      if (e.shiftKey) {   // the far end moves: past what's picked when growing, back toward where it started when shrinking
+        const a = idx(pick.a), h = idx(pick.z), n = up ? prevVisible(h > a ? h : i) : nextVisible(h < a ? h : j);
+        if (n >= 0) setPick(pick.a, B[n].id); return;
+      }
+      const n = up ? prevVisible(i) : nextVisible(j); return setPick(B[n >= 0 ? n : up ? i : idx(pick.z)].id);
+    }
+    if (k === "Enter") { stop(); const h = B[idx(pick.z)] || B[j]; clearPick(true); return place(h.id, "end"); }
+    if (k.length === 1) { stop(); return typeOver(k); }
+  });
+  trap.addEventListener("beforeinput", (e) => { e.preventDefault(); if (pick && e.data && /^insert(Text|ReplacementText|CompositionText)?$/.test(e.inputType)) typeOver(e.data); });   // dictation and the like
+  trap.addEventListener("copy", (e) => { const r = pickRange(); if (!r || !e.clipboardData) return; e.preventDefault(); putClip(e.clipboardData, B.slice(r[0], r[1] + 1)); });
+  trap.addEventListener("cut", (e) => { const r = pickRange(); if (!r || !e.clipboardData) return; e.preventDefault(); putClip(e.clipboardData, B.slice(r[0], r[1] + 1)); deleteRange(); });
+  trap.addEventListener("paste", (e) => {
+    if (!pickRange()) return; e.preventDefault();
+    const got = blocksFrom(e.clipboardData) || textToBlocks(e.clipboardData?.getData("text/plain") || "");
+    if (got.length) replaceRange(got);
+  });
+  function putClip(dt, list) {
+    const json = JSON.stringify(list.map((b) => clone(b)));
+    dt.setData("text/plain", blocksToText(list, opts.pageTitle));
+    dt.setData("text/html", `<div data-bonsai-blocks="${encodeURIComponent(json)}">${blocksToHtml(list)}</div>`);
+    try { dt.setData(BLOCKS_MIME, json); } catch {}
+  }
+  // what's picked, changed
+  const rebase = (list, base) => { const min = Math.min(...list.map((b) => b.indent || 0)); return list.map((b) => ({ ...b, id: uid(), indent: Math.min(MAX_INDENT, base + (b.indent || 0) - min) })); };
+  function deleteRange() {
+    const r = pickRange(); if (!r) return; const [i, j] = r, p = prevVisible(i);
+    pick = null; B.splice(i, j - i + 1); if (!B.length) B.push(newBlock());
+    changed(true); render(p >= 0 ? { id: B[p].id, at: "end" } : { id: B[0].id, at: 0 }); opts.onPick?.();
+  }
+  function replaceRange(list) {
+    const [i, j] = pickRange(), made = rebase(list, B[i].indent);
+    pick = null; B.splice(i, j - i + 1, ...made); changed(true); render({ id: made.at(-1).id, at: "end" }); opts.onPick?.();
+  }
+  const typeOver = (ch) => replaceRange([newBlock("text", { html: esc(ch) })]);
+  function indentRange(d) {
+    const [i, j] = pickRange(), pv = prevVisible(i), max = pv >= 0 ? B[pv].indent + 1 : 0, list = B.slice(i, j + 1);
+    if (d > 0 && (B[i].indent + 1 > max || list.some((b) => b.indent >= MAX_INDENT))) return;
+    if (d < 0 && !list.some((b) => b.indent > 0)) return;
+    for (const b of list) b.indent = Math.max(0, b.indent + d);
+    changed(true); render(); armTrap();
+  }
+  function moveRange(dir) {
+    const r = pickRange(); if (!r) return; const [i, j] = r, group = B.slice(i, j + 1);
+    if (dir < 0) { const p = prevVisible(i); if (p < 0) return; let s = p; while (s > 0 && B[s].indent > group[0].indent) s--; B.splice(i, group.length); B.splice(s, 0, ...group); }
+    else { const end = j + 1; if (end >= B.length) return; const after = kidsEnd(end); B.splice(i, group.length); B.splice(after - group.length, 0, ...group); }
+    changed(true); render(); armTrap();
+  }
+  function dupRange() {
+    const r = pickRange(); if (!r) return; const [i, j] = r;
+    const copy = B.slice(i, j + 1).filter((x) => x.type !== "page").map((x) => ({ ...clone(x), id: uid() })); if (!copy.length) return;
+    B.splice(j + 1, 0, ...copy); changed(true); pick = { a: copy[0].id, z: copy.at(-1).id }; render(); armTrap(); opts.onPick?.();
+  }
+  function eachPicked(fn) { const r = pickRange(); if (!r) return; B.slice(r[0], r[1] + 1).forEach(fn); changed(true); render(); armTrap(); }
+  function retype(b, type) {
+    if (!TEXTY.has(b.type) || b.type === type) return;
+    if (b.type === "code") b.html = escapeCode(b.html).replace(/\n/g, "<br>");
+    if (type === "code") b.html = plain(b.html);
+    b.type = type; if (type === "todo") b.checked = !!b.checked; else delete b.checked;
+    if (type === "toggle") b.open = true;
+  }
+  // words marked as actions, one per picked block (or, when every one is marked already, unmarked)
+  function markPicked() {
+    const r = pickRange(); if (!r) return null;
+    const list = B.slice(r[0], r[1] + 1).filter((b) => TEXTY.has(b.type) && b.type !== "code" && plain(b.html).trim()); if (!list.length) return null;
+    const whole = (b) => /^<mark data-action="[^"]+">[\s\S]*<\/mark>$/.test(b.html) && (b.html.match(/<mark /g) || []).length === 1;
+    const off = list.every(whole), ids = [];
+    for (const b of list) {
+      const d = document.createElement("div"); d.innerHTML = b.html; d.querySelectorAll("mark[data-action]").forEach((m) => m.replaceWith(...m.childNodes));
+      if (off) b.html = cleanHtml(d.innerHTML); else { const id = actionId(); ids.push(id); b.html = cleanHtml(`<mark data-action="${id}">${d.innerHTML}</mark>`); }
+    }
+    changed(true); render(); armTrap();
+    return off ? "" : ids[0];
+  }
+  // a small mark in the margin beside blocks something refers to (a discussion): blockId → { title }
+  function drawMarks() {
+    root.querySelectorAll(".tmark").forEach((m) => m.remove());
+    for (const [id, m] of marks) {
+      const row = rowOf(id); if (!row || row.hidden) continue;
+      row.append(el("button", { class: "tmark", type: "button", tabIndex: -1, title: m.title || "Discussion", "aria-label": m.title || "Discussion", onpointerdown: (e) => e.preventDefault(), onclick: () => opts.onMark?.(id) }, opts.markIcon?.()));
+    }
+  }
 
   render();
   return {
@@ -822,8 +1068,75 @@ export function createEditor(opts) {
       changed(true); const at = caretOffset(tx); if (!tx.classList.contains("cap")) H.cur.focus = { id: b.id, at: at < 0 ? "end" : at, ...(tx.classList.contains("cell") ? { cell: [+tx.dataset.r, +tx.dataset.c] } : {}) };
       return id;
     },
-    destroy() { closeSlash(); bar.remove(); document.removeEventListener("selectionchange", onSel); root.remove(); },
+    picked, pickAll, markPicked, clearPick: () => clearPick(),
+    get pickedIds() { return pickedIds(); },
+    // what's selected: the picked blocks, or the words, with the blocks they're in
+    selection() {
+      const r = pickRange();
+      if (r) { const list = B.slice(r[0], r[1] + 1); return { ids: list.map((b) => b.id), text: blocksToText(list, opts.pageTitle) }; }
+      const s = getSelection(); if (!s.rangeCount || s.isCollapsed) return null;
+      const rg = s.getRangeAt(0), rowAt = (n) => (n.nodeType === 1 ? n : n.parentElement)?.closest?.(".blk");
+      const a = rowAt(rg.startContainer), z = rowAt(rg.endContainer); if (!a || !root.contains(a)) return null;
+      const i = idx(a.dataset.id), j = z && root.contains(z) ? idx(z.dataset.id) : i;
+      return { ids: B.slice(i, j + 1).map((b) => b.id), text: s.toString() };
+    },
+    // blocks put in after the last of the blocks named (and what's inside it), or at the end; one undo step
+    insertBlocks(ids, list) {
+      if (!list?.length) return [];
+      const at = Math.max(-1, ...(ids || []).map(idx)), base = at >= 0 ? B[at].indent : 0, made = rebase(list, base);
+      B.splice(at >= 0 ? kidsEnd(at) : B.length, 0, ...made); changed(true); render({ id: made.at(-1).id, at: "end" });
+      rowOf(made[0].id)?.scrollIntoView({ block: "nearest" });
+      return made.map((b) => b.id);
+    },
+    setMarks(m) { marks = new Map(m || []); drawMarks(); },
+    destroy() {
+      closeSlash(); bar.remove(); trap.remove(); box?.el?.remove(); document.removeEventListener("selectionchange", onSel); document.removeEventListener("pointerdown", onDown);
+      removeEventListener("pointermove", onMove); removeEventListener("pointerup", onUp); removeEventListener("pointercancel", onCancel); root.remove();
+    },
   };
+}
+
+// ---------- blocks on the clipboard ----------
+// Picked blocks are copied as Markdown-ish text, as HTML for other apps, and as the blocks themselves (in a type of
+// their own, and inside the HTML too, which survives more clipboards), so a paste into a page brings the blocks back.
+export const BLOCKS_MIME = "application/x-bonsai-blocks";
+const KNOWN = new Set([...TYPES.map((t) => t[0]), "image"]);
+const escHtml = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;");
+export function blocksFrom(dt) {
+  let raw = ""; try { raw = dt?.getData?.(BLOCKS_MIME) || ""; } catch {}
+  if (!raw) { const m = (dt?.getData?.("text/html") || "").match(/data-bonsai-blocks="([^"]+)"/); if (m) try { raw = decodeURIComponent(m[1]); } catch {} }
+  if (!raw) return null;
+  let list; try { list = JSON.parse(raw); } catch { return null; }
+  if (!Array.isArray(list)) return null;
+  const out = list.filter((b) => b && KNOWN.has(b.type)).slice(0, 2000).map((b) => {
+    const n = newBlock(b.type, { indent: Math.max(0, Math.min(MAX_INDENT, +b.indent || 0)), html: b.type === "code" ? String(b.html || "") : cleanHtml(b.html) });
+    if (b.type === "todo") n.checked = !!b.checked;
+    if (b.type === "toggle") n.open = !!b.open;
+    if (typeof b.color === "string" && COLORS.includes(b.color.replace(/-bg$/, ""))) n.color = b.color;
+    if (b.type === "callout" && typeof b.icon === "string") n.icon = b.icon.slice(0, 4);
+    if (b.type === "page") n.pageId = String(b.pageId || "");
+    if (b.type === "table") { n.rows = (Array.isArray(b.rows) ? b.rows : [[""]]).map((r) => (Array.isArray(r) ? r : []).map((c) => cleanHtml(c))); n.head = !!b.head; }
+    if (b.type === "image") Object.assign(n, { fileId: String(b.fileId || ""), w: +b.w || 0, h: +b.h || 0, width: Math.max(15, Math.min(100, +b.width || 100)), caption: cleanHtml(b.caption) });
+    return n;
+  });
+  if (out.some((b) => b.type === "table")) for (const b of out) if (b.type === "table") { const w = Math.max(1, ...b.rows.map((r) => r.length)); b.rows = (b.rows.length ? b.rows : [[""]]).map((r) => [...r, ...Array(w - r.length).fill("")]); }
+  return out.length ? out : null;
+}
+function blocksToHtml(list) {
+  return list.map((b) => {
+    const h = b.html || "";
+    if (/^h[123]$/.test(b.type)) return `<${b.type}>${h}</${b.type}>`;
+    if (b.type === "bullet" || b.type === "toggle") return `<ul><li>${h}</li></ul>`;
+    if (b.type === "number") return `<ol><li>${h}</li></ol>`;
+    if (b.type === "todo") return `<p>${b.checked ? "☑" : "☐"} ${h}</p>`;
+    if (b.type === "quote") return `<blockquote>${h}</blockquote>`;
+    if (b.type === "code") return `<pre>${escHtml(h)}</pre>`;
+    if (b.type === "divider") return "<hr>";
+    if (b.type === "table") return `<table>${(b.rows || []).map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join("")}</tr>`).join("")}</table>`;
+    if (b.type === "image") return b.caption ? `<p>${b.caption}</p>` : "";
+    if (b.type === "page") return "";
+    return `<p>${h}</p>`;
+  }).join("");
 }
 
 // ---------- tables in and out ----------
