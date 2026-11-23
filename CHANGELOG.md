@@ -2,6 +2,11 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.37.0 — 2026-11-23
+- Library pages: pick whole blocks as in Notion: drag from one block into another, draw a box from the margin, Shift+click, Shift+↑↓ off a block's edge, Ctrl+A twice, or Esc over words. Picked blocks copy and paste as blocks, delete, indent, move, duplicate, change type and colour together, and undo.
+- Discuss with Claude: pick words or blocks and press Alt+6 (or Discuss this page in the page menu, or ] for the page's discussions). A panel opens beside the page with Claude's first reply; carry on talking, Insert a reply into the page, or Copy it. Discussions are kept with the page and sync; a mark in the margin shows what's been discussed. Without Bonsai Desktop, Discuss copies a prompt for claude.ai.
+- The quick bar's keys are fixed: Action Alt+5, Discuss Alt+6.
+
 ## 0.36.0 — 2026-11-23
 - Real questions. Bonsai Desktop now writes three questions for every idea in the background (a Recall that doesn't give the name away, a Why, and an Apply, Connect or Rebuild), a topic at a time, saved as it goes, so the phone has them through sync. Menu → Write questions runs it now. Grow and exam imports get theirs too.
 - Today's questions stay in the Today box, which floats over a blurred screen. In Bonsai Desktop you type or dictate an answer and Claude marks it Right, Partly or Missed with a line of why (1–3 to overrule, Space to just see the answer). On the phone: Show, then Got it or Missed. No difficulty scale. An idea with no question yet is asked by its note with the name hidden.
