@@ -5,7 +5,7 @@
 // prompt copied for claude.ai with nothing kept. The bridge is a stand-in, as in run28-live.
 import { start, state } from "./lib.mjs";
 
-const t = await start("run41-discuss", 4341, { channel: "beta" });
+const t = await start("run41-discuss", 4344, { channel: "beta" });
 const bridge = () => {
   const subs = new Set(), asked = [];
   window.bonsaiDesktop = { version: "0.2.0", channel: "beta", features: ["images"], update: async () => null, claude: {

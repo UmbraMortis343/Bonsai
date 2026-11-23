@@ -2,6 +2,10 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.37.1 — 2026-11-23
+- Write questions is easier to reach: ⇧W anywhere but the Library, in the menu and in Today (Bonsai Desktop). It writes for every idea still short of questions, asking again any Claude couldn't do earlier; while it runs the same item shows how far it's got and stops it.
+- Beta only: Repick today's questions (⇧R, the menu, or Repick in Today) draws a fresh set at random from every idea that can be asked, due or not, so a round can be tried again.
+
 ## 0.37.0 — 2026-11-23
 - Library pages: pick whole blocks as in Notion: drag from one block into another, draw a box from the margin, Shift+click, Shift+↑↓ off a block's edge, Ctrl+A twice, or Esc over words. Picked blocks copy and paste as blocks, delete, indent, move, duplicate, change type and colour together, and undo.
 - Discuss with Claude: pick words or blocks and press Alt+6 (or Discuss this page in the page menu, or ] for the page's discussions). A panel opens beside the page with Claude's first reply; carry on talking, Insert a reply into the page, or Copy it. Discussions are kept with the page and sync; a mark in the margin shows what's been discussed. Without Bonsai Desktop, Discuss copies a prompt for claude.ai.

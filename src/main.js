@@ -769,7 +769,8 @@ function appMenu(anchor) {
     S.view !== "notes" && S.view !== "tree" && { label: "Notes", key: "O", run: openNotes },
     (S.view === "forest" || S.view === "isles") && { label: "Timelapse", key: "T", run: tlToggle },
     desktop && { label: "Sunday session", key: "U", run: startSunday },
-    desktop && { label: bank.on ? bankLabel() : "Write questions", run: () => { if (!bank.on) bankRun({ all: true }); } },
+    desktop && { label: bank.on ? `${bankLabel()} · Stop` : "Write questions", key: "⇧W", run: bankMenu },
+    CHANNEL && { label: "Repick today's questions", key: "⇧R", run: todayRepick },
     archived.length && { label: "Archived", run: () => menu(anchor, archived.map((x) => ({ label: `Restore ${x.name}`, run: async () => { await safely(() => (x.rootId ? store.updateTree : store.updateZone)(x.id, { archived: false })); refresh(); } }))) },
     "-", S.view === "isles" && { label: "Import map", run: importMap }, { label: "Import exam", run: importExam }, { label: "Export backup", run: exportBackup }, { label: "Restore backup", run: () => $("#importFile").click() },
     CHANNEL && { label: "Reset demo data", run: resetDemo },
@@ -1448,7 +1449,7 @@ async function bankRun({ all = false } = {}) {
   if (!bankNext()) { if (all) toast("Every idea has its questions"); return; }
   bank.on = true; bankShow();
   try {
-    for (let b = bankNext(); b && !bankBusy(); b = bankNext()) {
+    for (let b = bankNext(); b && !bankBusy() && !bank.stopAll; b = bankNext()) {
       const ideas = b.nodes.map((n) => ideaSheet(n, BANK_PER - haveQs(n)));
       const job = askClaude(questionsPrompt({ topic: b.zone?.name || "", ideas, per: BANK_PER })); bank.job = job;
       const r = await job.done; bank.job = null;
@@ -1699,12 +1700,12 @@ async function todayLoad() {
 }
 const liveIds = () => new Set(S.nodes.filter((n) => treeOf(n.treeId)).map((n) => n.id));
 // Every idea due now (on the clock above), by level, with its topic and (kinds) the kinds of question it can be asked.
-function todayPool(kinds = true, now = clockNow()) {
+function todayPool(kinds = true, now = clockNow(), any = false) {
   const live = new Set(S.trees.map((t) => t.id)), pool = { focus: [], keep: [], settled: [] };
   for (const n of S.nodes) {
     if (!live.has(n.treeId) || !srs.reviewable(n, kidsOf(n.id).length)) continue;
     const level = levelOfNode(n), due = Date.parse(srs.dueAt(n, focus.multOf(level)));
-    if (due <= now) pool[level]?.push({ id: n.id, zone: treeOf(n.treeId)?.zoneId, due, kinds: kinds ? [...new Set(usableQs(n, qctx(n)).map((q) => q.kind))] : [] });
+    if (any || due <= now) pool[level]?.push({ id: n.id, zone: treeOf(n.treeId)?.zoneId, due: any ? now - Math.random() * 365 * DAY : due, kinds: kinds ? [...new Set(usableQs(n, qctx(n)).map((q) => q.kind))] : [] });
   }
   return pool;
 }
@@ -1729,6 +1730,17 @@ async function todayEnsure() {
   await todaySaveDay();
   return S.todayPick;
 }
+// Beta only (his ask, 0.37.1): a fresh ten for today, drawn at random from every idea that can be asked, due or not,
+// so he can try the round again. Today's ratings so far are dropped.
+async function todayRepick() {
+  if (!CHANNEL || S.tq) return;
+  S.todayPick = pickToday(todayPool(true, clockNow(), true), dayKey());
+  await safely(() => store.setMeta("today", S.todayPick)); await todaySaveDay();
+  if (S.todayOpen) renderToday(); renderTop?.(); toast("New questions for today");
+}
+// Menu → Write questions, and W in Today on Bonsai Desktop: the bank now, for every idea still short, asking again
+// those Claude couldn't do earlier. While it runs, the same item shows how far it's got and stops it.
+function bankMenu() { if (bank.on) { bankStop(); bank.stopAll = true; toast("Stopped writing questions"); } else { bank.stopAll = false; bankRun({ all: true }); toast(bankLabel()); } }
 async function todayRated(id, rating) {
   const p = S.todayPick; if (!p || p.day !== dayKey() || !p.ids.includes(id)) return;
   p.rated = { ...(p.rated || {}), [id]: rating };
@@ -1851,7 +1863,7 @@ function renderRound(box) {
 }
 function todayMonth(d) { const [y, m] = S.tdMonth; S.tdMonth = monthOf(dayOf(new Date(y, m + d, 1, 12))); renderToday(); }
 function todayPickDay(key) { S.tdSel = key; const [y, m] = monthOf(key); if (S.tdMonth[0] !== y || S.tdMonth[1] !== m) S.tdMonth = [y, m]; renderToday(); }
-function todayKey(k, stop) {
+function todayKey(k, stop, e) {
   const go = (fn) => { stop(); fn(); return true; };
   const q = S.tq;
   if (q) {
@@ -1862,6 +1874,8 @@ function todayKey(k, stop) {
     stop(); return true;   // nothing else while a question is up
   }
   if (k === "y") return go(todayClose);
+  if (k === "w" && e?.shiftKey && desktop) return go(bankMenu);
+  if (k === "r" && e?.shiftKey && CHANNEL) return go(todayRepick);
   if (k === "Enter") return go(todayStart);
   if (k === "ArrowLeft" || k === "ArrowRight") return go(() => todayMonth(k === "ArrowRight" ? 1 : -1));
   if (k === "ArrowUp" || k === "ArrowDown") return go(() => todayPickDay(addDays(S.tdSel, k === "ArrowDown" ? 1 : -1)));
@@ -1896,7 +1910,10 @@ function renderToday() {
       : rec.done ? el("div", { class: "row" }, el("b", { class: "tdscore " + scoreTier(rec), id: "todayScore", text: String(rec.good) }), el("span", { class: "grow" }), squares)
       : el("div", { class: "row" }, el("button", { class: "btn primary", id: "todayGo", onclick: todayStart }, "Start", key("↵")), el("span", { class: "muted", id: "todayProgress", text: `${rec.asked}/${rec.n}` }), el("span", { class: "grow" }), squares),
     sundayDue() ? el("div", { class: "row" }, el("button", { class: "btn", id: "todaySunday", onclick: () => { todayClose(); startSunday(); } }, "Sunday", key("U"))) : null,
-    el("p", { class: "muted tdbank", id: "bankLine", hidden: !bank.on, text: bank.on ? bankLabel() : "" }));
+    el("p", { class: "muted tdbank", id: "bankLine", hidden: !bank.on, text: bank.on ? bankLabel() : "" }),
+    desktop || CHANNEL ? el("div", { class: "row tdtools" },
+      desktop ? el("button", { class: "btn", id: "todayBank", onclick: bankMenu }, bank.on ? "Stop" : "Write questions", key("⇧W")) : null,
+      CHANNEL ? el("button", { class: "btn", id: "todayRepick", onclick: todayRepick }, "Repick", key("⇧R")) : null) : null);
   const run = streak(S.days, day);
   const top = el("div", { class: "tdstreak", id: "todayStreak" }, el("b", { text: String(run) }), el("span", { class: "muted", text: run === 1 ? "day" : "days" }));
   // the month
@@ -2709,6 +2726,8 @@ function onKey(e) {
   if (S.view === "notes") return notesKey(k, stop, e);
   if (S.view === "tree" && S.cutoff == null && /^[0-9]$/.test(k) && (S.jump || k !== "0")) { stop(); return jumpDigit(k); }
   if (k === "t" && tlWhere()) { stop(); return e.shiftKey ? tlVideo() : tlToggle(); }
+  if (k === "w" && e.shiftKey && desktop && S.view !== "notes") { stop(); return bankMenu(); }   // ⇧W: write questions now (in the Library W is a pen page)
+  if (k === "r" && e.shiftKey && CHANNEL && S.view !== "notes") { stop(); return todayRepick(); }
   if (S.tl) {
     if (k === " ") { stop(); return tlPlay(); }
     if (k === "ArrowLeft" || k === "ArrowRight") { stop(); return tlStep(k, e.shiftKey); }
