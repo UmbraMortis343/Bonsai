@@ -66,8 +66,8 @@ export function dialog({ title, fields = [], ok = "Save", danger = false, body =
   });
 }
 
-// items: [{label, run, key, danger, disabled} | "-"]
-export function menu(anchor, items) {
+// items: [{label, run, key, danger, disabled} | "-"]. opts.keys: a one-letter key shown on an item also runs it.
+export function menu(anchor, items, opts = {}) {
   let close;
   const m = el("div", { class: "menu", role: "menu" }, items.filter(Boolean).map((it) => it === "-" ? el("hr") :
     el("button", { class: "mi" + (it.danger ? " danger" : ""), role: "menuitem", disabled: !!it.disabled, onclick: () => { close(); it.run?.(); } }, el("span", { text: it.label }), it.key ? el("kbd", { text: it.key }) : null)));
@@ -78,6 +78,10 @@ export function menu(anchor, items) {
   m.style.top = Math.max(8, Math.min(innerHeight - h - 8, r.bottom + 6)) + "px";
   m.querySelector("button:not(:disabled)")?.focus({ preventScroll: true });
   m.addEventListener("keydown", (e) => {
+    if (opts.keys && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const it = items.find((x) => x && x !== "-" && !x.disabled && x.key && x.key.length === 1 && x.key.toLowerCase() === e.key.toLowerCase());
+      if (it) { e.preventDefault(); e.stopPropagation(); close(); it.run?.(); return; }
+    }
     if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
     e.preventDefault(); e.stopPropagation();
     const bs = [...m.querySelectorAll("button:not(:disabled)")], i = bs.indexOf(document.activeElement);

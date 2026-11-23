@@ -24,12 +24,12 @@ import { desktop, canSee, liveStatus, liveProblem, askClaude, desktopUpdate } fr
 import { oralOpen, oralPrompt, readOral, oralMarkPrompt, readMarks } from "./paper.js";
 import { weekOf, sundayOpen, sundayPrompt, readTurn, stitchPrompt, readStitch, tally, isSunday, dayOf, SUNDAY_MAX } from "./sunday.js";
 import * as sync from "./sync.js";
-import { KINDS, KIND_NAME, REBUILD_Q, questionFor, usableQs, pickHide, questionsPrompt, readQuestions, dayNumber, cleanQs, BANK_PER, BANK_BATCH, MARK_NAME, MARK_RATING, markPrompt, readMark } from "./questions.js";
+import { KINDS, KIND_NAME, REBUILD_Q, questionFor, usableQs, pickHide, questionsPrompt, readQuestions, dayNumber, cleanQs, BANK_PER, BANK_BATCH, MARK_NAME, MARK_RATING, markPrompt, readMark, needsRedo, isStale, pointsOf, cleanPts } from "./questions.js";
 import { createInk } from "./ink.js";
 import { TALK_SYSTEM, talkPrompt, pastePrompt, talkId, lastAt, sortTalks } from "./talk.js";
 import * as focus from "./focus.js";
 import { createHistory } from "./history.js";
-import { pickToday, recordOf, streak, monthGrid, dayLog, addDays, scoreTier } from "./today.js";
+import { pickToday, recordOf, streak, monthGrid, dayLog, addDays, scoreTier, VOID } from "./today.js";
 
 const PALETTE = [["Blue", "#3b82f6"], ["Violet", "#8b5cf6"], ["Pink", "#ec4899"], ["Red", "#ef4444"], ["Orange", "#f97316"], ["Amber", "#f59e0b"], ["Green", "#22c55e"], ["Teal", "#14b8a6"], ["Cyan", "#06b6d4"]];
 const SWATCHES = [["Auto", ""], ...PALETTE];
@@ -70,7 +70,7 @@ const safely = async (fn) => { try { return await fn(); } catch (e) { toast(e.me
 const goTree = (id) => { location.hash = "#/tree/" + encodeURIComponent(id); };
 function pathOf(n) {
   const t = S.allTrees.find((x) => x.id === n.treeId), z = t && S.allZones.find((x) => x.id === t.zoneId);
-  return [z?.name, t?.name].filter(Boolean).join(" › ");
+  return [z?.name, t?.name].filter((x, i, a) => x && (i === 0 || x.trim().toLowerCase() !== String(a[0] || "").trim().toLowerCase())).join(" › ");   // "Matter › Matter" once
 }
 
 // ---------- data ----------
@@ -1335,29 +1335,34 @@ function questionsBox(n) {
       el("button", { class: "qtext", type: "button", text: q.q, title: q.a || "", onclick: () => editQuestion(n, i) }),
       ib(null, "Delete question", ICON.close, () => deleteQuestion(n, i)))));
 }
-// Writing or changing one question. i: its place in node.qs, -1 for a new one.
+// Writing or changing one question. i: its place in node.qs, -1 for a new one. Returns what was saved, or null.
 async function editQuestion(n, i = -1) {
   n = S.byId.get(n.id) || n;
   const was = (n.qs || [])[i], c = qctx(n);
   const kind = el("select", { id: "qKind", "aria-label": "Kind", onchange: () => show() }, KINDS.map((k) => el("option", { value: k, text: KIND_NAME[k], selected: k === (was?.kind || "recall"), disabled: (k === "connect" && !c.links.length) || (k === "rebuild" && !c.kids.length) })));
   const q = el("textarea", { id: "qText", rows: 3, placeholder: "Question", "aria-label": "Question", value: was?.q || "" });
   const a = el("textarea", { id: "qAnswer", rows: 2, placeholder: "Answer", "aria-label": "Answer", value: was?.a || "" });
+  const pts = el("textarea", { id: "qPts", rows: 2, placeholder: "Key points, one a line", "aria-label": "Key points", value: (was?.pts || []).join("\n") });
   const link = el("select", { id: "qLink", "aria-label": "Link" }, c.links.map((l) => el("option", { value: l.id, text: l.other.title + (l.label ? ` (${l.label})` : ""), selected: l.id === was?.linkId })));
   const hide0 = new Set(was?.hide?.length ? was.hide : pickHide(c.kids, n.id));
   const ticks = el("div", { class: "qticks", id: "qHide" }, c.kids.map((k) => el("label", { class: "qtick" }, el("input", { type: "checkbox", value: k.id, checked: hide0.has(k.id) }), el("span", { text: k.title }))));
   const rows = { link: el("label", {}, el("span", { text: "Link" }), link), hide: el("div", { class: "qhide" }, el("span", { class: "meta", text: "Hidden" }), ticks) };
-  const show = () => { const k = kind.value; rows.link.hidden = k !== "connect"; rows.hide.hidden = k !== "rebuild"; q.placeholder = k === "rebuild" ? REBUILD_Q : "Question"; };
-  const body = el("div", { class: "qform" }, el("label", {}, el("span", { text: "Kind" }), kind), q, a, rows.link, rows.hide);
+  const show = () => { const k = kind.value; rows.link.hidden = k !== "connect"; rows.hide.hidden = k !== "rebuild"; pts.hidden = k === "rebuild"; q.placeholder = k === "rebuild" ? REBUILD_Q : "Question"; };
+  const body = el("div", { class: "qform" }, el("label", {}, el("span", { text: "Kind" }), kind), q, a, pts, rows.link, rows.hide);
   show(); setTimeout(() => q.focus(), 0);
   q.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); q.form?.requestSubmit(); } });
   const ok = await dialog({ title: `${n.title}`, ok: "Save", body });
   if (!ok) return;
-  const entry = { kind: kind.value, q: q.value.trim(), a: a.value.trim(), by: was?.by || "you", at: was?.at };
+  // a question he changes is his from then on (the bank never rewrites his), and no longer flagged
+  const entry = { kind: kind.value, q: q.value.trim(), a: a.value.trim(), pts: cleanPts(pts.value), by: was?.by || "you", at: was?.at };
+  if (was && (entry.q !== was.q || entry.a !== (was.a || "") || entry.kind !== was.kind || entry.pts.join("\n") !== (was.pts || []).join("\n"))) entry.by = "you";
   if (entry.kind === "connect") entry.linkId = link.value;
   if (entry.kind === "rebuild") { entry.hide = [...ticks.querySelectorAll("input:checked")].map((x) => x.value); if (!entry.hide.length) return toast("Tick what to hide"); }
   else if (!entry.q) return toast("Write the question");
   const list = [...(n.qs || [])]; if (i >= 0 && list[i]) list[i] = entry; else list.push(entry);
-  if (await safely(() => store.setQuestions(n.id, list))) afterQuestion();
+  if (!(await safely(() => store.setQuestions(n.id, list)))) return null;
+  if (!S.tq) afterQuestion();
+  return entry;
 }
 async function deleteQuestion(n, i) {
   const before = S.byId.get(n.id) || n, list = [...(before.qs || [])]; if (!list[i]) return;
@@ -1405,12 +1410,29 @@ async function writeQuestions(treeId) {
 }
 
 // What Claude is told about an idea when writing its questions: its note and notes, what it hangs from, what hangs
-// from it, its links, and (for the bank) how many it still needs and what it has.
-function ideaSheet(n, need) {
+// from it, its links, and (for the bank) how many it still needs, what it has, and which to write again (redo).
+function ideaSheet(n, need, redo = []) {
   const c = qctx(n), have = usableQs(n, c);
   return { id: n.id, title: n.title, note: n.note || "", body: n.body || "", graph: treeOf(n.treeId)?.name || "", parent: S.byId.get(n.parentId)?.title || "",
     kids: c.kids.map((k) => ({ id: k.id, title: k.title })), links: c.links.map((l) => ({ id: l.id, other: l.other.title, label: l.label })),
-    have: (n.qs || []).map((q) => q.q), hasKinds: [...new Set(have.map((q) => q.kind))], ...(need != null ? { need } : {}) };
+    have: (n.qs || []).map((q) => q.q), hasKinds: [...new Set(have.map((q) => q.kind))], ...(need != null ? { need } : {}),
+    ...(redo.length ? { redo: redo.map((q) => ({ kind: q.kind, q: q.q, why: q.flag || "old" })) } : {}) };
+}
+// Claude's reply as rows for store.addQuestions: new questions, and those written again in place of old ones.
+function bankRows(list) {
+  const by = new Map();
+  for (const f of list) { if (!by.has(f.id)) by.set(f.id, { id: f.id, qs: [], swap: [] }); const r = by.get(f.id); if (f.replaces) r.swap.push({ old: f.replaces, q: f.q }); else r.qs.push(f.q); }
+  return [...by.values()];
+}
+// The same change in memory, so nothing has to redraw under whatever he's doing.
+function bankApply(rows) {
+  const same = (a, b) => String(a || "").trim().replace(/\s+/g, " ").toLowerCase() === String(b || "").trim().replace(/\s+/g, " ").toLowerCase();
+  for (const { id, qs, swap } of rows) {
+    const n = S.byId.get(id); if (!n) continue;
+    const have = [...(n.qs || [])];
+    for (const w of swap || []) { const i = have.findIndex((x) => same(x.q, w.old)), q = cleanQs([w.q], "claude")[0]; if (q && i >= 0) have[i] = q; }
+    n.qs = cleanQs([...have, ...cleanQs(qs || [], "claude")]);
+  }
 }
 
 // ---------- the question bank (Bonsai Desktop) ----------
@@ -1421,22 +1443,33 @@ function ideaSheet(n, need) {
 // or an exam adds ideas, and stops while a review or Today's round runs (each answer there is marked by Claude, so
 // the two don't queue behind each other). Menu → Write questions runs it now for everything, including ideas Claude
 // couldn't write for earlier in this session. Tests switch the automatic start on with pref `bankauto` = 1.
+// It also writes again (0.38.0): first questions flagged in the round (Vague, or a mark he overruled), then after
+// ideas still short, Claude's older questions with no key points, oldest first. His own are never rewritten here.
 const bank = { on: false, job: null, tried: new Set() };
 const haveQs = (n) => usableQs(n, qctx(n)).length;
 const bankPool = () => { const live = new Set(S.trees.map((t) => t.id)); return S.nodes.filter((n) => live.has(n.treeId) && srs.reviewable(n, kidsOf(n.id).length)); };
-// How far the bank has got: questions written of those wanted (BANK_PER per idea).
-function bankCount() { const pool = bankPool(); return { done: pool.reduce((a, n) => a + Math.min(BANK_PER, haveQs(n)), 0), total: pool.length * BANK_PER }; }
+// What an idea needs from the bank: new questions, and its usable ones to write again; tier 0 flagged, 1 short, 2 old.
+function bankWork(n) {
+  const qs = usableQs(n, qctx(n)), redo = qs.filter(needsRedo), need = Math.max(0, BANK_PER - qs.length);
+  const tier = redo.some((q) => q.flag) ? 0 : need ? 1 : redo.length ? 2 : -1;
+  return { need, redo, tier, at: redo.reduce((m, q) => (String(q.at || "") < m ? String(q.at || "") : m), "\uffff") };
+}
+// How far the bank has got: questions written as they should be (with key points, not flagged) of those wanted.
+function bankCount() { const pool = bankPool(); return { done: pool.reduce((a, n) => a + Math.min(BANK_PER, usableQs(n, qctx(n)).filter((q) => !needsRedo(q)).length), 0), total: pool.length * BANK_PER }; }
 const bankLabel = () => { const c = bankCount(); return `Questions ${c.done} of ${c.total}`; };
 const bankBusy = () => !!(S.review || S.oral || S.sun || S.tq);
-// The next batch: ideas short of questions, by topic and graph in the order they're shown, at most BANK_BATCH and one topic.
+// The next batch: flagged first, then ideas short of questions, then old ones (oldest first); within that, by topic
+// and graph in the order they're shown; at most BANK_BATCH, one topic and one tier.
 function bankNext() {
   const order = new Map(S.trees.map((t, i) => [t.id, i])), zord = new Map(S.zones.map((z, i) => [z.id, i]));
-  const short = bankPool().filter((n) => !bank.tried.has(n.id) && haveQs(n) < BANK_PER);
-  if (!short.length) return null;
   const zoneOf = (n) => treeOf(n.treeId)?.zoneId;
-  short.sort((a, b) => (zord.get(zoneOf(a)) ?? 0) - (zord.get(zoneOf(b)) ?? 0) || order.get(a.treeId) - order.get(b.treeId) || byOrder(a, b));
-  const zone = zoneOf(short[0]);
-  return { zone: S.zones.find((z) => z.id === zone), nodes: short.filter((n) => zoneOf(n) === zone).slice(0, BANK_BATCH) };
+  const todo = bankPool().filter((n) => !bank.tried.has(n.id)).map((n) => ({ n, w: bankWork(n) })).filter((x) => x.w.tier >= 0);
+  if (!todo.length) return null;
+  const place = (a, b) => (zord.get(zoneOf(a.n)) ?? 0) - (zord.get(zoneOf(b.n)) ?? 0) || order.get(a.n.treeId) - order.get(b.n.treeId) || byOrder(a.n, b.n);
+  todo.sort((a, b) => a.w.tier - b.w.tier || (a.w.tier === 2 ? a.w.at.localeCompare(b.w.at) : 0) || place(a, b));
+  const { tier } = todo[0].w, zone = zoneOf(todo[0].n);
+  const nodes = todo.filter((x) => x.w.tier === tier && zoneOf(x.n) === zone).slice(0, BANK_BATCH);
+  return { zone: S.zones.find((z) => z.id === zone), nodes: nodes.map((x) => x.n), work: new Map(nodes.map((x) => [x.n.id, x.w])) };
 }
 function bankShow() {
   const line = $("#bankLine"); if (line) { line.hidden = !bank.on; line.textContent = bank.on ? bankLabel() : ""; }
@@ -1450,18 +1483,16 @@ async function bankRun({ all = false } = {}) {
   bank.on = true; bankShow();
   try {
     for (let b = bankNext(); b && !bankBusy() && !bank.stopAll; b = bankNext()) {
-      const ideas = b.nodes.map((n) => ideaSheet(n, BANK_PER - haveQs(n)));
+      const ideas = b.nodes.map((n) => { const w = b.work.get(n.id); return ideaSheet(n, w.need, w.redo); });
       const job = askClaude(questionsPrompt({ topic: b.zone?.name || "", ideas, per: BANK_PER })); bank.job = job;
       const r = await job.done; bank.job = null;
       if (!r.ok) break;   // stopped, or Claude can't be reached: try again next time
       let read; try { read = readQuestions(r.text, ideas); } catch { read = { list: [] }; }
       for (const x of ideas) bank.tried.add(x.id);   // asked once a session; Write questions asks again
-      const by = new Map(); for (const f of read.list) { if (!by.has(f.id)) by.set(f.id, []); by.get(f.id).push(f.q); }
-      if (!by.size) continue;
-      const rows = [...by].map(([id, qs]) => ({ id, qs }));
+      const rows = bankRows(read.list);
+      if (!rows.length) continue;
       if (!(await safely(() => store.addQuestions(rows)))) break;
-      // the same change in memory, so nothing has to redraw under whatever he's doing
-      for (const { id, qs } of rows) { const n = S.byId.get(id); if (n) n.qs = cleanQs([...(n.qs || []), ...cleanQs(qs, "claude")]); }
+      bankApply(rows);
       bankShow();
     }
   } finally { bank.on = false; bank.job = null; bankShow(); if (S.todayOpen && !S.tq) renderToday(); }
@@ -1693,7 +1724,7 @@ function renderSunday() {
 // Sunday session's (`clockNow`), so tests can move both.
 const dayKey = () => dayOf(clockNow());
 const monthOf = (key) => { const [y, m] = key.split("-").map(Number); return [y, m - 1]; };
-const RATED = { good: "ok", easy: "ok", hard: "hard", again: "miss" };
+const RATED = { good: "ok", easy: "ok", hard: "hard", again: "miss", void: "void" };
 async function todayLoad() {
   const [t, d] = await Promise.all([store.getMeta("today").catch(() => null), store.getMeta("days").catch(() => null)]);
   S.todayPick = t || null; S.days = d || {}; S.tdLog = null;
@@ -1771,14 +1802,24 @@ function todayClose(quiet = false) {
 // typed or dictated (Win+H) that Claude marks Right, Partly or Missed with a line of why, his to overrule (1–3);
 // elsewhere Space shows the answer and he says Got it or Missed. right → good, partly → hard, missed → again.
 // An idea with no written question yet is asked by its note with the name kept back; with no note, by its name.
-// S.tq = { ids, i, phase: ask | marking | marked | shown, answer, mark, why, claude, asks, prefer, day }.
+// Key points (0.38.0, after his first rounds with real Claude): a question carries 1–3 points a full answer needs
+// (squares under it when there's more than one); Claude marks point by point and the marked view shows each with a
+// tick or a gap. One nudge (pref `nudge`, on by default): some points but not all, Claude gives a one-line hint and
+// he has one more go, marked as a whole; right after a nudge scores as right but is reviewed hard. Esc or Space
+// skip it. The ⋯ menu (Alt+M): Vague (flagged, and the idea leaves today's count: not reviewed, still due),
+// Rewrite now (Claude, asked again at once), Edit, Skip (left for later today). Overruling Claude's mark flags the
+// question too; the bank writes flagged questions again first.
+// S.tq = { ids, i, phase: ask | marking | nudge | marked | shown | rewriting | next, answer, mark, why, got, nudge, first,
+//   firstMark, nudged, claudeMark, claude, nudgeOn, asks, prefer, day }.
+const TQ_FRESH = { phase: "ask", answer: "", mark: null, why: "", got: null, nudge: "", first: "", firstMark: null, nudged: false, claudeMark: null };
+const nudgeOn = () => pref("nudge", "1") !== "0";
 async function todayStart() {
   const p = S.todayPick, live = liveIds(); if (!p || p.day !== dayKey() || S.tq) return;
   const ids = p.ids.filter((id) => live.has(id) && !p.rated?.[id]); if (!ids.length) return;
   bankStop();
   const claude = desktop && !liveProblem(await liveStatus());
   if (!S.todayOpen) return;
-  S.tq = { ids, i: 0, phase: "ask", answer: "", mark: null, why: "", claude, asks: {}, prefer: p.kinds || {}, day: dayNumber(clockNow()) };
+  S.tq = { ids, i: 0, ...TQ_FRESH, claude, nudgeOn: nudgeOn(), asks: {}, prefer: p.kinds || {}, day: dayNumber(clockNow()) };
   renderToday();
 }
 const tqNode = () => S.tq && S.byId.get(S.tq.ids[S.tq.i]);
@@ -1786,30 +1827,56 @@ function tqAsk() {
   const q = S.tq, n = tqNode(); if (!n) return null;
   return (q.asks[q.i] ||= (() => { const a = askFor(n, q.day, q.prefer[n.id]); return !a.fallback ? a : (n.note || "").trim() ? { ...a, cue: "note", q: n.note.trim(), a: n.title } : { ...a, cue: "title" }; })());
 }
+// What the answer is marked on: the question's key points, or a rebuild's hidden ideas.
+const tqPts = (a) => (!a || a.cue || a.fallback ? [] : pointsOf(a, a.kind === "rebuild" ? a.hide.map((id) => S.byId.get(id)?.title) : []));
+const tqReal = (a) => !!a && !a.fallback && a.i >= 0;
 const tqSet = (x) => { Object.assign(S.tq, x); renderToday(); };
 function tqShow() { const q = S.tq; if (q?.phase === "ask") tqSet({ phase: "shown" }); }
 async function tqSend() {
-  const q = S.tq, n = tqNode(), a = tqAsk(); if (!q || !n || q.phase !== "ask") return;
-  const text = q.answer.trim(); if (!text) return tqShow();
-  if (!q.claude) return tqShow();
-  const at = q.i, kids = kidsOf(n.id), zone = S.zones.find((z) => z.id === treeOf(n.treeId)?.zoneId);
+  const q = S.tq, n = tqNode(), a = tqAsk(); if (!q || !n || (q.phase !== "ask" && q.phase !== "nudge")) return;
+  const second = q.phase === "nudge", text = q.answer.trim();
+  if (second && !text) return tqSkipNudge();
+  if (!text || !q.claude) return tqShow();
+  const at = q.i, kids = kidsOf(n.id), zone = S.zones.find((z) => z.id === treeOf(n.treeId)?.zoneId), pts = tqPts(a);
   const expected = a.kind === "rebuild" ? a.hide.map((id) => S.byId.get(id)?.title).filter(Boolean).join("; ") : a.cue === "title" ? [n.body, kids.map((k) => k.title).join("; ")].filter(Boolean).join(" · ") : a.a;
   tqSet({ phase: "marking" });
-  const job = askClaude(markPrompt({ topic: zone?.name || "", title: n.title, note: a.cue === "note" ? "" : n.note || "", kind: a.cue ? "name the idea" : a.kind, q: a.kind === "rebuild" ? `Name the ideas hidden under ${n.title}` : a.q, a: expected, answer: text }));
+  const job = askClaude(markPrompt({ topic: zone?.name || "", title: n.title, note: a.cue === "note" ? "" : n.note || "", kind: a.cue ? "name the idea" : a.kind, q: a.kind === "rebuild" ? `Name the ideas hidden under ${n.title}` : a.q, a: expected, pts,
+    answer: text, first: second ? q.first : "", hint: second ? q.nudge : "", nudge: !second && q.nudgeOn }));
   q.job = job;
   const r = await job.done; q.job = null;
   if (S.tq !== q || q.i !== at || q.phase !== "marking") return;
-  const m = r.ok ? readMark(r.text) : null;
-  tqSet(m ? { phase: "marked", mark: m.mark, why: m.why } : { phase: "shown" });
+  const m = r.ok ? readMark(r.text, pts.length) : null;
+  if (!m) return tqSet(second ? { phase: "marked", ...q.firstMark, claudeMark: q.firstMark.mark, answer: q.first, first: "" } : { phase: "shown" });
+  if (!second && m.nudge) return tqSet({ phase: "nudge", first: text, answer: "", nudge: m.nudge, firstMark: { mark: m.mark, why: m.why, got: m.got || null } });
+  tqSet({ phase: "marked", mark: m.mark, why: m.why, got: m.got || null, claudeMark: m.mark, nudged: second });
+}
+// Esc or Space at the nudge: straight to the first mark.
+function tqSkipNudge() {
+  const q = S.tq; if (q?.phase !== "nudge") return;
+  tqSet({ phase: "marked", ...q.firstMark, claudeMark: q.firstMark.mark, answer: q.first, first: "", nudge: "" });
+}
+// Flags the question asked ("vague" or "overruled"), so the bank writes it again.
+async function tqFlag(n, a, flag) {
+  if (!tqReal(a)) return;
+  const list = [...(n.qs || [])], x = list[a.i]; if (!x || x.q !== a.q) return;
+  list[a.i] = { ...x, flag, flagAt: new Date().toISOString() };
+  await safely(() => store.setQuestions(n.id, list));
 }
 async function tqRate(mark) {
   const q = S.tq; if (!q || q.busy || !MARK_RATING[mark]) return; q.busy = true;
-  const id = q.ids[q.i], a = tqAsk(), rating = MARK_RATING[mark];
+  const id = q.ids[q.i], n = tqNode(), a = tqAsk();
+  // right after a nudge: right for the score, but it comes back a bit sooner
+  const rating = q.nudged && mark === "right" ? "hard" : MARK_RATING[mark], score = mark === "right" ? "good" : rating;
+  if (q.claudeMark && mark !== q.claudeMark && n) await tqFlag(n, a, "overruled");
   await safely(() => store.reviewNode(id, rating, { asked: a && !a.fallback ? a.kind : "" }));
-  await todayRated(id, rating);
-  q.i++; Object.assign(q, { phase: "ask", answer: "", mark: null, why: "", busy: false });
+  await todayRated(id, score);
+  await tqAdvance(q);
+}
+async function tqAdvance(q) {
+  q.job?.cancel(); q.job = null; q.phase = "next";   // what was under way for this one lets go
   await load();
   if (S.tq !== q) return;
+  q.i++; Object.assign(q, TQ_FRESH, { busy: false });
   if (q.i >= q.ids.length) return tqEnd();
   renderToday();
 }
@@ -1819,47 +1886,117 @@ async function tqEnd() {
   await refresh({ animate: true }); if (S.todayOpen) renderToday();
   setTimeout(bankAuto, 0);
 }
+// ---------- the round's ⋯ menu ----------
+function tqMenu(anchor) {
+  const q = S.tq, a = tqAsk(); if (!q || q.busy || q.phase === "rewriting" || overlayOpen()) return;
+  const real = tqReal(a);
+  menu(anchor || $("#tqMenu"), [
+    { label: "Vague question", key: "V", run: tqVague },
+    desktop ? { label: real ? "Rewrite now" : "Write one now", key: "R", disabled: !q.claude, run: tqRewrite } : null,
+    { label: real ? "Edit question" : "Add a question", key: "E", run: tqEdit },
+    { label: "Skip", key: "S", run: tqSkip },
+    q.claude ? "-" : null,
+    q.claude ? { label: q.nudgeOn ? "Nudges off" : "Nudges on", key: "N", run: () => { q.nudgeOn = !q.nudgeOn; setPref("nudge", q.nudgeOn ? "1" : "0"); toast(q.nudgeOn ? "Nudges on" : "Nudges off"); } } : null,
+  ], { keys: true });
+}
+// Vague: flagged, and not counted today (not reviewed, so it stays due and comes back with a better question).
+async function tqVague() {
+  const q = S.tq, n = tqNode(), a = tqAsk(); if (!q || !n || q.busy) return; q.busy = true;
+  q.job?.cancel();
+  if (tqReal(a)) await tqFlag(n, a, "vague");
+  await todayRated(n.id, VOID);
+  toast("Not counted");
+  await tqAdvance(q);
+}
+async function tqSkip() { const q = S.tq; if (!q || q.busy) return; q.busy = true; await tqAdvance(q); }
+// Ask this question afresh: the one just written or edited, found by its text.
+async function tqAskAgain(q, id, text, kind) {
+  await load(); if (S.tq !== q) return;
+  const n = S.byId.get(id); if (!n) return tqAdvance(q);
+  const u = usableQs(n, qctx(n)).find((x) => x.q === text && (!kind || x.kind === kind));
+  q.asks[q.i] = u || null; Object.assign(q, TQ_FRESH);
+  renderToday();
+}
+async function tqEdit() {
+  const q = S.tq, n = tqNode(), a = tqAsk(); if (!q || !n) return;
+  q.job?.cancel(); q.job = null; if (q.phase === "marking") q.phase = "ask";
+  const saved = await editQuestion(n, tqReal(a) ? a.i : -1);
+  if (!saved || S.tq !== q) return renderToday();
+  await tqAskAgain(q, n.id, saved.q, saved.kind);
+}
+// Rewrite now (Bonsai Desktop): Claude writes this one question again, clearly, with its points; asked at once.
+async function tqRewrite() {
+  const q = S.tq, n = tqNode(), a = tqAsk(); if (!q || !n || !q.claude) return;
+  q.job?.cancel(); q.job = null;
+  const real = tqReal(a), old = real ? n.qs[a.i] : null, at = q.i;
+  const sheet = ideaSheet(n, real ? 0 : 1, real ? [{ ...old, flag: "vague" }] : []);
+  const zone = S.zones.find((z) => z.id === treeOf(n.treeId)?.zoneId);
+  tqSet({ phase: "rewriting" });
+  const job = askClaude(questionsPrompt({ topic: zone?.name || "", ideas: [sheet], per: 1 })); q.job = job;
+  const r = await job.done; q.job = null;
+  if (S.tq !== q || q.i !== at || q.phase !== "rewriting") return;
+  let read = { list: [] }; if (r.ok) try { read = readQuestions(r.text, [sheet]); } catch {}
+  const f = read.list[0];
+  if (!f) { toast(r.ok || r.code !== "cancelled" ? "Claude couldn't rewrite it" : "Stopped"); return tqSet({ phase: "ask" }); }
+  if (!(await safely(() => store.addQuestions(bankRows([f]))))) return tqSet({ phase: "ask" });
+  await tqAskAgain(q, n.id, f.q.q, f.q.kind);
+}
 // The question, then the answer box or the answer, in the Today box.
 function renderRound(box) {
   const q = S.tq, n = tqNode(), a = tqAsk(), key = (k) => el("kbd", { text: k });
   if (!n || !a) { tqEnd(); return; }
-  const kids = kidsOf(n.id), open = q.phase === "shown" || q.phase === "marked";
+  const kids = kidsOf(n.id), open = q.phase === "shown" || q.phase === "marked", pts = tqPts(a), got = q.phase === "marked" ? q.got : null;
   const tag = a.cue === "note" ? "Name" : a.cue ? "" : KIND_NAME[a.kind];
   const head = el("div", { class: "tdhead" }, tag ? el("span", { class: "qkind", id: "tqKind", text: tag }) : null,
-    el("span", { class: "muted grow tqpath", text: pathOf(n) }), el("span", { class: "muted", id: "tqCount", text: `${q.i + 1}/${q.ids.length}` }), closeBtn("tqStop", "Stop", "Esc", tqEnd));
+    el("span", { class: "muted grow tqpath", text: pathOf(n) }),
+    el("button", { class: "ib keyed", id: "tqMenu", type: "button", title: "Question menu (Alt+M)", "aria-label": "Question menu", onclick: (e) => tqMenu(e.currentTarget) }, icon(ICON.more), key("Alt+M")),
+    el("span", { class: "muted", id: "tqCount", text: `${q.i + 1}/${q.ids.length}` }), closeBtn("tqStop", "Stop", "Esc", tqEnd));
   let ask;
   if (a.kind === "rebuild") {
-    const hid = new Set(a.hide);
+    const hid = a.hide, at = new Map(hid.map((id, i) => [id, i]));
+    const cls = (id) => (open ? "hid" + (got && got[at.get(id)] != null ? (got[at.get(id)] ? " got" : " gap") : "") : "blank");
     ask = [el("h2", { id: "tqQ", text: n.title }), a.q !== REBUILD_Q ? el("p", { class: "muted", text: a.q }) : null,
-      el("ul", { class: "rv-kids rebuild", id: "tqList" }, kids.map((k) => hid.has(k.id) ? el("li", { class: open ? "hid" : "blank", text: open ? k.title : "" }) : el("li", { text: k.title })))];
+      el("ul", { class: "rv-kids rebuild", id: "tqList" }, kids.map((k) => at.has(k.id) ? el("li", { class: cls(k.id), text: open ? k.title : "" }) : el("li", { text: k.title })))];
   } else ask = [el("h2", { id: "tqQ", class: a.cue === "note" ? "tqcue" : "", text: a.q })];
+  // how many points a full answer has, as small squares, when it's more than one
+  const count = a.kind !== "rebuild" && pts.length > 1 && !open ? el("div", { class: "tqn", id: "tqN", title: `${pts.length} points`, "aria-label": `${pts.length} points` }, pts.map(() => el("i"))) : null;
+  const ptList = open && a.kind !== "rebuild" && pts.length ? el("ul", { class: "tqpts", id: "tqPts" }, pts.map((p, i) => el("li", { class: got ? (got[i] ? "got" : "gap") : "", dataset: { got: got ? String(!!got[i]) : "" } }, el("i"), el("span", { text: p })))) : null;
   const ans = !open || a.kind === "rebuild" ? null : el("div", { class: "rv-ans", id: "tqAns" },
     el("b", { text: n.title }), n.note && a.cue !== "note" ? el("span", { text: n.note }) : null, a.a && !a.cue ? el("p", { text: a.a }) : null);
   const more = open && a.cue === "title" ? [n.body ? el("div", { class: "md", html: md(n.body) }) : null, kids.length ? el("ul", { class: "rv-kids" }, kids.map((k) => el("li", { text: k.title }))) : null] : [];
-  const said = q.answer.trim() && q.phase !== "ask" ? el("p", { class: "tqsaid", id: "tqSaid", text: q.answer.trim() }) : null;
+  // what he said: the first answer, the nudge and what he added
+  const firstSaid = q.first || (q.phase !== "ask" ? q.answer.trim() : "");
+  const said = firstSaid && q.phase !== "ask" ? el("div", { class: "tqsaid", id: "tqSaid" }, el("p", { text: firstSaid }),
+    q.first && q.nudge && q.phase !== "nudge" ? el("p", { class: "tqhint", text: q.nudge }) : null,
+    q.first && q.phase !== "nudge" && q.answer.trim() ? el("p", { text: q.answer.trim() }) : null) : null;
   const marks = q.claude ? ["right", "partly", "missed"] : ["right", "missed"];
   const names = q.claude ? MARK_NAME : { right: "Got it", missed: "Missed" };
   const rateRow = () => el("div", { class: "row tqrate", id: "tqRate" }, marks.map((m, i) => el("button", { class: "btn" + (q.mark === m ? " on" : ""), type: "button", dataset: { mark: m }, onclick: () => tqRate(m) }, names[m], key(String(i + 1)))),
     q.phase === "marked" ? el("button", { class: "btn primary", id: "tqNext", type: "button", onclick: () => tqRate(q.mark) }, "Next", key("↵")) : null);
+  const answerBox = (onSpace) => el("textarea", { id: "tqAnswer", rows: 3, placeholder: "Answer", "aria-label": "Answer", value: q.answer,
+    oninput: (e) => { q.answer = e.target.value; },
+    onkeydown: (e) => {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); tqSend(); }
+      else if (e.key === " " && !e.target.value.trim()) { e.preventDefault(); onSpace(); }
+    } });
+  const dict = el("span", { class: "tqdict muted", title: "Dictate (Win+H)" }, "Dictate", key("Win+H"));
   let foot;
   if (q.phase === "ask" && q.claude) {
-    const box = el("textarea", { id: "tqAnswer", rows: 3, placeholder: "Answer", "aria-label": "Answer", value: q.answer,
-      oninput: (e) => { q.answer = e.target.value; },
-      onkeydown: (e) => {
-        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); tqSend(); }
-        else if (e.key === " " && !e.target.value.trim()) { e.preventDefault(); tqShow(); }
-      } });
-    foot = [box, el("div", { class: "row" }, el("button", { class: "btn primary", id: "tqSend", type: "button", onclick: tqSend }, "Send", key("↵")),
-      el("button", { class: "btn", id: "tqShow", type: "button", onclick: tqShow }, "Show", key("Space")), el("span", { class: "grow" }), el("span", { class: "tqdict muted", title: "Dictate (Win+H)" }, "Dictate", key("Win+H")))];
+    foot = [answerBox(tqShow), el("div", { class: "row" }, el("button", { class: "btn primary", id: "tqSend", type: "button", onclick: tqSend }, "Send", key("↵")),
+      el("button", { class: "btn", id: "tqShow", type: "button", onclick: tqShow }, "Show", key("Space")), el("span", { class: "grow" }), dict)];
   } else if (q.phase === "ask") foot = [el("button", { class: "btn primary tqbig", id: "tqShow", type: "button", onclick: tqShow }, "Show", key("Space"))];
-  else if (q.phase === "marking") foot = [el("p", { class: "muted", id: "tqMarking", text: "Marking" })];
+  else if (q.phase === "nudge") foot = [el("p", { class: "tqnudge", id: "tqNudge", text: q.nudge }), answerBox(tqSkipNudge),
+    el("div", { class: "row" }, el("button", { class: "btn primary", id: "tqSend", type: "button", onclick: tqSend }, "Send", key("↵")),
+      el("button", { class: "btn", id: "tqSkipNudge", type: "button", onclick: tqSkipNudge }, "Mark it", key("Esc")), el("span", { class: "grow" }), dict)];
+  else if (q.phase === "marking" || q.phase === "rewriting") foot = [el("p", { class: "muted", id: q.phase === "marking" ? "tqMarking" : "tqRewriting", text: q.phase === "marking" ? "Marking" : "Rewriting" })];
   else if (q.phase === "marked") foot = [el("p", { class: "tqmark " + q.mark, id: "tqMark" }, el("b", { text: MARK_NAME[q.mark] }), q.why ? el("span", { text: q.why }) : null), rateRow()];
+  else if (q.phase === "next") foot = [];
   else foot = [rateRow()];
-  const parts = q.phase === "marked" ? [head, ...ask, said, ...foot.slice(0, 1), ans, ...more, ...foot.slice(1)] : [head, ...ask, said, ans, ...more, ...foot];
+  const parts = q.phase === "marked" ? [head, ...ask, said, ...foot.slice(0, 1), ptList, ans, ...more, ...foot.slice(1)] : [head, ...ask, count, said, ans, ptList, ...more, ...foot];
   const typing = document.activeElement?.id === "tqAnswer", caret = typing ? document.activeElement.selectionEnd : 0;
   put(box, el("div", { class: "tqcard", id: "tq", dataset: { phase: q.phase } }, ...parts.filter(Boolean)));
   const t = $("#tqAnswer");
-  if (t) setTimeout(() => { if (!t.isConnected) return; t.focus(); if (typing) t.setSelectionRange(caret, caret); }, 0);
+  if (t) setTimeout(() => { if (!t.isConnected || overlayOpen()) return; t.focus(); if (typing) t.setSelectionRange(caret, caret); }, 0);
 }
 function todayMonth(d) { const [y, m] = S.tdMonth; S.tdMonth = monthOf(dayOf(new Date(y, m + d, 1, 12))); renderToday(); }
 function todayPickDay(key) { S.tdSel = key; const [y, m] = monthOf(key); if (S.tdMonth[0] !== y || S.tdMonth[1] !== m) S.tdMonth = [y, m]; renderToday(); }
@@ -1869,6 +2006,8 @@ function todayKey(k, stop, e) {
   if (q) {
     if (q.phase === "ask" && k === " ") return go(tqShow);
     if (q.phase === "ask" && k === "Enter") return go(() => (q.claude && $("#tqAnswer") ? (q.answer.trim() ? tqSend() : $("#tqAnswer").focus()) : tqShow()));
+    if (q.phase === "nudge" && k === " ") return go(tqSkipNudge);
+    if (q.phase === "nudge" && k === "Enter") return go(() => (q.answer.trim() ? tqSend() : $("#tqAnswer")?.focus()));
     if (q.phase === "marked" && k === "Enter") return go(() => tqRate(q.mark));
     if (q.phase === "marked" || q.phase === "shown") { const m = (q.claude ? ["right", "partly", "missed"] : ["right", "missed"])[+k - 1]; if (/^[1-3]$/.test(k) && m) return go(() => tqRate(m)); }
     stop(); return true;   // nothing else while a question is up
@@ -2677,7 +2816,7 @@ function back() {
   if (vocab?.closeTop()) return;
   if (talkBusy()) return talkStop();
   if (S.pick) return S.pick.finish(null);
-  if (S.tq) return tqEnd();
+  if (S.tq) return S.tq.phase === "nudge" ? tqSkipNudge() : tqEnd();
   if (S.todayOpen) return todayClose();
   if (S.quick) { S.quick = null; return renderActions(); }
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || document.activeElement?.isContentEditable) return document.activeElement.blur();
@@ -2699,6 +2838,7 @@ function back() {
 }
 function onKey(e) {
   if (e.key === "Escape") { e.preventDefault(); if (e.shiftKey && S.backTo && $("#backBtn") && !overlayOpen()) { location.hash = S.backTo; return; } return back(); }
+  if (S.tq && S.todayOpen && e.altKey && e.code === "KeyM" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); return tqMenu(); }   // the round's ⋯ menu, from the answer box too
   if (e.ctrlKey || e.metaKey || e.altKey || overlayOpen() || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName) || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || e.target?.isContentEditable || document.activeElement?.isContentEditable) return;
   const k = e.key.length === 1 ? e.key.toLowerCase() : e.key, stop = () => e.preventDefault();
   if (S.todayOpen && !S.review && (todayKey(k, stop, e) || !["Tab", "/", "?"].includes(k))) return;   // Today takes the keys while it's open
@@ -4099,7 +4239,7 @@ async function init() {
   window.bonsai = { S, store, sync, refresh, get stage() { return stage; }, get isles() { return isles; }, get tech() { return tech; }, get vocab() { return vocab; }, thirst, water, openTree, graphItems, dueByLevel, setLevel, zoneLevel,
     timelapse: { set secs(v) { tlSecs = v; }, get state() { return S.tl; } },
     sunday: { list: () => store.listSundays(), start: startSunday, setClock: (t) => { sunClock = t == null ? null : +new Date(t); renderTop(); }, get due() { return sundayDue(); } },
-    bank: { run: bankRun, count: bankCount, short: () => bankPool().filter((n) => haveQs(n) < BANK_PER).length, get on() { return bank.on; } },
+    bank: { run: bankRun, count: bankCount, short: () => bankPool().filter((n) => haveQs(n) < BANK_PER).length, redo: () => bankPool().reduce((a, n) => a + bankWork(n).redo.length, 0), next: () => { const b = bankNext(); return b && { zone: b.zone?.id, ids: b.nodes.map((n) => n.id), tiers: [...b.work.values()].map((w) => w.tier) }; }, get on() { return bank.on; } },
     today: { pick: () => S.todayPick, days: () => S.days, pool: () => todayPool(), show: todayShow, close: todayClose, get open() { return !!S.todayOpen; }, get left() { return todayLeft(); },
       setClock: (t) => { sunClock = t == null ? null : +new Date(t); renderTop(); } } };
   await go();

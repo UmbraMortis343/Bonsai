@@ -64,9 +64,11 @@ export function pickToday(pool, day, n = DAILY) {
 
 const GOOD = new Set(["good", "easy"]);
 // A day's record from its pick: n ideas asked today, asked so far, good (rated good or easy), done when all are.
-// live: ids still there (an idea deleted since the pick no longer counts).
+// live: ids still there (an idea deleted since the pick no longer counts). An idea rated "void" (he found its question
+// vague, 0.38.0) leaves the day's count altogether: not against him, not for him.
+export const VOID = "void";
 export function recordOf(pick, live = null) {
-  const ids = (pick?.ids || []).filter((id) => !live || live.has(id)), r = pick?.rated || {};
+  const r = pick?.rated || {}, ids = (pick?.ids || []).filter((id) => (!live || live.has(id)) && r[id] !== VOID);
   const asked = ids.filter((id) => r[id]).length, good = ids.filter((id) => GOOD.has(r[id])).length;
   return { n: ids.length, asked, good, done: asked === ids.length };
 }

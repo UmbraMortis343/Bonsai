@@ -417,15 +417,23 @@ export async function setQuestions(id, qs, by = "you") {
     return next;
   });
 }
-// Questions for several ideas in one save, added to what each has: [{ id, qs }]. Returns the rows as they were, for Undo.
+// Questions for several ideas in one save, added to what each has: [{ id, qs, swap }]. swap: [{ old, q }], a question
+// written again in place of the one whose text is old (skipped if that one has gone or changed meanwhile).
+// Returns the rows as they were, for Undo.
+const sameQ = (a, b) => String(a || "").trim().replace(/\s+/g, " ").toLowerCase() === String(b || "").trim().replace(/\s+/g, " ").toLowerCase();
 export async function addQuestions(list) {
   return tx(["nodes", "events"], "readwrite", async (s) => {
     const before = [];
-    for (const { id, qs } of list) {
+    for (const { id, qs = [], swap = [] } of list) {
       const n = await reqP(s.nodes.get(id)); if (!n) continue;
-      const add = cleanQs(qs, "claude"); if (!add.length) continue;
+      const add = cleanQs(qs, "claude"), have = [...(n.qs || [])]; let swapped = 0;
+      for (const w of swap) {
+        const q = cleanQs([w.q], "claude")[0], i = have.findIndex((x) => sameQ(x.q, w.old));
+        if (q && i >= 0) { have[i] = q; swapped++; }
+      }
+      if (!add.length && !swapped) continue;
       before.push(n);
-      s.nodes.put({ ...n, qs: cleanQs([...(n.qs || []), ...add]), updatedAt: now() }); logEvent(s, "node.edit", id, { fields: ["qs"] });
+      s.nodes.put({ ...n, qs: cleanQs([...have, ...add]), updatedAt: now() }); logEvent(s, "node.edit", id, { fields: ["qs"] });
     }
     return before;
   });
