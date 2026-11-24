@@ -34,9 +34,12 @@ export function spread(items) {
 }
 
 // Kinds for the picked ideas: the rare ones first, each to the idea with the fewest other choices; the rest Recall
-// or Why where they have one (turn about, seeded), else whatever they have. items: [{ id, kinds: [kind] }].
+// or Why where they have one (turn about, seeded), else whatever they have. items: [{ id, kinds: [kind], root }].
+// root: a foundation kept fresh by credit since it was last asked (roots.js `wasCredited`): asked as Why first,
+// when it has one.
 export function assignKinds(items, day) {
   const out = {}, free = new Set(items.map((x) => x.id)), kinds = new Map(items.map((x) => [x.id, new Set(x.kinds || [])]));
+  for (const x of items) if (x.root && kinds.get(x.id).has("why")) { out[x.id] = "why"; free.delete(x.id); }
   for (const [kind, want] of Object.entries(MIX)) {
     const can = items.filter((x) => free.has(x.id) && kinds.get(x.id).has(kind)).sort((a, b) => kinds.get(a.id).size - kinds.get(b.id).size);
     for (const x of can.slice(0, want)) { out[x.id] = kind; free.delete(x.id); }
@@ -51,7 +54,8 @@ export function assignKinds(items, day) {
 }
 
 // The day's pick. pool: { focus, keep, settled }, each [{ id, zone, due, kinds }] of ideas due now.
-// Returns { day, ids, kinds: { id: kind }, bonus: id | null, rated: {} }.
+// Returns { day, ids, kinds: { id: kind }, bonus: id | null, rated: {}, roots: [id] } (roots: foundations kept fresh
+// by credit, shown with a small tag in the round).
 export function pickToday(pool, day, n = DAILY) {
   const f = spread(pool.focus || []), k = spread(pool.keep || []);
   const a = f.slice(0, SHARE.focus), b = k.slice(0, SHARE.keep), room = n - a.length - b.length;
@@ -59,7 +63,8 @@ export function pickToday(pool, day, n = DAILY) {
   const picked = spread([...a, ...b, ...more]);   // taking turns between topics again, so one topic doesn't come in a block
   let bonus = null;
   if (bonusDay(day)) { const s = spread(pool.settled || [])[0]; if (s) { picked.push(s); bonus = s.id; } }
-  return { day, ids: picked.map((x) => x.id), kinds: assignKinds(picked, day), bonus, rated: {} };
+  const roots = picked.filter((x) => x.root).map((x) => x.id);
+  return { day, ids: picked.map((x) => x.id), kinds: assignKinds(picked, day), bonus, rated: {}, ...(roots.length ? { roots } : {}) };
 }
 
 const GOOD = new Set(["good", "easy"]);
@@ -125,6 +130,9 @@ export function dayLog(day, { events = [], nodes = [], trees = [], pages = [], s
     if (e.type !== "node.review" || !on(e.at) || !byId.has(e.ref)) continue;
     seen.delete(e.ref); seen.set(e.ref, { id: e.ref, title: byId.get(e.ref).title, rating: e.data?.rating || "", asked: e.data?.asked || "", by: e.data?.by || "" });
   }
+  // foundations kept fresh that day (node.credit events, roots.js), each once
+  const kept = new Map();
+  for (const e of events) if (e.type === "node.credit" && on(e.at) && byId.has(e.ref) && !kept.has(e.ref)) kept.set(e.ref, { id: e.ref, title: byId.get(e.ref).title, from: e.data?.from || "" });
   const sunday = [...sundays].reverse().find((s) => s.day === day) || null;
-  return { day, added, graphs, notes, reviewed: [...seen.values()], sunday, record };
+  return { day, added, graphs, notes, reviewed: [...seen.values()], kept: [...kept.values()], sunday, record };
 }

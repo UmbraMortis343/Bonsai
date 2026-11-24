@@ -25,6 +25,7 @@
 
 import { CHANNEL } from "./channel.js";
 import { rate } from "./srs.js";
+import { creditFor, GIVES } from "./roots.js";
 import { cleanQs } from "./questions.js";
 
 export const SCHEMA_VERSION = 5;
@@ -324,11 +325,21 @@ export async function restoreRows({ nodes = [], links = [] }) {
   });
 }
 // Records a review. rating: again | hard | good | easy. asked: the kind of question asked, if there was one.
-export async function reviewNode(id, rating, { asked = "" } = {}) {
+// A direct review clears the idea's foundations credit (roots.js). roots: [{ id, step, mult }], the ideas beneath it
+// (main.js `rootsFor`); given only for recall in the day's 10 and review rounds, they get credit when the answer was
+// good or easy (each logged as node.credit). Leave roots out (Practise) and nothing beneath is touched.
+export async function reviewNode(id, rating, { asked = "", roots = null } = {}) {
   return tx(["nodes", "events"], "readwrite", async (s) => {
     const n = await reqP(s.nodes.get(id)); if (!n) throw new Error("That idea no longer exists.");
-    const next = { ...n, srs: rate(n, rating), reviewedAt: now() };
+    const next = { ...n, srs: rate(n, rating), reviewedAt: now() }; delete next.credit;
     s.nodes.put(next); logEvent(s, "node.review", id, asked ? { rating, asked } : { rating });
+    if (roots?.length && GIVES.has(rating)) {
+      const list = [];
+      for (const r of roots) { const f = r.id !== id && await reqP(s.nodes.get(r.id)); if (f) list.push({ node: f, step: r.step, mult: r.mult }); }
+      for (const c of creditFor({ rating, before: n.srs, after: next.srs, from: id, roots: list })) {
+        s.nodes.put(c.node); logEvent(s, "node.credit", c.node.id, { from: id, step: c.step, days: c.days });
+      }
+    }
     return next;
   });
 }
@@ -343,7 +354,7 @@ export async function saveOral(results) {
       before.push(n);
       const next = { ...n, oral: { at: now(), shown: !!r.shown, why: clean(r.why, 160) }, updatedAt: now() };
       if (n.ghost) { if (r.shown) { delete next.ghost; Object.assign(next, passed(2, k++)); logEvent(s, "node.create", n.id, { treeId: n.treeId, parentId: n.parentId }); } }
-      else { next.srs = rate(n, r.shown ? "good" : "again"); next.reviewedAt = now(); logEvent(s, "node.review", n.id, { rating: r.shown ? "good" : "again", by: "oral" }); }
+      else { next.srs = rate(n, r.shown ? "good" : "again"); next.reviewedAt = now(); delete next.credit; logEvent(s, "node.review", n.id, { rating: r.shown ? "good" : "again", by: "oral" }); }
       s.nodes.put(next);
     }
     return before;
@@ -389,7 +400,7 @@ export async function saveSunday(items, record) {
         n.qs = [...(n.qs || []), { kind: x.qk || "why", q: clean(x.q, 300), a: clean(x.a, 600), by: "claude", at: now() }];
         n.updatedAt = now(); logEvent(s, "node.edit", n.id, { fields: ["qs"], by: "sunday" });
       } else if (x.kind === "fuzzy" && !n.ghost) {
-        n.srs = rate(n, "again"); n.reviewedAt = now(); logEvent(s, "node.review", n.id, { rating: "again", by: "sunday" });
+        n.srs = rate(n, "again"); n.reviewedAt = now(); delete n.credit; logEvent(s, "node.review", n.id, { rating: "again", by: "sunday" });
       }
     }
     for (const n of cur.values()) s.nodes.put(n);

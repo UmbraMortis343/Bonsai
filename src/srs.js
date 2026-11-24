@@ -1,4 +1,5 @@
 // Review scheduling. Pure functions, no storage.
+import { stretchMs } from "./roots.js";
 const DAY = 86400000;
 export const RATINGS = ["again", "hard", "good", "easy"];
 
@@ -7,10 +8,12 @@ export const RATINGS = ["again", "hard", "good", "easy"];
 export const reviewable = (node, childCount) => !node.ghost && !!((node.note || "").trim() || (node.body || "").trim() || childCount > 0);
 // mult stretches the interval since the idea was last seen (focus levels: 2 for Keep, 4 for Settled). The stored
 // due date stays the plain one, so a topic moved to another level moves its dates at once.
+// Foundations credit (roots.js) is added the same way: days kept on the idea, times mult, never saved into srs.
 export function dueAt(node, mult = 1) {
   if (!node.srs?.due) return new Date(Date.parse(node.createdAt) + mult * DAY).toISOString();
-  if (mult === 1) return node.srs.due;
-  return new Date(Date.parse(node.srs.due) + (mult - 1) * (node.srs.interval || 0) * DAY).toISOString();
+  const extra = stretchMs(node, mult);
+  if (mult === 1 && !extra) return node.srs.due;
+  return new Date(Date.parse(node.srs.due) + (mult - 1) * (node.srs.interval || 0) * DAY + extra).toISOString();
 }
 export const isDue = (node, now = Date.now(), mult = 1) => Date.parse(dueAt(node, mult)) <= now;
 

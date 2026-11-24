@@ -15,7 +15,7 @@ import { CHANNEL } from "./channel.js";
 import { demoBackup } from "./demo.js";
 import { growPrompt, readGrow, planGrow, growSummary } from "./notes.js";
 import { createEditor, textToBlocks, blocksToText } from "./blocks.js";
-import { datePicker, longDate, relDate } from "./datepick.js";
+import { datePicker, longDate, relDate, isoDay } from "./datepick.js";
 import { createMiniWeb } from "./miniweb.js";
 import { MARK_LIST, assignMarks } from "./marks.js";
 import { readExam, planExam, LEVELS } from "./exams.js";
@@ -30,6 +30,7 @@ import { TALK_SYSTEM, talkPrompt, pastePrompt, talkId, lastAt, sortTalks } from 
 import * as focus from "./focus.js";
 import { createHistory } from "./history.js";
 import { pickToday, recordOf, streak, monthGrid, dayLog, addDays, scoreTier, VOID } from "./today.js";
+import * as roots from "./roots.js";
 
 const PALETTE = [["Blue", "#3b82f6"], ["Violet", "#8b5cf6"], ["Pink", "#ec4899"], ["Red", "#ef4444"], ["Orange", "#f97316"], ["Amber", "#f59e0b"], ["Green", "#22c55e"], ["Teal", "#14b8a6"], ["Cyan", "#06b6d4"]];
 const SWATCHES = [["Auto", ""], ...PALETTE];
@@ -1212,6 +1213,7 @@ function nodePanel(n) {
   const under = S.view === "tree" ? kidsOf(n.id) : [], go = (id) => { select(id); ensureVisible(id); };
   return [
     S.view === "tree" && trail.length ? el("div", { class: "trail" }, trail.map((q) => el("button", { class: "chip", type: "button", title: q.title, onclick: () => go(q.id) }, numTag(q.id), q.title))) : null,
+    rootLine(n),
     n.oral ? el("div", { class: "examrow", id: "oralTag" }, el("span", { class: "chip" + (n.oral.shown ? "" : " ghost"), text: n.oral.shown ? "Oral: shown" : "Oral: missed" }), el("span", { class: "muted", text: n.oral.why })) : null,
     n.ghost || n.exam ? el("div", { class: "examrow" }, el("span", { class: "chip" + (n.ghost ? " ghost" : ""), id: "examTag", text: n.ghost ? "Not shown yet" : LEVELS[(n.exam.level || 1) - 1] }), el("span", { class: "muted", text: n.exam?.tier || "" })) : null,
     el("div", { class: "ph" }, numTag(n.id), el("input", { id: "nodeTitle", class: "title", value: n.title, maxLength: 140, "aria-label": "Title",
@@ -1306,7 +1308,7 @@ function renderReview() {
 async function rateNow(rating) {
   const r = S.review; if (!r || r.busy) return; r.busy = true;
   const ask = reviewAsk();
-  await safely(() => store.reviewNode(r.ids[r.i], rating, { asked: ask && !ask.fallback ? ask.kind : "" }));
+  await safely(() => store.reviewNode(r.ids[r.i], rating, { asked: ask && !ask.fallback ? ask.kind : "", roots: rootsFor(r.ids[r.i]) }));
   if (r.today) await todayRated(r.ids[r.i], rating);   // the day's 10 keep their score
   r.n++; r.i++; r.shown = false; r.busy = false; await load();
   if (r.i >= r.ids.length) return endReview();
@@ -1752,7 +1754,7 @@ function todayPool(kinds = true, now = clockNow(), any = false) {
   for (const n of S.nodes) {
     if (!live.has(n.treeId) || !srs.reviewable(n, kidsOf(n.id).length)) continue;
     const level = levelOfNode(n), due = Date.parse(srs.dueAt(n, focus.multOf(level)));
-    if (any || due <= now) pool[level]?.push({ id: n.id, zone: treeOf(n.treeId)?.zoneId, due: any ? now - Math.random() * 365 * DAY : due, kinds: kinds ? [...new Set(usableQs(n, qctx(n)).map((q) => q.kind))] : [] });
+    if (any || due <= now) pool[level]?.push({ id: n.id, zone: treeOf(n.treeId)?.zoneId, due: any ? now - Math.random() * 365 * DAY : due, kinds: kinds ? [...new Set(usableQs(n, qctx(n)).map((q) => q.kind))] : [], root: !any && roots.wasCredited(n) });
   }
   return pool;
 }
@@ -1884,7 +1886,7 @@ async function tqRate(mark) {
   // right after a nudge: right for the score, but it comes back a bit sooner
   const rating = q.nudged && mark === "right" ? "hard" : MARK_RATING[mark], score = mark === "right" ? "good" : rating;
   if (q.claudeMark && mark !== q.claudeMark && n) await tqFlag(n, a, "overruled");
-  await safely(() => store.reviewNode(id, rating, { asked: a && !a.fallback ? a.kind : "" }));
+  await safely(() => store.reviewNode(id, rating, { asked: a && !a.fallback ? a.kind : "", roots: rootsFor(id) }));
   await todayRated(id, score);
   await tqAdvance(q);
 }
@@ -1963,7 +1965,7 @@ function renderRound(box) {
   if (!n || !a) { tqEnd(); return; }
   const kids = kidsOf(n.id), open = q.phase === "shown" || q.phase === "marked", pts = tqPts(a), got = q.phase === "marked" ? q.got : null;
   const tag = a.cue === "note" ? "Name" : a.cue ? "" : KIND_NAME[a.kind];
-  const head = el("div", { class: "tdhead" }, tag ? el("span", { class: "qkind", id: "tqKind", text: tag }) : null,
+  const head = el("div", { class: "tdhead" }, tag ? el("span", { class: "qkind", id: "tqKind", text: tag }) : null, rootTag(n),
     el("span", { class: "muted grow tqpath", text: pathOf(n) }),
     el("button", { class: "ib keyed", id: "tqMenu", type: "button", title: "Question menu (Alt+M)", "aria-label": "Question menu", onclick: (e) => tqMenu(e.currentTarget) }, icon(ICON.more), key("Alt+M")),
     el("span", { class: "muted", id: "tqCount", text: `${q.i + 1}/${q.ids.length}` }), closeBtn("tqStop", "Stop", "Esc", tqEnd));
@@ -2095,6 +2097,7 @@ function renderToday() {
     logBody = [
       r?.asked ? el("p", { class: "tdlscore", id: "logScore" }, el("b", { class: scoreTier(r), text: String(r.good) }), r.done ? null : el("span", { class: "muted", text: ` · ${r.asked} asked` })) : null,
       L.reviewed.length ? sec("logReviewed", "Reviewed", L.reviewed.length, el("div", {}, list(cut(L.reviewed).map((x) => item(x.title, go(() => jump(x.id)), el("span", { class: "tdrate " + (RATED[x.rating] || ""), text: x.rating ? x.rating[0].toUpperCase() + x.rating.slice(1) : "" })))), more(L.reviewed))) : null,
+      keptSec(L),
       L.added.length || L.graphs.length ? sec("logAdded", "Added", L.added.length, el("div", {}, list([...L.graphs.map((t) => item(t.name, go(() => goTree(t.id)), icon(ICON.graph))), ...cut(L.added).map((n) => item(n.title, go(() => jump(n.id))))]), more(L.added))) : null,
       L.notes.length ? sec("logNotes", "Notes", L.notes.length, el("div", {}, list(cut(L.notes).map((pg) => item(pg.title || "Untitled", go(() => { location.hash = notesHash(pg.id); }), icon(pg.kind === "ink" ? ICON.ink : ICON.page)))), more(L.notes))) : null,
       sun ? sec("logSunday", "Sunday", null, el("p", { class: "muted", text: [k.links && `${k.links} link${k.links === 1 ? "" : "s"}`, k.notes && `${k.notes} note${k.notes === 1 ? "" : "s"}`, k.questions && `${k.questions} question${k.questions === 1 ? "" : "s"}`, k.fuzzy && `${k.fuzzy} sooner`].filter(Boolean).join(" · ") || (sun.undone ? "Undone" : "Held") })) : null,
@@ -2544,6 +2547,28 @@ function islesKey(k, stop) {
   if (k === "s" && t && t.growth >= 2) { stop(); return splitTopic(t); }
   if (k === "d") { stop(); $("#gpanel .seg[aria-label=Time] button[aria-pressed=false]")?.click(); }
 }
+
+// ---------- foundations ----------
+// Using an idea counts a little for the ideas beneath it (roots.js): a right answer in the day's 10 or a review
+// round stretches the wait of what it hangs from (and that idea's own foundation), capped at twice their own wait;
+// one kept fresh that way is asked as Why when it comes up. Practise and other reviews pass no roots, so give none.
+const rootsCtx = () => ({ byId: S.byId, trees: new Map((S.allTrees || S.trees).map((t) => [t.id, t])), garden: S.garden });
+// The ideas beneath an idea, for store.reviewNode's `roots`: [{ id, step, mult }].
+function rootsFor(id) {
+  const n = S.byId?.get(id); if (!n) return [];
+  return roots.foundations(n, rootsCtx()).map((r) => ({ ...r, mult: focus.multOf(levelOfNode(S.byId.get(r.id))) }));
+}
+// One quiet line in the idea's panel and card: who kept it fresh and when it's due now.
+function rootLine(n, id = "rootTag") {
+  const by = roots.keptBy(n), b = by && S.byId.get(by); if (!roots.wasCredited(n)) return null;
+  const due = isoDay(new Date(srs.dueAt(n, focus.multOf(levelOfNode(n)))));
+  return el("div", { class: "rootrow muted", id, dataset: { by: by || "" } }, b ? `Kept fresh by ${b.title} · due ${relDate(due)}` : `Kept fresh · due ${relDate(due)}`);
+}
+// Today's round: a small tag on a foundation that's there because credit ran out.
+const rootTag = (n) => (S.todayPick?.roots?.includes(n.id) ? el("span", { class: "qkind rootq", id: "tqRoot", title: "Kept fresh by what's beneath it until now" }, "Foundation") : null);
+// The day's log: foundations kept fresh that day.
+const keptSec = (L) => (L.kept?.length ? el("section", { id: "logKept" }, el("h3", {}, "Kept fresh", el("span", { class: "muted", text: " " + L.kept.length })),
+  el("p", { class: "muted", text: L.kept.slice(0, 12).map((x) => x.title).join(", ") + (L.kept.length > 12 ? ` +${L.kept.length - 12}` : "") })) : null);
 
 // ---------- the map: hubs, islands and topics laid out elsewhere and brought in as text or a file ----------
 function importMap() {
@@ -3185,6 +3210,7 @@ function drawIdeaCard() {
   put(c,
     el("div", { class: "ph" }, numTag(n.id), el("input", { id: "cardTitle", class: "title", value: n.title, maxLength: 140, "aria-label": "Title", onchange: (e) => (e.target.value.trim() ? save({ title: e.target.value }) : (e.target.value = n.title)) })),
     el("input", { id: "cardNote", class: "short", value: n.note || "", maxLength: 500, placeholder: "Short note", "aria-label": "Short note", onchange: (e) => save({ note: e.target.value }) }),
+    rootLine(n, "cardRoot"),
     bodyBox,
     el("div", { class: "swatches" }, SWATCHES.map(([name, hex]) => el("button", { class: "sw" + ((n.color || "") === hex ? " on" : "") + (hex ? "" : " none"), type: "button", title: name, "aria-label": name, style: hex ? `background:${hex}` : "", onclick: () => save({ color: hex || null }) }))),
     ...S.links.filter((l) => l.fromId === n.id || l.toId === n.id).map((l) => { const o = S.byId.get(l.fromId === n.id ? l.toId : l.fromId); if (!o) return null;
@@ -4293,7 +4319,7 @@ async function init() {
     const c = await store.counts().catch(() => null);
     if (c && !c.zones && !(await store.getMeta("demo").catch(() => null))) await store.importAll(demoBackup());
   }
-  window.bonsai = { S, store, sync, refresh, get stage() { return stage; }, get isles() { return isles; }, get tech() { return tech; }, get vocab() { return vocab; }, thirst, water, openTree, graphItems, dueByLevel, setLevel, zoneLevel,
+  window.bonsai = { S, store, sync, refresh, get stage() { return stage; }, get isles() { return isles; }, get tech() { return tech; }, get vocab() { return vocab; }, thirst, water, openTree, graphItems, dueByLevel, setLevel, zoneLevel, rootsFor,
     timelapse: { set secs(v) { tlSecs = v; }, get state() { return S.tl; } },
     sunday: { list: () => store.listSundays(), start: startSunday, setClock: (t) => { sunClock = t == null ? null : +new Date(t); renderTop(); }, get due() { return sundayDue(); } },
     bank: { run: bankRun, count: bankCount, short: () => bankPool().filter((n) => haveQs(n) < BANK_PER).length, redo: () => bankPool().reduce((a, n) => a + bankWork(n).redo.length, 0), next: () => { const b = bankNext(); return b && { zone: b.zone?.id, ids: b.nodes.map((n) => n.id), tiers: [...b.work.values()].map((w) => w.tier) }; }, get on() { return bank.on; } },

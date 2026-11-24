@@ -8,6 +8,7 @@
 // Ideas deleted since are gone from the store and don't show in the past either; moves and grafts show where
 // things are now.
 import { rate } from "./srs.js";
+import { creditAt } from "./roots.js";
 
 export const DAY = 86400000;
 const ms = (x) => (x ? Date.parse(x) : NaN);
@@ -35,11 +36,14 @@ export function createHistory({ zones = [], trees = [], nodes = [], links = [], 
   const first = Math.min(now, ...borns.slice(0, 1), ...zones.map((z) => ms(z.createdAt)).filter((t) => t >= 0), ...trees.map((t) => ms(t.createdAt)).filter((t) => t >= 0));
   const min = Math.min(first, now - DAY);
 
+  // Foundations credit (roots.js) belongs to the idea's latest review: as it is now, less credit given after t;
+  // before that review, none (it was given against a due date the idea didn't have yet).
   function ideaAt(x, t) {
-    if (t >= x.settled) return x.n.srs ? x.n : { ...x.n, createdAt: iso(x.born) };
+    if (t >= x.settled) return x.n.srs ? creditAt(x.n, t) : { ...x.n, createdAt: iso(x.born) };
     let s = x.pass, seen = x.pass ? x.born : undefined;
     for (const r of x.steps) { if (r.at > t) break; s = rate({ srs: s }, r.rating, r.at); seen = r.at; }
-    return { ...x.n, createdAt: iso(x.born), srs: s, reviewedAt: seen != null ? iso(seen) : null };
+    const out = { ...x.n, createdAt: iso(x.born), srs: s, reviewedAt: seen != null ? iso(seen) : null }; delete out.credit;
+    return out;
   }
   return {
     min, max: now,
