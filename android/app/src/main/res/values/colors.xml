@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Bonsai's palette (src/styles.css): white, black, an earth green, warm greys, ochre for waiting -->
+    <color name="bg">#FFFFFF</color>
+    <color name="ink">#1D1D1B</color>
+    <color name="muted">#6F6E69</color>
+    <color name="line">#E5E4DF</color>
+    <color name="accent">#3E7A4B</color>
+    <color name="accent_ink">#FFFFFF</color>
+    <color name="sap">#93703F</color>
+    <color name="icon_bg">#1C3A2A</color>
+</resources>

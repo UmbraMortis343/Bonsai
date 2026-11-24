@@ -1,0 +1,73 @@
+plugins {
+    id "com.android.application"
+}
+
+def ver = new Properties()
+file("../version.properties").withInputStream { ver.load(it) }
+
+// Release signing comes from the environment (the Android workflow fills it from repo secrets). Without it only
+// debug builds can be made.
+def ks = System.getenv("ANDROID_KEYSTORE_FILE")
+def signed = ks != null && !ks.isEmpty() && new File(ks).exists()
+
+android {
+    namespace "nz.umbramortis.bonsai"
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "nz.umbramortis.bonsai"
+        minSdk 26
+        targetSdk 35
+        versionCode Integer.parseInt(ver.getProperty("versionCode"))
+        versionName ver.getProperty("versionName")
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    signingConfigs {
+        if (signed) {
+            release {
+                storeFile new File(ks)
+                storePassword System.getenv("ANDROID_KEYSTORE_PASS")
+                keyAlias System.getenv("ANDROID_KEY_ALIAS")
+                keyPassword System.getenv("ANDROID_KEY_PASS")
+            }
+        }
+    }
+
+    // Bonsai opens the live site; Bonsai Beta (its own app, so its own data) opens /beta/.
+    flavorDimensions.add("channel")
+    productFlavors {
+        live {
+            dimension "channel"
+            buildConfigField "String", "START_URL", '"https://umbramortis343.github.io/Bonsai/"'
+            buildConfigField "String", "CHANNEL", '""'
+        }
+        beta {
+            dimension "channel"
+            applicationIdSuffix ".beta"
+            versionNameSuffix "-beta"
+            buildConfigField "String", "START_URL", '"https://umbramortis343.github.io/Bonsai/beta/"'
+            buildConfigField "String", "CHANNEL", '"beta"'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            if (signed) signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+}

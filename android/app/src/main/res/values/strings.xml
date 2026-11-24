@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Bonsai</string>
+    <string name="widget_name">Today</string>
+    <string name="channel_today">Today</string>
+    <string name="days">days</string>
+    <string name="day">day</string>
+    <string name="done">Done</string>
+</resources>

@@ -1,0 +1,5 @@
+// Bonsai for Android: a WebView on the live site, like Bonsai Desktop, plus the phone's own extras
+// (reminders, a home-screen widget, the share sheet). Plain Java and the Android framework only: no AndroidX.
+plugins {
+    id "com.android.application" version "8.7.3" apply false
+}
