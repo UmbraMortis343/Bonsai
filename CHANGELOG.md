@@ -2,6 +2,11 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.41.0 — 2026-11-24
+- Bonsai for Android: an app for the phone (Bonsai.apk, and Bonsai-Beta.apk for the beta) that opens the live Bonsai and updates as the website does. Reminders for Today, morning and evening, each at its own time, set from Today. A Today widget for the home screen with the streak and what's left. Share → Bonsai from any app: text, links and pictures go into a new page or onto the end of one you pick, with Undo. `#/?today=1` opens Today.
+- Practise: P, or Practise in a graph's, topic's or island's menu and panel, runs a round of up to 10 in the Today box, due or not, oldest and weakest first. It isn't a review: Today's score, streak and calendar don't count it. Right moves that idea's next review a quarter of its interval later (never past a full review's), partly leaves it, missed brings it back tomorrow. The day's log lists what was practised. At the end: how many right, then Another 10 or Done.
+- Foundations credit: answering an idea right keeps the ideas beneath it fresh: half the gain to the idea it hangs from (or, for a graph's first idea, the idea its island grows from), a quarter to the one beneath that, never more than doubling their wait. One kept fresh that way is asked as Why when it comes due, tagged Foundation. Its panel says who kept it fresh; the day's log lists them.
+
 ## 0.40.1 — 2026-11-24
 - Sync signs in with your email and a password, as Marginalia does, instead of an emailed code (Supabase only puts a code in its emails with a mail server of your own). The first device makes the account; every other device signs in with the same email and password.
 
