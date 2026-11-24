@@ -104,7 +104,8 @@ t.eq((await page.evaluate(() => bonsai.sunday.list()))[0]?.undone, true, "the re
 await page.evaluate((id) => bonsai.openTree(id), w.tree); await page.waitForFunction(() => bonsai.S.view === "tree");
 await page.waitForTimeout(400);
 await page.keyboard.press("p"); await page.waitForTimeout(200);
-t.eq(await page.$$("#patchText, #stitchBtn").then((x) => x.length), 0, "P opens nothing");
+t.eq(await page.$$("#patchText, #stitchBtn").then((x) => x.length), 0, "P opens no patches");
+if (await state(page, () => !!bonsai.S.todayOpen)) { await page.keyboard.press("Escape"); await page.waitForFunction(() => !bonsai.S.todayOpen); }   // P is Practise now (run47-practise)
 await page.click("#moreBtn"); await page.waitForSelector(".menu");
 t.eq(await page.$$eval(".menu .mi", (xs) => xs.some((x) => /Patches|Stitch/.test(x.textContent))), false, "no Patches or Stitch in the graph's menu");
 await page.keyboard.press("Escape");
