@@ -13,6 +13,7 @@
 // only pans once it has really moved. The pen's eraser end erases; its barrel (side) button opens the quick menu at
 // the nib (or erases, if Side button is set to Erase, pref penbtn). Holding the pen still on the page opens the menu
 // too, and the dot it made goes. What the lasso holds gets a bar of actions docked under it.
+import { saveBlob } from "./live.js";
 
 export const W = 1000;   // the width pages had when they were sheets; nothing is held to it now
 export const PAPERS = ["blank", "lined", "grid", "dots"];
@@ -744,8 +745,7 @@ export function createInk(opts) {
   async function saveSnip() {
     const shot = snipped; if (!shot) return;
     const blob = await shot.blob; if (!blob) return;
-    const a = el("a", { href: URL.createObjectURL(blob), download: `${(opts.name?.() || "Pen page").replace(/[\\/:*?"<>|]+/g, " ").trim() || "Pen page"}.png` });
-    document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    await saveBlob(blob, `${(opts.name?.() || "Pen page").replace(/[\\/:*?"<>|]+/g, " ").trim() || "Pen page"}.png`);
     hideSnip();
   }
 

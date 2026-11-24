@@ -32,3 +32,61 @@ export function askClaude(prompt, { onText, system = SYSTEM, images } = {}) {
 
 // A newer Bonsai Desktop on GitHub, if there is one: { latest, url } or null.
 export async function desktopUpdate() { try { const u = await D?.update?.(); return u?.newer ? u : null; } catch { return null; } }
+
+// ---------- Bonsai for Android (android/) ----------
+// In the Android app the page has `window.bonsaiAndroid`, a bridge into the phone (MainActivity.Bridge): reminders
+// for Today, the home-screen widget's numbers, what was shared into Bonsai, the clipboard and saving files. Its
+// calls are synchronous and pass JSON as strings.
+const A = typeof window !== "undefined" ? window.bonsaiAndroid : null;
+const json = (s) => { try { return JSON.parse(s || "null"); } catch { return null; } };
+export const android = !!A?.info;
+export const androidInfo = () => (android ? json(A.info()) || {} : null);
+// what's waiting for the page: { open: "today", share: { text, subject, images: [{ type, data }] } }
+export const androidTake = () => (android ? json(A.take?.()) || {} : {});
+export const reminders = () => (android ? json(A.reminders?.()) : null);
+export const setReminders = (r) => (android ? json(A.setReminders?.(JSON.stringify(r))) : null);
+let todaySent = "";
+export function androidToday(t) {
+  if (!android) return; const s = JSON.stringify(t); if (s === todaySent) return;
+  todaySent = s; try { A.today?.(s); } catch {}
+}
+
+const RELEASES = "https://api.github.com/repos/UmbraMortis343/Bonsai/releases?per_page=30";
+const newer = (a, b) => { const x = a.split(".").map(Number), y = b.split(".").map(Number); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); return false; };
+// A newer Bonsai for Android on GitHub (releases tagged android-v1.2.3): { latest, url } or null.
+export async function androidUpdate() {
+  if (!android) return null;
+  try {
+    const mine = androidInfo()?.version || "0.0.0";
+    const res = await fetch(RELEASES, { headers: { accept: "application/vnd.github+json" } }); if (!res.ok) return null;
+    const rel = (await res.json()).filter((r) => /^android-v\d+\.\d+\.\d+$/.test(r.tag_name) && !r.draft).map((r) => ({ v: r.tag_name.slice(9), url: r.html_url })).sort((a, b) => (newer(a.v, b.v) ? -1 : 1))[0];
+    return rel && newer(rel.v, mine) ? { latest: rel.v, url: rel.url } : null;
+  } catch { return null; }
+}
+
+// Save a file the page made. A WebView can't download a blob: in the Android app it goes to Downloads/Bonsai
+// through the bridge; elsewhere through a link, as before.
+export async function saveBlob(blob, name) {
+  if (android && A.save) {
+    const u = new Uint8Array(await blob.arrayBuffer()); let s = "";
+    for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode(...u.subarray(i, i + 0x8000));
+    return !!A.save(name, blob.type || "", btoa(s));
+  }
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+  return true;
+}
+
+// The WebView's clipboard can refuse text; the bridge's never does.
+if (android && A.copy && typeof navigator !== "undefined" && navigator.clipboard) {
+  const write = navigator.clipboard.writeText?.bind(navigator.clipboard);
+  try { Object.defineProperty(navigator.clipboard, "writeText", { configurable: true, value: async (t) => { if (A.copy(String(t))) return; if (write) return write(t); throw new Error("Not copied"); } }); } catch {}
+}
+// Links out of Bonsai open in the phone's browser (window.open in a WebView can't be relied on to).
+if (android && A.open && typeof window !== "undefined") {
+  const open = window.open.bind(window);
+  window.open = (url, target, features) => {
+    try { const u = new URL(String(url), location.href); if (/^https?:$/.test(u.protocol) && !u.href.startsWith(new URL(".", location.href).href.replace(/beta\/$/, ""))) { A.open(u.href); return null; } } catch {}
+    return open(url, target, features);
+  };
+}

@@ -864,6 +864,26 @@ input.bask::placeholder{color:var(--muted)}
 .grow2 .gk{flex:0 0 44px;font-size:11px;font-weight:700;color:var(--muted)}
 .grow2 .gl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .grow2 .gw{font-size:12px;white-space:nowrap}
+/* Share into Bonsai (the Android app's share sheet): the go-to box's look, over a dimmed page */
+.sharescrim{position:fixed;inset:0;z-index:79;background:rgb(0 0 0 / .22)}
+.sharepick{top:10vh;outline:none}
+.sharepick .grow1 .ib{margin:-4px -6px -4px 0}
+.shwhat{display:flex;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid var(--line);min-height:20px}
+.shwhat:empty{display:none}
+.shthumb{width:36px;height:36px;object-fit:cover;border-radius:3px;border:1px solid var(--line);flex:none}
+.shtext{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+.sharepick .glist2{max-height:min(60vh,520px)}
+.sharepick .grow2{padding:10px}
+.sharepick .grow2 .ic{color:var(--muted);flex:none}
+.sharepick .grow2.new .ic,.sharepick .grow2.new .gl{color:var(--accent);font-weight:600}
+.sharepick .grow2 .gw{max-width:45%;overflow:hidden;text-overflow:ellipsis}
+@media (pointer:coarse){.sharepick kbd{display:none}}
+/* Reminders (the Android app) */
+.rems{display:grid;gap:8px;margin:4px 0 8px}
+.remrow{display:flex !important;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:4px}
+.dialog .remrow>span{color:var(--ink);font-size:14px}
+.remrow input[type=checkbox]{width:18px;height:18px;margin:0;accent-color:var(--accent)}
+.remrow input[type=time]{font:inherit;color:var(--ink);background:var(--well);border:1px solid var(--line);border-radius:4px;padding:5px 8px;width:auto}
 .pcrumb .sl0.link{border:0;background:none;padding:0;font:inherit;color:var(--muted);cursor:pointer}
 .pcrumb .sl0.link:hover{color:var(--ink);text-decoration:underline}
 
