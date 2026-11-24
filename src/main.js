@@ -30,6 +30,7 @@ import { shrinkImage } from "./images.js";
 import { TALK_SYSTEM, talkPrompt, pastePrompt, talkId, lastAt, sortTalks } from "./talk.js";
 import * as focus from "./focus.js";
 import { createHistory } from "./history.js";
+import * as monthly from "./month.js";
 import { pickToday, recordOf, streak, monthGrid, dayLog, addDays, scoreTier, VOID, assignKinds } from "./today.js";
 import * as roots from "./roots.js";
 import { pickPractise, practiseRecord, ROUND as PR_ROUND } from "./practise.js";
@@ -546,7 +547,7 @@ function labelOpacity(L, dist) {
 
 // ---------- views ----------
 async function go() {
-  await flushPage(); closeAll(); S.pick?.finish(null); tlClose(true); todayClose(true);
+  await flushPage(); closeAll(); S.pick?.finish(null); tlClose(true); todayClose(true); monthClose(true);
   if (!/^#\/notes/.test(location.hash)) { S.ed?.destroy(); S.ed = null; }
   S.quick = null; S.review = null; S.cutoff = null; endJump(); if (S.move) toggleMove(false);
   await load();
@@ -699,6 +700,7 @@ function showHover(id, x, y) {
 function renderTop() {
   S.backTo = null;   // set by back() when this screen has a back arrow
   if (S.todayOpen) renderToday();
+  if (S.mv) renderMonth();
   const day = todayBtn();
   const search = ib("searchBtn", "Go to (/)", ICON.search, () => find());
   const swap = winSwitch(), beta = CHANNEL ? el("span", { class: "channel", text: CHANNEL }) : null;
@@ -789,6 +791,7 @@ function appMenu(anchor) {
     S.view !== "notes" && S.view !== "tree" && { label: "Notes", key: "O", run: openNotes },
     (S.view === "forest" || S.view === "isles") && { label: "Timelapse", key: "T", run: tlToggle },
     desktop && { label: "Sunday session", key: "U", run: startSunday },
+    { label: "Month in review", key: "⇧Y", run: () => monthShow() },
     desktop && { label: bank.on ? `${bankLabel()} · Stop` : "Write questions", key: "⇧W", run: bankMenu },
     CHANNEL && { label: "Repick today's questions", key: "⇧R", run: todayRepick },
     archived.length && { label: "Archived", run: () => menu(anchor, archived.map((x) => ({ label: `Restore ${x.name}`, run: async () => { await safely(() => (x.rootId ? store.updateTree : store.updateZone)(x.id, { archived: false })); refresh(); } }))) },
@@ -867,10 +870,11 @@ function shortcuts() {
   const groups = [
     ["Everywhere", [["Click", "Pick"], ["Double-click  ↵", "Go in, open"], ["Right-click", "Its menu (tech tree: open or close what's under it)"], ["Drag", "Move what you hold; on empty space, turn or pan"],
       ["Wheel", "Zoom"], ["1–9  ← ↑ ↓ →", "Pick by number, or the next one"], ["Esc", "Let go, then step back out"], ["⇧Esc", "Straight back"], ["0", "Fit"], ["V", "The other view: board and 3D, separate and joined, tree and web"], ["M", "Meaning: ideas arranged by what they mean"],
-      ["⇧Tab", "Garden, Knowledge, Library (Knowledge shows what's picked; Tab alone in the garden)"], ["[  ]", "The panel on the left, on the right"], ["/", "Search"], ["I", "Capture a thought"], ["K", "Tech tree"], ["O", "Notes beside a graph"], ["Y", "Today: the day's questions, streak, calendar"], ["P", "Practise what's picked or in view, due or not"], ["U", "Sunday session (Bonsai Desktop)"], ["?", "These keys"]]],
+      ["⇧Tab", "Garden, Knowledge, Library (Knowledge shows what's picked; Tab alone in the garden)"], ["[  ]", "The panel on the left, on the right"], ["/", "Search"], ["I", "Capture a thought"], ["K", "Tech tree"], ["O", "Notes beside a graph"], ["Y", "Today: the day's questions, streak, calendar"], ["⇧Y", "Month in review"], ["P", "Practise what's picked or in view, due or not"], ["U", "Sunday session (Bonsai Desktop)"], ["?", "These keys"]]],
     ["Building a graph", [["Tab", "Add under"], ["↵", "Add beside"], ["R", "Rename"], ["Del", "Delete (a picked link too)"], ["L", "Link"], ["G", "Graft"], ["X", "Make its own graph"], ["C", "Colour"], ["Q", "Add a question"], ["Space", "Notes"], ["⇧↵", "Open the board's graph in 3D"],
       ["Drag", "Move an idea; drop it on another to graft"], ["+ or Alt-drag", "Pull out a new idea, or a link"]]],
     ["Today", [["↵", "Start the day's questions; send an answer; another 10 after practice"], ["Space", "Show the answer"], ["1–3", "Right, partly, missed (Got it, missed without Claude)"], ["← →", "A month back or on"], ["↑ ↓", "A day back or on"], ["0", "Back to today"], ["Esc", "Close"]]],
+    ["Month in review", [["← →", "A month back or on"], ["Space  ⇧T", "Play the month's timelapse, save it as video"], ["F", "Stitch the month (Bonsai Desktop)"], ["1–8  ↵", "Tick links, keep them"], ["C", "Write the month's chapter"], ["O  L", "Open the chapter, the Story folder"], ["Esc", "Close"]]],
     ["Garden", [["D", "Day or night"], ["N  Z", "New graph, new topic"], ["S", "Split a full topic"], ["⇧1–3  ⇧0", "Focus, Keep, Settled; a topic back to its island's"]]],
     ["Timelapse", [["T", "Open or close"], ["Space", "Play or pause"], ["← →", "A day back or on"], ["⇧← ⇧→", "The marks: Sundays and big days"], ["⇧T", "Save as video"], ["Esc", "Back to now"]]],
     ["Tech tree", [["Space", "Open or close"], ["↵", "Put in the middle; again to open"], ["H  A", "Whole tree, everything open"], ["B", "What an island grows from"]]],
@@ -1753,8 +1757,8 @@ const dayKey = () => dayOf(clockNow());
 const monthOf = (key) => { const [y, m] = key.split("-").map(Number); return [y, m - 1]; };
 const RATED = { good: "ok", easy: "ok", hard: "hard", again: "miss", void: "void" };
 async function todayLoad() {
-  const [t, d] = await Promise.all([store.getMeta("today").catch(() => null), store.getMeta("days").catch(() => null)]);
-  S.todayPick = t || null; S.days = d || {}; S.tdLog = null;
+  const [t, d, mo] = await Promise.all([store.getMeta("today").catch(() => null), store.getMeta("days").catch(() => null), store.listMonths().catch(() => ({}))]);
+  S.todayPick = t || null; S.days = d || {}; S.tdLog = null; S.months = mo || {};
 }
 const liveIds = () => new Set(S.nodes.filter((n) => treeOf(n.treeId)).map((n) => n.id));
 // Every idea due now (on the clock above), by level, with its topic and (kinds) the kinds of question it can be asked.
@@ -1807,11 +1811,12 @@ async function todayRated(id, rating) {
 }
 function todayBtn() {
   return el("button", { class: "btn tdbtn" + (S.todayOpen ? " on" : ""), id: "todayBtn", type: "button", title: "Today (Y)", "aria-label": "Today", "aria-pressed": String(!!S.todayOpen), onclick: todayToggle },
-    icon(ICON.day), todayDue() ? el("i", { class: "tddot", id: "todayDot" }) : null, el("kbd", { text: "Y" }));
+    icon(ICON.day), todayDue() || monthDue() ? el("i", { class: "tddot", id: "todayDot" }) : null, el("kbd", { text: "Y" }));
 }
 const todayToggle = () => (S.todayOpen ? todayClose() : todayShow());
 async function todayShow() {
   if (S.review || S.sun || S.oral || S.pick) return;
+  if (S.mv) monthClose(true);
   closeAll(); S.todayOpen = true; S.tdSel = dayKey(); S.tdMonth = monthOf(S.tdSel); S.tdLog = null;
   if (S.view === "isles") isles?.setActive(false);   // nothing to draw under it
   await todayEnsure();
@@ -2046,7 +2051,7 @@ function todayKey(k, stop, e) {
     if (q.phase === "marked" || q.phase === "shown") { const m = (q.claude ? ["right", "partly", "missed"] : ["right", "missed"])[+k - 1]; if (/^[1-3]$/.test(k) && m) return go(() => tqRate(m)); }
     stop(); return true;   // nothing else while a question is up
   }
-  if (k === "y") return go(todayClose);
+  if (k === "y") return go(e?.shiftKey ? () => monthShow(null, "today") : todayClose);
   if (k === "w" && e?.shiftKey && desktop) return go(bankMenu);
   if (k === "r" && e?.shiftKey && CHANNEL) return go(todayRepick);
   if (k === "Enter") return go(todayStart);
@@ -2067,7 +2072,7 @@ async function todayLogLoad(day) {
 function renderToday() {
   let box = $("#today"), blur = $("#todayBlur");
   // Today floats over everything else, blurred and dimmed behind it, the top bar too
-  if (!blur) { blur = el("div", { class: "tdblur", id: "todayBlur", onclick: () => { if (!S.tq) todayClose(); } }); $("#app").append(blur); }
+  if (!blur) { blur = el("div", { class: "tdblur", id: "todayBlur", onclick: blurClick }); $("#app").append(blur); }
   if (!box) { box = el("section", { class: "tdview", id: "today", "aria-label": "Today", role: "dialog" }); $("#app").append(box); }
   box.hidden = false; blur.hidden = false;
   box.classList.toggle("round", !!S.tq || !!S.pr);
@@ -2084,6 +2089,7 @@ function renderToday() {
       : rec.done ? el("div", { class: "row" }, el("b", { class: "tdscore " + scoreTier(rec), id: "todayScore", text: String(rec.good) }), el("span", { class: "grow" }), squares)
       : el("div", { class: "row" }, el("button", { class: "btn primary", id: "todayGo", onclick: todayStart }, "Start", key("↵")), el("span", { class: "muted", id: "todayProgress", text: `${rec.asked}/${rec.n}` }), el("span", { class: "grow" }), squares),
     sundayDue() ? el("div", { class: "row" }, el("button", { class: "btn", id: "todaySunday", onclick: () => { todayClose(); startSunday(); } }, "Sunday", key("U"))) : null,
+    monthDue() ? el("div", { class: "row" }, el("button", { class: "btn", id: "monthOffer", onclick: () => monthShow(monthDue(), "today") }, "Month in review", key("⇧Y"))) : null,
     el("p", { class: "muted tdbank", id: "bankLine", hidden: !bank.on, text: bank.on ? bankLabel() : "" }),
     desktop || CHANNEL || android ? el("div", { class: "row tdtools" },
       desktop ? el("button", { class: "btn", id: "todayBank", onclick: bankMenu }, bank.on ? "Stop" : "Write questions", key("⇧W")) : null,
@@ -2094,7 +2100,7 @@ function renderToday() {
   // the month
   const [y, m] = S.tdMonth || monthOf(day), weeks = monthGrid(y, m);
   const nav = el("div", { class: "tdnav" }, el("button", { class: "ib keyed", id: "todayPrev", type: "button", title: "Month before (←)", "aria-label": "Month before", onclick: () => todayMonth(-1) }, icon(ICON.back), key("←")),
-    el("h3", { id: "todayMonth", text: new Date(y, m, 1, 12).toLocaleDateString(undefined, { month: "long", year: "numeric" }) }),
+    el("h3", { id: "todayMonth" }, el("button", { class: "link", id: "todayMonthOpen", type: "button", title: "Month in review", onclick: () => monthShow(dayOf(new Date(y, m, 1, 12)).slice(0, 7), "today"), text: new Date(y, m, 1, 12).toLocaleDateString(undefined, { month: "long", year: "numeric" }) })),
     el("button", { class: "ib keyed", id: "todayNext", type: "button", title: "Month after (→)", "aria-label": "Month after", onclick: () => todayMonth(1) }, icon(ICON.fwd), key("→")),
     el("span", { class: "grow" }), S.tdSel !== day ? el("button", { class: "btn small", id: "todayBack", type: "button", title: "Back to today (0)", onclick: () => todayPickDay(day) }, "Today", key("0")) : null);
   const wd = [1, 2, 3, 4, 5, 6, 0].map((d) => new Date(2026, 10, 15 + d, 12).toLocaleDateString(undefined, { weekday: "narrow" }));
@@ -2128,6 +2134,238 @@ function renderToday() {
   put(box,
     el("div", { class: "tdhead" }, top, el("span", { class: "grow" }), closeBtn("todayClose", "Close", "Esc", () => todayClose())),
     el("div", { class: "tdmain" }, ten, el("section", { class: "tdmonth" }, nav, cal)), log);
+}
+
+// ---------- month in review (month.js) ----------
+// ⇧Y, the menu, the Today calendar's month name, and offered after a month ends: through the next month's first
+// week, a mark on Today's button and Month in review at the top of Today, until that month has been opened. A box
+// like Today's: the month's numbers; its timelapse (Space plays the garden from the month's first day to its last,
+// ⇧T saves that as a video, Esc comes back here); the month's stitch (Bonsai Desktop: Claude reads what was added,
+// the Sundays and their stitches, writes the big pattern and proposes cross-topic links to tick; ↵ keeps them in one
+// save, with Undo); and the story so far: a chapter a month written to "you", Claude reading the earlier chapters,
+// kept as an editable page "Month YYYY" in a Story folder in the Library (copy and paste without Bonsai Desktop).
+// meta `months` { "YYYY-MM": { at, pattern, links, chapterPageId, seen } }, synced like the rest of meta.
+// S.mv = { ym, m (monthly.monthOf), from: "today" | null, busy, job, stitch: { pattern, links } | null }.
+let firstAt = { n: -1, t: Infinity };
+function firstMade() {   // when the first thing was made (cached while nothing is added)
+  const n = S.allZones.length + S.allTrees.length + S.nodes.length + S.pages.length;
+  if (firstAt.n !== n) firstAt = { n, t: Math.min(Infinity, ...[...S.allZones, ...S.allTrees, ...S.pages].map((x) => Date.parse(x.createdAt)).filter((t) => t >= 0), ...S.nodes.map((x) => Date.parse(x.createdAt)).filter((t) => t >= 0).slice(0, 50000)) };
+  return firstAt.t;
+}
+const monthDue = () => (S.months ? monthly.monthOffer(clockNow(), S.months, firstMade()) : null);
+const thisMonth = () => monthly.ymOf(clockNow());
+// the month offered, else the last full month, or this one if nothing is older
+function monthDefault() {
+  const due = monthDue(); if (due) return due;
+  const cur = thisMonth();
+  return firstMade() < monthly.monthRange(cur).from ? monthly.addMonths(cur, -1) : cur;
+}
+const blurClick = () => (S.mv ? !S.mv.busy && monthClose() : !S.tq && todayClose());
+const monthToggle = () => (S.mv ? monthClose() : monthShow());
+async function monthShow(ym = null, from = null) {
+  if (S.review || S.sun || S.oral || S.pick || S.tq) return;
+  ym ||= monthDefault();
+  if (ym > thisMonth()) ym = thisMonth();
+  if (S.todayOpen) { from ??= "today"; todayClose(true); }
+  if (S.tl) { S.tl.month = null; tlClose(); }
+  if (S.mv) { S.mv.job?.cancel(); from ??= S.mv.from; }
+  closeAll();
+  S.mv = { ym, m: null, from, busy: "", job: null, stitch: null };
+  if (S.view === "isles") isles?.setActive(false);
+  renderMonth(); renderTop();
+  await monthLoad();
+}
+async function monthLoad() {
+  const mv = S.mv; if (!mv) return;
+  const events = await store.listEvents().catch(() => []);
+  if (S.mv !== mv) return;
+  mv.m = monthly.monthOf({ zones: S.allZones, trees: S.allTrees, nodes: S.nodes, links: S.links, pages: S.pages }, events, S.days, S.sundays, mv.ym, { now: clockNow(), level: zoneLevel, skipPages: chapterIds() });
+  if (!S.months[mv.ym]?.seen && (await safely(() => store.patchMonth(mv.ym, { seen: new Date().toISOString() }))) !== undefined) S.months = { ...S.months, [mv.ym]: { ...(S.months[mv.ym] || {}), seen: new Date().toISOString() } };
+  if (S.mv !== mv) return;
+  renderMonth(); renderTop();
+}
+function monthClose(quiet = false) {
+  const mv = S.mv; if (!mv) return; mv.job?.cancel(); S.mv = null;
+  const box = $("#month"); if (box) { box.hidden = true; box.replaceChildren(); }
+  const blur = $("#todayBlur"); if (blur && !S.todayOpen) blur.hidden = true;
+  if (quiet) return;
+  if (mv.from === "today") return todayShow();
+  if (S.view === "isles") isles?.setActive(true);
+  renderTop();
+}
+// Esc: stop Claude, then drop the proposals, then close
+function monthEsc() {
+  const mv = S.mv;
+  if (mv.job) return mv.job.cancel();
+  if (mv.stitch) { mv.stitch = null; return renderMonth(); }
+  monthClose();
+}
+function monthStep(d) {
+  const mv = S.mv; if (!mv || mv.busy) return;
+  const ym = monthly.addMonths(mv.ym, d); if (ym > thisMonth()) return;
+  mv.job?.cancel(); Object.assign(mv, { ym, m: null, stitch: null, busy: "", job: null });
+  renderMonth(); monthLoad();
+}
+// ---- the timelapse of the month, in the garden (or Knowledge, where the garden can't be drawn) ----
+const untilView = async (ok, ms = 8000) => { for (let t = 0; !ok() && t < ms; t += 50) await new Promise((r) => setTimeout(r, 50)); return ok(); };
+async function monthPlay(video = false) {
+  const mv = S.mv; if (!mv) return;
+  const { from, to } = monthly.monthRange(mv.ym), ym = mv.ym;
+  if (from >= Date.now()) return;
+  if (video && (typeof MediaRecorder === "undefined" || !HTMLCanvasElement.prototype.captureStream)) return toast("Video isn't available here");
+  monthClose(true); if (S.todayOpen) todayClose(true);
+  if (S.view === "isles") isles?.setActive(true);
+  if (S.view !== "isles") { location.hash = "#/"; await untilView(() => S.view === "isles"); }   // where the garden can't be drawn, Knowledge plays it
+  if (!tlWhere()) return;
+  await tlOpen({ from, to, month: ym }); if (!S.tl) return;
+  if (video) tlVideo(); else tlPlay(true);
+}
+// ---- the month's stitch (Bonsai Desktop) ----
+async function monthStitch() {
+  const mv = S.mv; if (!mv?.m || mv.busy || !desktop) return;
+  const bad = liveProblem(await liveStatus()); if (bad) return toast(bad);
+  if (S.mv !== mv) return;
+  bankStop();
+  mv.busy = "Stitching"; mv.stitch = null; renderMonth();
+  const job = (mv.job = askClaude(monthly.monthPrompt(mv.m))), r = await job.done;
+  if (S.mv !== mv) return;
+  mv.job = null; mv.busy = "";
+  if (!r.ok) { if (r.code !== "cancelled") toast(r.message || "Claude didn't answer"); return renderMonth(); }
+  try { mv.stitch = monthly.readMonth(jsonIn(r.text), mv.m); } catch (e) { toast(e.message); }
+  renderMonth();
+}
+async function monthStitchSave() {
+  const mv = S.mv, st = mv?.stitch; if (!st || mv.busy) return;
+  const ym = mv.ym, kept = st.links.filter((x) => x.on);
+  const made = await safely(() => store.saveMonth(ym, kept, { pattern: st.pattern })); if (!made) return;
+  mv.stitch = null; await refresh({ animate: true }); await monthLoad();
+  const n = made.linkIds.length;
+  toast(n ? `Stitched: ${n} link${n === 1 ? "" : "s"}` : "Kept", { label: "Undo", run: async () => { await safely(() => store.undoMonth(made)); await refresh(); if (S.mv?.ym === ym) monthLoad(); } });
+}
+function monthTick(i) { const x = S.mv?.stitch?.links[i]; if (x) { x.on = !x.on; renderMonth(); } }
+// ---- the story so far: a chapter a month, pages in the Library's Story folder ----
+const chapterIds = () => new Set(Object.values(S.months || {}).map((r) => r?.chapterPageId).filter((id) => id && pageOf(id)));
+const chapterOf = (ym) => { const id = S.months?.[ym]?.chapterPageId; return id && pageOf(id) ? pageOf(id) : null; };
+function storyFolder() {
+  for (const id of chapterIds()) { const f = pageOf(pageOf(id)?.parentId); if (isFolder(f)) return f; }
+  return S.pages.find((p) => isFolder(p) && !p.parentId && /^story$/i.test((p.title || "").trim())) || null;
+}
+// the chapters in month order in their folder
+async function orderChapters() {
+  const list = Object.entries(S.months || {}).filter(([, r]) => r?.chapterPageId && pageOf(r.chapterPageId)).sort(([a], [b]) => a.localeCompare(b));
+  for (const [k, [, r]] of list.entries()) { const p = pageOf(r.chapterPageId); if (p.order !== k + 1) await store.updatePage(p.id, { order: k + 1 }).catch(() => {}); }
+}
+const openPageAt = (id) => { monthClose(true); if (S.view === "notes") { location.hash = notesHash(id); pickPage(id); } else location.hash = notesHash(id); };
+async function monthChapter() {
+  const mv = S.mv; if (!mv?.m || mv.busy) return;
+  const ym = mv.ym, name = mv.m.name, rec = S.months[ym] || {}, old = chapterOf(ym);
+  if (old && !(await dialog({ title: `Write ${name} again?`, ok: "Rewrite", danger: true }))) return;
+  await flushPage();
+  const prev = Object.entries(S.months).filter(([k, r]) => k < ym && r?.chapterPageId && pageOf(r.chapterPageId)).sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, r]) => { const p = pageOf(r.chapterPageId); return { ym: k, title: p.title || monthly.monthName(k), text: blocksToText(p.blocks, pageTitle) }; });
+  const prompt = monthly.storyPrompt(prev, monthly.monthText(mv.m), { name, pattern: rec.pattern || "" }); S.lastPrompt = prompt;
+  const reply = el("textarea", { id: "storyReply", rows: 10, placeholder: "Claude's reply", "aria-label": "Claude's reply",
+    onkeydown: (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); reply.form?.requestSubmit(); } } });
+  const box = el("textarea", { id: "storyPrompt", readOnly: true, rows: 4, hidden: true, "aria-label": "For Claude", value: prompt });
+  const copy = el("button", { type: "button", class: "btn primary", id: "storyCopy", onclick: async () => {
+    try { await navigator.clipboard.writeText(prompt); copy.textContent = "Copied"; } catch { box.hidden = false; box.focus(); box.select(); }
+  } }, "Copy for Claude");
+  const ok = await dialog({ title: name, ok: old ? "Replace" : "Save", body: el("div", { class: "growd" }, claudeRow(() => prompt, reply, copy, { auto: true }), reply, box) });
+  if (!ok) return;
+  const ch = monthly.readChapter(reply.value); if (!ch) return toast("Nothing to keep");
+  const blocks = textToBlocks(ch.body);
+  if (old) {
+    const was = old.blocks, letGo = async () => { await flushPage(); if (S.npage === old.id || S.sp === old.id) { S.ed?.destroy?.(); S.ed = null; } };   // an editor showing it would save its old text back
+    await letGo();
+    if (!(await safely(() => store.updatePage(old.id, { blocks, title: name })))) return;
+    await load(); openPageAt(old.id);
+    toast("Chapter rewritten", { label: "Undo", run: async () => { await letGo(); await safely(() => store.updatePage(old.id, { blocks: was })); await load(); redrawNotes(); } });
+    return;
+  }
+  let folder = storyFolder(), madeFolder = null;
+  if (!folder) { folder = madeFolder = await safely(() => store.addPage({ title: "Story", kind: "folder" })); if (!folder) return; }
+  const props = withStd([]).map((x) => (x.type === "date" ? { ...x, value: `${ym}-01` } : x));
+  const p = await safely(() => store.addPage({ title: name, parentId: folder.id, blocks, props })); if (!p) return;
+  const was = await safely(() => store.patchMonth(ym, { chapterPageId: p.id }));
+  await load(); await orderChapters(); await load(); setOpen(folder.id, true);
+  openPageAt(p.id);
+  toast("Chapter written", { label: "Undo", run: async () => {
+    await flushPage();
+    await safely(() => store.deletePage(madeFolder ? madeFolder.id : p.id));
+    await safely(() => store.patchMonth(ym, { chapterPageId: was?.chapterPageId || null }));
+    await load(); if (S.view === "notes" && (S.npage === p.id || S.npage === madeFolder?.id)) { location.hash = "#/notes"; } else redrawNotes();
+  } });
+}
+function monthOpenChapter() { const p = S.mv && chapterOf(S.mv.ym); if (p) openPageAt(p.id); }
+function monthOpenStory() { const f = storyFolder(); if (f) { setOpen(f.id, true); openPageAt(f.id); } }
+function monthKey(k, stop, e) {
+  const go = (fn) => { stop(); fn(); return true; }, mv = S.mv;
+  if (k === "y") return go(e?.shiftKey ? monthClose : todayShow);
+  if (mv.busy) { stop(); return true; }
+  if (k === "ArrowLeft" || k === "ArrowRight") return go(() => monthStep(k === "ArrowRight" ? 1 : -1));
+  if (mv.stitch) {
+    if (k === "Enter") return go(monthStitchSave);
+    if (/^[1-9]$/.test(k)) return go(() => monthTick(+k - 1));
+  }
+  if (k === " ") return go(() => monthPlay(false));
+  if (k === "t" && e?.shiftKey) return go(() => monthPlay(true));
+  if (k === "f" && desktop) return go(monthStitch);
+  if (k === "c") return go(monthChapter);
+  if (k === "o") return go(monthOpenChapter);
+  if (k === "l") return go(monthOpenStory);
+  return false;
+}
+function renderMonth() {
+  const mv = S.mv; if (!mv) return;
+  let box = $("#month"), blur = $("#todayBlur");
+  if (!blur) { blur = el("div", { class: "tdblur", id: "todayBlur", onclick: blurClick }); $("#app").append(blur); }
+  if (!box) { box = el("section", { class: "tdview mview", id: "month", "aria-label": "Month in review", role: "dialog" }); $("#app").append(box); }
+  box.hidden = false; blur.hidden = false;
+  const key = (k) => el("kbd", { text: k }), m = mv.m, rec = S.months?.[mv.ym] || {}, last = mv.ym >= thisMonth();
+  const b = (id, text, k, run, cls = "btn") => el("button", { class: cls, id, type: "button", onclick: run }, text, k ? key(k) : null);
+  const head = el("div", { class: "tdhead mvhead" },
+    el("button", { class: "ib keyed", id: "monthPrev", type: "button", title: "Month before (←)", "aria-label": "Month before", onclick: () => monthStep(-1) }, icon(ICON.back), key("←")),
+    el("h2", { id: "monthName", text: monthly.monthName(mv.ym) }),
+    el("button", { class: "ib keyed", id: "monthNext", type: "button", title: "Month after (→)", "aria-label": "Month after", disabled: last, onclick: () => monthStep(1) }, icon(ICON.fwd), key("→")),
+    el("span", { class: "grow" }), closeBtn("monthClose", "Close", "Esc", () => monthClose()));
+  if (!m) return put(box, head, el("p", { class: "muted", id: "monthLoading", text: "…" }));
+  // the numbers: a figure and a word each, coloured as Today's scores where they're scores
+  const fig = (k, n, label, tier = "") => el("div", { class: "mvfig" + (tier ? " " + tier : ""), dataset: { k } }, el("b", { text: String(n) }), el("span", { text: label }));
+  const nums = el("div", { class: "mvnums", id: "monthNums" },
+    fig("ideas", m.ideas, "Ideas"), fig("graphs", m.graphs, "Graphs"), fig("pages", m.pages, "Notes"),
+    fig("mornings", m.today.due ? `${m.today.done}/${m.today.due}` : "0", "Mornings", monthly.daysTier(m)),
+    fig("score", m.score ? m.score.pct + "%" : "–", "Right", monthly.scoreTier(m)),
+    fig("best", m.streak.best, "Best streak"), fig("streak", m.streak.end, "End streak"),
+    fig("sundays", m.sundays, "Sundays"), fig("answered", m.answered, "Answered"), fig("rounds", m.rounds, "Practice rounds"));
+  const topics = m.grew.length || m.dried.length ? el("div", { class: "mvtopics", id: "monthTopics" },
+    m.grew.length ? el("div", { class: "mvrow", id: "monthGrew" }, el("h3", { text: "Grew" }), m.grew.slice(0, 4).map((g) => el("span", { class: "mvtag grew", dataset: { id: g.id } }, g.name, el("b", { text: " +" + g.n })))) : null,
+    m.dried.length ? el("div", { class: "mvrow", id: "monthDried" }, el("h3", { text: "Dried" }), m.dried.slice(0, 4).map((d) => el("span", { class: "mvtag dry", dataset: { id: d.id } }, d.name))) : null) : null;
+  const past = monthly.monthRange(mv.ym).from < Date.now();
+  const play = el("div", { class: "row mvplay" }, b("monthPlay", "Timelapse", "Space", () => monthPlay(false), "btn primary"), b("monthVideo", "Video", "⇧T", () => monthPlay(true)));
+  if (!past) play.hidden = true;
+  // the month's stitch
+  let stitch;
+  if (mv.busy) stitch = [el("p", { class: "muted", id: "monthBusy", text: mv.busy }), el("div", { class: "row" }, b("monthStop", "Stop", "Esc", () => mv.job?.cancel()))];
+  else if (mv.stitch) {
+    const st = mv.stitch;
+    stitch = [st.pattern ? el("p", { class: "mvpattern", id: "monthPattern", text: st.pattern }) : null,
+      st.links.length ? el("ul", { class: "oralmarks mvlinks", id: "monthLinks" }, st.links.map((x, i) => el("li", { class: "mark" + (x.on ? " shown" : ""), dataset: { kind: "link" }, onclick: () => monthTick(i) },
+        el("span", { class: "tick", text: x.on ? "✓" : "" }), el("span", { class: "grow" }, el("b", { text: `${ideaName(x.a)} ↔ ${ideaName(x.b)}` }), x.label ? el("span", { class: "muted", text: " " + x.label }) : null), i < 9 ? key(String(i + 1)) : null)))
+        : el("p", { class: "muted", text: "No links" }),
+      el("div", { class: "row" }, b("monthSave", "Keep", "↵", monthStitchSave, "btn primary"), b("monthDiscard", "Discard", "Esc", () => { mv.stitch = null; renderMonth(); }))];
+  } else stitch = [rec.pattern ? el("p", { class: "mvpattern", id: "monthPattern", text: rec.pattern }) : null,
+    rec.links?.length ? el("p", { class: "muted", id: "monthKept", text: `${rec.links.length} link${rec.links.length === 1 ? "" : "s"}` }) : null,
+    desktop && past ? el("div", { class: "row" }, b("monthStitch", rec.pattern ? "Stitch again" : "Stitch the month", "F", monthStitch)) : null];
+  const showStitch = desktop || rec.pattern || mv.stitch;
+  // the story
+  const ch = chapterOf(mv.ym), folder = storyFolder();
+  const story = el("section", { class: "mvsec", id: "monthStory" }, el("h3", { text: "Story" }),
+    ch ? el("button", { class: "tdrow", id: "monthChapterOpen", type: "button", onclick: monthOpenChapter }, icon(ICON.page), el("span", { class: "grow", text: ch.title || monthly.monthName(mv.ym) }), key("O")) : null,
+    el("div", { class: "row" }, past ? b("monthChapter", ch ? "Rewrite" : "Write the chapter", "C", monthChapter, ch ? "btn" : "btn primary") : null,
+      folder ? b("monthStoryOpen", "Story", "L", monthOpenStory) : null));
+  put(box, head,
+    el("div", { class: "tdmain mvmain" }, nums, topics, play),
+    el("div", { class: "tdmain mvside" }, showStitch ? el("section", { class: "mvsec", id: "monthStitchSec" }, el("h3", { text: "Stitch" }), ...[].concat(stitch).filter(Boolean)) : null, story));
 }
 
 // ---------- practise ----------
@@ -2228,21 +2466,22 @@ function practiseKey(k, stop) {
 // ⇧T records a play-through of what's showing as a video and offers the file.
 let tlSecs = null, tlRaf = 0, tlLast = 0;   // tlSecs: a set play length, for tests
 const tlWhere = () => (S.view === "isles" ? "garden" : S.view === "forest" || S.view === "tree" ? "knowledge" : null);
-const tlPast = () => (S.tl?.where === "garden" && S.tl.t < S.tl.max ? S.tl.past : null);
+const tlPast = () => (S.tl?.where === "garden" && S.tl.t < S.tl.now ? S.tl.past : null);
 const tlLength = (tl) => tlSecs ?? Math.min(40, Math.max(4, 10 * Math.sqrt((tl.max - tl.min) / (30 * DAY))));
 const tlDate = (t) => new Date(t).toLocaleDateString(undefined, { day: "numeric", month: "short", ...(new Date(t).getFullYear() !== new Date().getFullYear() ? { year: "numeric" } : {}) });
 const tlToggle = () => (S.tl ? tlClose() : tlOpen());
 const below = (xs, t) => { let lo = 0, hi = xs.length; while (lo < hi) { const m = (lo + hi) >> 1; if (xs[m] <= t) lo = m + 1; else hi = m; } return lo; };
-async function tlOpen() {
+// range (the month in review): { from, to, month } plays only those dates; Esc goes back to the month.
+async function tlOpen(range = null) {
   const where = tlWhere(); if (!where || S.tl) return;
   const events = await store.listEvents().catch(() => []);
   if (S.tl || tlWhere() !== where) return;
-  const hist = createHistory({ zones: S.allZones, trees: S.allTrees, nodes: S.nodes, links: S.links, events, pages: S.pages }), max = Date.now();
+  const now = Date.now(), hist = createHistory({ zones: S.allZones, trees: S.allTrees, nodes: S.nodes, links: S.links, events, pages: S.pages }, now), max = range ? Math.max(range.from + 1000, Math.min(now, range.to - 1000)) : now;
   // Knowledge reads its range as before: from the first topic or graph (in a graph, the graph) to now
   const xs = where === "garden" ? [] : S.view === "tree" ? [S.tree, ...(S.byTree.get(S.tree.id) || [])] : [...S.zones, ...S.trees];
-  const min = where === "garden" ? hist.min : Math.min(max - 1000, ...xs.map((x) => Date.parse(x.createdAt)));
+  const min = range ? range.from : where === "garden" ? hist.min : Math.min(max - 1000, ...xs.map((x) => Date.parse(x.createdAt)));
   const times = where === "garden" ? [] : (S.view === "tree" ? S.byTree.get(S.tree.id) || [] : [...S.zones, ...S.trees, ...S.nodes]).map((x) => Date.parse(x.createdAt)).sort((a, b) => a - b);
-  S.tl = { where, hist, min, max, t: max, playing: false, ticks: hist.ticks(min, max), times, sig: null, dirty: false, drawn: 0, past: null, ui: null, rec: null };
+  S.tl = { where, hist, min, max, now, month: range?.month || null, t: max, playing: false, ticks: hist.ticks(min, max), times, sig: null, dirty: false, drawn: 0, past: null, ui: null, rec: null };
   if (where === "knowledge") { S.cutoff = max; S.panel = null; S.quick = null; S.review = null; S.tl.sig = below(times, max); rebuild(); }
   else if (S.topic >= 0) pickTopic(-1);
   renderChrome(); tlLoop();
@@ -2254,6 +2493,7 @@ function tlClose(quiet = false) {
   if (quiet) return;
   if (tl.where === "knowledge") { S.cutoff = null; rebuild(); } else if (S.view === "isles") drawIsles();
   renderChrome();
+  if (tl.month) monthShow(tl.month);   // a month's timelapse goes back to the month
 }
 // now: draw at once (scrubbing), else on the next frame
 function tlSet(t, now = false) {
@@ -2296,7 +2536,7 @@ function tlDraw(now) {
     if (n !== tl.sig) { tl.sig = n; rebuild(); }
     return tlPaint();
   }
-  tl.past = tl.t < tl.max ? tl.hist.at(tl.t) : null;
+  tl.past = tl.t < tl.now ? tl.hist.at(tl.t) : null;
   const model = gardenModel(tl.past), sig = JSON.stringify([model.map((q) => q.topics.map((x) => [x.id, Math.round(x.growth * 20), Math.round(x.health * 20), x.mist])), tl.past?.links.length]);
   if (sig !== tl.sig) { tl.sig = sig; drawIsles(model); }
   tlPaint();
@@ -2353,7 +2593,7 @@ function tlVideo() {
     stream.getTracks().forEach((x) => x.stop());
     if (!r.keep || !chunks.length) return;
     const blob = (S.tlVideo = new Blob(chunks, { type: rec.mimeType || type || "video/webm" }));
-    saveBlob(blob, `bonsai-timelapse-${new Date().toISOString().slice(0, 10)}.${/mp4/.test(blob.type) ? "mp4" : "webm"}`).then((ok) => toast(ok ? "Video saved" : "The video couldn't be saved"));
+    saveBlob(blob, `bonsai-${tl.month ? "month-" + tl.month : "timelapse-" + new Date().toISOString().slice(0, 10)}.${/mp4/.test(blob.type) ? "mp4" : "webm"}`).then((ok) => toast(ok ? "Video saved" : "The video couldn't be saved"));
   };
   if (garden) isles.onFrame = draw; else { stage.onRender = draw; stage.tickers.add(keep); stage.invalidate(); }
   tl.rec = r; rec.start(500); draw();
@@ -2966,6 +3206,7 @@ function back() {
   if (talkBusy()) return talkStop();
   if (S.pick) return S.pick.finish(null);
   if (S.tq) return S.tq.phase === "nudge" ? tqSkipNudge() : tqEnd();
+  if (S.mv) return monthEsc();
   if (S.todayOpen) return todayClose();
   if (S.quick) { S.quick = null; return renderActions(); }
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || document.activeElement?.isContentEditable) return document.activeElement.blur();
@@ -2990,6 +3231,7 @@ function onKey(e) {
   if (S.tq && S.todayOpen && e.altKey && e.code === "KeyM" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); return tqMenu(); }   // the round's ⋯ menu, from the answer box too
   if (e.ctrlKey || e.metaKey || e.altKey || overlayOpen() || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName) || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || e.target?.isContentEditable || document.activeElement?.isContentEditable) return;
   const k = e.key.length === 1 ? e.key.toLowerCase() : e.key, stop = () => e.preventDefault();
+  if (S.mv && (monthKey(k, stop, e) || !["Tab", "/", "?"].includes(k))) return;   // so does the month in review
   if (S.todayOpen && !S.review && (todayKey(k, stop, e) || !["Tab", "/", "?"].includes(k))) return;   // Today takes the keys while it's open
   if (S.sun) return sunKey(k, stop);
   if (S.oral) return oralKey(k, stop);
@@ -3009,7 +3251,7 @@ function onKey(e) {
   if (k === "k") { stop(); return openTech(); }
   if (k === "o") { stop(); return openNotes(); }
   if (k === "u") { stop(); return startSunday(); }
-  if (k === "y") { stop(); return todayToggle(); }
+  if (k === "y") { stop(); return e.shiftKey ? monthToggle() : todayToggle(); }
   if (k === "p" && !e.shiftKey && S.view !== "tech" && (S.view !== "notes" || graphPage(S.npage))) { stop(); return practise(practiseHere()); }   // practise what's picked or in view
   if (k === "[" || k === "]") { stop(); return sideKey(k === "["); }
   if (S.view === "tech") return techKey(k, stop);
@@ -4606,6 +4848,7 @@ async function init() {
     timelapse: { set secs(v) { tlSecs = v; }, get state() { return S.tl; } },
     sunday: { list: () => store.listSundays(), start: startSunday, setClock: (t) => { sunClock = t == null ? null : +new Date(t); renderTop(); }, get due() { return sundayDue(); } },
     bank: { run: bankRun, count: bankCount, short: () => bankPool().filter((n) => haveQs(n) < BANK_PER).length, redo: () => bankPool().reduce((a, n) => a + bankWork(n).redo.length, 0), next: () => { const b = bankNext(); return b && { zone: b.zone?.id, ids: b.nodes.map((n) => n.id), tiers: [...b.work.values()].map((w) => w.tier) }; }, get on() { return bank.on; } },
+    month: { show: monthShow, close: monthClose, get state() { return S.mv; }, months: () => S.months, get due() { return monthDue(); } },
     practise: { start: practise, pool: (id) => practisePool(practiseScope(id)).map((x) => x.id), get state() { return S.pr; } },
     today: { pick: () => S.todayPick, days: () => S.days, pool: () => todayPool(), show: todayShow, close: todayClose, get open() { return !!S.todayOpen; }, get left() { return todayLeft(); },
       setClock: (t) => { sunClock = t == null ? null : +new Date(t); renderTop(); } } };

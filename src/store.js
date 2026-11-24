@@ -432,6 +432,40 @@ export async function undoSunday(made) {
     if (r) await putSunday(s, { ...r, undone: true });
   });
 }
+// The month in review (month.js): meta `months` { "YYYY-MM": { at, pattern, links, chapterPageId, seen } }.
+export const listMonths = async () => (await tx(["meta"], "readonly", (s) => reqP(s.meta.get("months"))))?.value || {};
+// Merges a patch into one month's record; returns the record as it was (for Undo).
+export const patchMonth = (ym, patch) => tx(["meta"], "readwrite", async (s) => {
+  const all = (await reqP(s.meta.get("months")))?.value || {}, was = all[ym] ? { ...all[ym] } : null;
+  s.meta.put({ key: "months", value: { ...all, [ym]: { ...(all[ym] || {}), ...patch } } });
+  return was;
+});
+// The month's stitch kept: the pattern, and the ticked links ({ a, b, label }) added in one save. Returns what
+// undoMonth needs.
+export async function saveMonth(ym, links, { pattern = "" } = {}) {
+  return tx(["nodes", "links", "events", "meta"], "readwrite", async (s) => {
+    const linkIds = [], kept = [];
+    for (const x of links) {
+      if (!x.a || !x.b || x.a === x.b || !(await reqP(s.nodes.get(x.a))) || !(await reqP(s.nodes.get(x.b)))) continue;
+      const ab = await reqP(s.links.index("fromId").getAll(x.a)), ba = await reqP(s.links.index("fromId").getAll(x.b));
+      if (ab.some((l) => l.toId === x.b) || ba.some((l) => l.toId === x.a)) continue;
+      const l = { id: uid(), fromId: x.a, toId: x.b, label: clean(x.label, 60), note: "", by: "month", createdAt: now(), updatedAt: now() };
+      s.links.put(l); linkIds.push(l.id); kept.push({ a: x.a, b: x.b, label: l.label, id: l.id }); logEvent(s, "link.create", l.id, { fromId: x.a, toId: x.b, by: "month" });
+    }
+    const all = (await reqP(s.meta.get("months")))?.value || {}, was = all[ym] ? { ...all[ym] } : null;
+    s.meta.put({ key: "months", value: { ...all, [ym]: { ...(all[ym] || {}), at: now(), pattern: clean(pattern, 700), links: kept } } });
+    return { ym, linkIds, was };
+  });
+}
+// Takes a kept month's stitch back: the new links gone, the record as it was.
+export async function undoMonth(made) {
+  return tx(["links", "events", "meta"], "readwrite", async (s) => {
+    for (const id of made.linkIds || []) { s.links.delete(id); logEvent(s, "link.delete", id); }
+    const all = { ...((await reqP(s.meta.get("months")))?.value || {}) };
+    if (made.was) all[made.ym] = made.was; else delete all[made.ym];
+    s.meta.put({ key: "months", value: all });
+  });
+}
 // An idea's questions, all at once (adding, editing and deleting one are all this). by: who wrote new ones.
 export async function setQuestions(id, qs, by = "you") {
   return tx(["nodes", "events"], "readwrite", async (s) => {

@@ -1003,6 +1003,35 @@ input.bask::placeholder{color:var(--muted)}
   .tdbtn kbd{display:none}
 }
 .tdnav .btn{padding:3px 8px;font-size:13px}
+/* Month in review (⇧Y): the Today box's look; the numbers, the month's timelapse, its stitch and the story */
+@media (min-width:701px){ .mview{grid-template-columns:minmax(0,1fr) minmax(0,1fr)} }
+.mvhead h2{font-size:20px;margin:0;min-width:8.5em;text-align:center}
+.mvhead .ib.keyed{width:auto;padding:0 6px;gap:4px;display:inline-flex}
+.mvhead .ib:disabled{opacity:.35;cursor:default}
+.mvnums{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+.mvfig{display:grid;gap:3px;align-content:start;padding:8px 10px;border:1px solid var(--line);border-radius:5px;background:var(--card)}
+.mvfig b{font-size:24px;line-height:1.05;font-variant-numeric:tabular-nums}
+.mvfig span{font-size:12px;color:var(--muted)}
+.mvfig.good b{color:var(--accent)} .mvfig.short b{color:var(--fair)} .mvfig.perfect b{color:var(--perfect)}
+.mvtopics{display:grid;gap:6px}
+.mvrow{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.mvrow h3,.mvsec h3{font-size:12px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:0}
+.mvrow h3{min-width:4.5em}
+.mvtag{font-size:13px;border:1px solid var(--line);border-radius:3px;padding:1px 7px;background:var(--card)}
+.mvtag.grew b{color:var(--accent);font-variant-numeric:tabular-nums}
+.mvtag.dry{color:var(--sap);border-color:var(--sap)}
+.mvplay{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.mvsec{display:grid;gap:8px;align-content:start}
+.mvsec .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.mvpattern{margin:0;font-size:15px;line-height:1.45;border-left:3px solid var(--accent);padding:2px 0 2px 10px;text-wrap:pretty}
+.mvlinks .mark{display:flex;gap:8px;align-items:baseline}
+.mvlinks .mark:not(.shown){opacity:.55}
+.mvlinks .tick{flex:none;width:1em;color:var(--accent);font-weight:700}
+#todayMonth .link{font:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+#todayMonth .link:hover{color:var(--ink);text-decoration:underline}
+.mvhead h2{white-space:nowrap}
+@media (max-width:700px){ .mvnums{grid-template-columns:repeat(2,minmax(0,1fr))} .mvfig{grid-template-columns:auto 1fr;align-items:baseline;gap:8px;padding:7px 10px} .mvfig b{font-size:20px}
+  .mvhead h2{min-width:0;font-size:18px} .mvplay .btn,.mvsec .btn{min-height:44px} }
 /* half a screen (a window snapped to one side): the Library's sidebar becomes a drawer below 760px, the top bars drop their extras */
 @media (min-width:561px) and (max-width:759px){
   .notes{grid-template-columns:1fr;grid-template-rows:1fr}
