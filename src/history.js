@@ -6,9 +6,11 @@
 // review older than the log (or never logged, as in the demo) is known only by reviewedAt, so the idea is taken
 // to have had today's schedule from then. Before its first review an idea is due a day after it came, as now.
 // Ideas deleted since are gone from the store and don't show in the past either; moves and grafts show where
-// things are now.
+// things are now. Every answer the log keeps (strength.js `answersFrom`) comes with each moment as `answers`, so the
+// garden's strength at t is worked out from the answers before t, as it is now (strengthOf(…, t) ignores later ones).
 import { rate } from "./srs.js";
 import { creditAt } from "./roots.js";
+import { answersFrom } from "./strength.js";
 
 export const DAY = 86400000;
 const ms = (x) => (x ? Date.parse(x) : NaN);
@@ -33,7 +35,7 @@ export function createHistory({ zones = [], trees = [], nodes = [], links = [], 
     const settled = Math.max(last, snap ?? -Infinity);   // from here on the idea is as it is now
     return { n, born, steps, pass, settled };
   });
-  const borns = ideas.map((x) => x.born).sort((a, b) => a - b);
+  const borns = ideas.map((x) => x.born).sort((a, b) => a - b), answers = answersFrom(events);
   const first = Math.min(now, ...borns.slice(0, 1), ...zones.map((z) => ms(z.createdAt)).filter((t) => t >= 0), ...trees.map((t) => ms(t.createdAt)).filter((t) => t >= 0));
   const min = Math.min(first, now - DAY);
 
@@ -66,7 +68,7 @@ export function createHistory({ zones = [], trees = [], nodes = [], links = [], 
       const treeIds = new Set(trees.filter((tr) => ms(tr.createdAt) <= t || byTree.has(tr.id)).map((tr) => tr.id));
       const zoneIds = new Set(zones.filter((z) => ms(z.createdAt) <= t).map((z) => z.id)); for (const tr of trees) if (treeIds.has(tr.id)) zoneIds.add(tr.zoneId);
       const ids = new Set(list.map((n) => n.id));
-      return { t, zones: zoneIds, trees: treeIds, nodes: list, byTree, kids, links: links.filter((l) => !(ms(l.createdAt) > t) && ids.has(l.fromId) && ids.has(l.toId)) };
+      return { t, zones: zoneIds, trees: treeIds, nodes: list, byTree, kids, answers, links: links.filter((l) => !(ms(l.createdAt) > t) && ids.has(l.fromId) && ids.has(l.toId)) };
     },
     // marks to jump to: every Sunday, and big days (an exam brought in, a large Grow, or many ideas in one day)
     ticks(from = min, to = now) {

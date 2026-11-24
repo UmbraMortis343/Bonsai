@@ -38,7 +38,7 @@ const t = await start("run49-month", 4349, { channel: "beta" });
     const story = M.storyPrompt([{ ym: "2026-09", title: "September 2026", text: "You began with Newton." }], M.monthText(m), { name: m.name, pattern: "forces and sound" });
     return {
       nums: [m.name, m.ideas, m.graphs, m.pages, m.links, m.today, m.score, m.streak, m.sundays, m.answered, m.practised, m.rounds],
-      grew: m.grew.map((g) => [g.name, g.n]), dried: m.dried.map((x) => x.name), tiers: [M.scoreTier(m), M.daysTier(m)],
+      grew: m.grew.map((g) => [g.name, g.n]), shaky: m.shaky.map((x) => [x.name, x.pct, x.n, x.missed]), shakyText: text.includes("Shakiest topics: Physics (50% right of 6, 3 missed)"), tiers: [M.scoreTier(m), M.daysTier(m)],
       text: [text.includes("Forces: Inertia; F=ma"), text.includes("Synths: Oscillator"), text.includes("You tied forces to sound"), text.includes("Inertia ↔ Oscillator (both move)"), text.includes("Newton (Forces › Physics): again ×1"), text.includes("Greyed"), text.includes("Filter")],
       prompt: [prompt.startsWith("Look back over my month"), !!key("Inertia"), !!key("Oscillator"), /Already linked: .*–/.test(prompt)],
       read: [read.pattern, read.links.map((l) => [l.a, l.b, l.label])],
@@ -51,7 +51,7 @@ const t = await start("run49-month", 4349, { channel: "beta" });
   t.eq(P.nums, ["October 2026", 3, 1, 1, 1, { due: 3, done: 2 }, { good: 23, asked: 24, pct: 96 }, { best: 2, end: 0 }, 1, 2, 3, 2],
     "the numbers: ideas (not greyed, not next month's), graphs, notes (not folders or chapters), links, mornings done of due, score, streaks, Sundays, answered (not Sunday's), practice answers and rounds");
   t.eq(P.grew, [["Physics", 2], ["Music", 1]], "topics that grew, most first");
-  t.eq(P.dried, ["Music"], "a topic left long past due dried");
+  t.eq([P.shaky, P.shakyText], [[["Physics", 50, 6, 3]], true], "the shakiest topic: its share right of the month's reviews and practice, its misses; Music had no answers");
   t.eq(P.tiers, ["good", "short"], "the score and the mornings take Today's tiers");
   t.eq(P.text, [true, true, true, true, true, false, false], "the month as text: ideas by graph and topic, the Sundays and their stitches, what was missed; nothing greyed or from another month");
   t.eq(P.prompt, [true, true, true, true], "the stitch prompt keys the month's ideas and lists what's already linked");

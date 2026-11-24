@@ -31,7 +31,8 @@ import { TALK_SYSTEM, talkPrompt, pastePrompt, talkId, lastAt, sortTalks } from 
 import * as focus from "./focus.js";
 import { createHistory } from "./history.js";
 import * as monthly from "./month.js";
-import { pickToday, recordOf, streak, monthGrid, dayLog, addDays, scoreTier, VOID, assignKinds } from "./today.js";
+import { pickToday, recordOf, streak, monthGrid, dayLog, addDays, scoreTier, VOID, assignKinds, backlog } from "./today.js";
+import * as strength from "./strength.js";
 import * as roots from "./roots.js";
 import { pickPractise, practiseRecord, ROUND as PR_ROUND } from "./practise.js";
 
@@ -97,6 +98,8 @@ async function load() {
   S.linksIn = new Map();
   for (const l of links) { const t = S.byId.get(l.fromId)?.treeId; if (t && t === S.byId.get(l.toId)?.treeId) { if (!S.linksIn.has(t)) S.linksIn.set(t, []); S.linksIn.get(t).push({ a: l.fromId, b: l.toId }); } }
   await loadGarden(); readLevels();
+  // every answer of the last month (strength.js): the garden's strength and Shaky (H) are worked out from them
+  S.answers = strength.answersFrom(await store.eventsSince(new Date(Math.min(Date.now(), clockNow()) - (strength.WINDOW + 1) * DAY).toISOString()).catch(() => []));
   // a topic's colour is the tech tree's: its island's, turned a little for each topic on it
   S.hues = new Map(); S.isleHues = new Map();
   S.garden.islands.forEach((q, i) => { const hue = HUES[i % HUES.length]; S.isleHues.set(q.id, hue); q.zoneIds.forEach((id, k) => S.hues.set(id, shade(hue, k))); });
@@ -151,18 +154,14 @@ function shownNodes(tree) {
   }
   return out;
 }
-// thirsty: due for review. dry: due more than a day ago (three on a Keep topic). A Settled topic never thirsts.
-function thirst(n, now = Date.now()) {
-  const lv = levelOfNode(n);
-  if (lv === "settled" || !srs.reviewable(n, kidsOf(n.id).length)) return "ok";
-  const due = Date.parse(srs.dueAt(n, focus.multOf(lv)));
-  return due + focus.dryAfter(lv) * DAY <= now ? "dry" : due <= now ? "thirsty" : "ok";
-}
+// Shaky (strength.js `isShaky`, 2026-11-25; it took Thirsty's place): the idea's latest answer in the last 30 days
+// was missed, or 2 of its last 4 there were missed or only partly right. Overdue no longer shows anywhere.
+const shaky = (n, now = clockNow()) => !!n && !n.ghost && strength.isShaky(S.answers?.get(n.id), now);
 function looksFor(tree, nodes, garden) {
-  const m = new Map(), now = Date.now(), memo = new Map(), hue = tree.color || S.hues.get(tree.zoneId) || T.root;
-  // Watering: the topic's colour while an idea is kept, ochre once it needs water, grey when it has dried out.
+  const m = new Map(), now = clockNow(), memo = new Map(), hue = tree.color || S.hues.get(tree.zoneId) || T.root;
+  // (the old watering screen) the topic's colour, ochre while shaky
   if (garden) {
-    for (const n of nodes) { const t = thirst(n, now); m.set(n.id, { color: ghostly(n) ? T.ring : t === "dry" ? T.limb : t === "thirsty" ? T.link : hue, status: "ok" }); }
+    for (const n of nodes) m.set(n.id, { color: ghostly(n) ? T.ring : shaky(n, now) ? T.link : hue, status: "ok" });
     return m;
   }
   // An idea takes its own colour, else the colour of the idea above it. With none set, a graph is its topic's
@@ -177,9 +176,9 @@ function looksFor(tree, nodes, garden) {
     }
     return memo.get(n.id);
   };
-  // beta: H marks what needs water in ochre in the knowledge views, so we can judge it against the watering screen
-  const dryOn = S.thirsty;
-  for (const n of nodes) m.set(n.id, { color: ghostly(n) ? T.ring : dryOn && thirst(n, now) !== "ok" ? T.link : colorOf(n), status: "ok" });
+  // Shaky (H, off by default): what he's been missing, in ochre, in the knowledge views
+  const on = S.shaky;
+  for (const n of nodes) m.set(n.id, { color: ghostly(n) ? T.ring : on && shaky(n, now) ? T.link : colorOf(n), status: "ok" });
   return m;
 }
 const passesOf = (treeId) => (S.byTree.get(treeId) || []).reduce((a, n) => a + (n.srs?.passes || 0), 0);
@@ -275,14 +274,14 @@ function buildForest(garden = S.view === "garden") {
     if (t.kind === "topic") {
       const hue = S.hues.get(t.id) || T.limb; fl.zones.set(t.id, p);
       glows.push({ x: p.x, z: p.z, r: p.r * 1.05, color: hue, k: 0.13 });
-      const waiting = garden ? t.trees.reduce((a, tr) => a + shownNodes(tr).filter((n) => thirst(n) !== "ok").length, 0) : 0;   // seen from far off, where the graphs' own names have faded
+      const waiting = garden ? t.trees.reduce((a, tr) => a + shownNodes(tr).filter((n) => shaky(n)).length, 0) : 0;   // seen from far off, where the graphs' own names have faded
       name("zone", t.id, t.z.name, p, -0.5, "", 0, waiting ? el("span", { class: "thirst", text: String(waiting) }) : null);
       for (const tr of t.trees) {
         const q = at.get(tr.id), lay = lays.get(tr.id), nodes = shownNodes(tr), r = discR(lay); fl.trees.set(tr.id, q);
         for (const n of nodes) shown.add(n.id);
         items.push({ tree: tr, nodes, layout: lay, offset: [q.x, q.z], looks: looksFor(tr, nodes, garden) });
-        const dry = garden ? nodes.filter((n) => thirst(n) !== "ok").length : 0;
-        // a graph's disc: an ochre rim while anything on it needs water, and a ring inside for reviews passed
+        const dry = garden ? nodes.filter((n) => shaky(n)).length : 0;
+        // a graph's disc: an ochre rim while anything on it is shaky, and a ring inside for reviews passed
         const rings = garden ? Math.min(4, Math.floor(Math.sqrt(passesOf(tr.id)))) : 0; S.forest.rings.set(tr.id, rings);
         discs.push({ x: q.x, z: q.z, r, color: tr.color || hue, rim: dry ? T.link : null, rings });
         spoke(p, q, 1.5, r, hue);
@@ -870,11 +869,11 @@ function shortcuts() {
   const groups = [
     ["Everywhere", [["Click", "Pick"], ["Double-click  ↵", "Go in, open"], ["Right-click", "Its menu (tech tree: open or close what's under it)"], ["Drag", "Move what you hold; on empty space, turn or pan"],
       ["Wheel", "Zoom"], ["1–9  ← ↑ ↓ →", "Pick by number, or the next one"], ["Esc", "Let go, then step back out"], ["⇧Esc", "Straight back"], ["0", "Fit"], ["V", "The other view: board and 3D, separate and joined, tree and web"], ["M", "Meaning: ideas arranged by what they mean"],
-      ["⇧Tab", "Garden, Knowledge, Library (Knowledge shows what's picked; Tab alone in the garden)"], ["[  ]", "The panel on the left, on the right"], ["/", "Search"], ["I", "Capture a thought"], ["K", "Tech tree"], ["O", "Notes beside a graph"], ["Y", "Today: the day's questions, streak, calendar"], ["⇧Y", "Month in review"], ["P", "Practise what's picked or in view, due or not"], ["U", "Sunday session (Bonsai Desktop)"], ["?", "These keys"]]],
+      ["⇧Tab", "Garden, Knowledge, Library (Knowledge shows what's picked; Tab alone in the garden)"], ["[  ]", "The panel on the left, on the right"], ["/", "Search"], ["I", "Capture a thought"], ["K", "Tech tree"], ["O", "Notes beside a graph"], ["Y", "Today: the day's questions, streak, calendar"], ["⇧Y", "Month in review"], ["P", "Practise what's picked or in view, due or not"], ["H", "Shaky: ideas you keep missing, in ochre"], ["U", "Sunday session (Bonsai Desktop)"], ["?", "These keys"]]],
     ["Building a graph", [["Tab", "Add under"], ["↵", "Add beside"], ["R", "Rename"], ["Del", "Delete (a picked link too)"], ["L", "Link"], ["G", "Graft"], ["X", "Make its own graph"], ["C", "Colour"], ["Q", "Add a question"], ["Space", "Notes"], ["⇧↵", "Open the board's graph in 3D"],
       ["Drag", "Move an idea; drop it on another to graft"], ["+ or Alt-drag", "Pull out a new idea, or a link"]]],
-    ["Today", [["↵", "Start the day's questions; send an answer; another 10 after practice"], ["Space", "Show the answer"], ["1–3", "Right, partly, missed (Got it, missed without Claude)"], ["← →", "A month back or on"], ["↑ ↓", "A day back or on"], ["0", "Back to today"], ["Esc", "Close"]]],
-    ["Month in review", [["← →", "A month back or on"], ["Space  ⇧T", "Play the month's timelapse, save it as video"], ["F", "Stitch the month (Bonsai Desktop)"], ["1–8  ↵", "Tick links, keep them"], ["C", "Write the month's chapter"], ["O  L", "Open the chapter, the Story folder"], ["Esc", "Close"]]],
+    ["Today", [["↵", "Start the day's questions; send an answer; another 10 after practice"], ["Space", "Show the answer"], ["1–3", "Right, partly, missed (Got it, missed without Claude)"], ["← →", "A month back or on"], ["↑ ↓", "A day back or on"], ["0", "Back to today"], ["B", "What's waiting: set a topic to Keep or Settled"], ["Esc", "Close"]]],
+    ["Month in review", [["← →", "A month back or on"], ["Space  ⇧T", "Play the month's timelapse, save it as video"], ["F", "Stitch the month (Bonsai Desktop)"], ["1–8  ↵", "Tick links, keep them"], ["C", "Write the month's chapter"], ["O  L", "Open the chapter, the Story folder"], ["⇧1–3", "Practise a shaky topic"], ["Esc", "Close"]]],
     ["Garden", [["D", "Day or night"], ["N  Z", "New graph, new topic"], ["S", "Split a full topic"], ["⇧1–3  ⇧0", "Focus, Keep, Settled; a topic back to its island's"]]],
     ["Timelapse", [["T", "Open or close"], ["Space", "Play or pause"], ["← →", "A day back or on"], ["⇧← ⇧→", "The marks: Sundays and big days"], ["⇧T", "Save as video"], ["Esc", "Back to now"]]],
     ["Tech tree", [["Space", "Open or close"], ["↵", "Put in the middle; again to open"], ["H  A", "Whole tree, everything open"], ["B", "What an island grows from"]]],
@@ -918,8 +917,8 @@ function renderActions() {
   if (S.view === "notes") { a.hidden = true; a.replaceChildren(); return; }
   const plant = S.view === "garden" && !S.review ? treeOf(S.fsel) : null;
   if (plant) {
-    const nodes = S.byTree.get(plant.id) || [], dry = nodes.filter((x) => thirst(x) !== "ok");
-    put(a, el("div", { class: "plant" }, el("b", { text: plant.name }), el("span", { class: "muted", text: `${nodes.length} idea${nodes.length === 1 ? "" : "s"}${dry.length ? ` · ${dry.length} thirsty` : ""}` })),
+    const nodes = S.byTree.get(plant.id) || [], dry = nodes.filter((x) => shaky(x));
+    put(a, el("div", { class: "plant" }, el("b", { text: plant.name }), el("span", { class: "muted", text: `${nodes.length} idea${nodes.length === 1 ? "" : "s"}${dry.length ? ` · ${dry.length} shaky` : ""}` })),
       el("button", { class: "btn primary", id: "waterBtn", onclick: () => startReview(plant.id) }, dry.length ? `Water ${dry.length}` : "Practise", el("kbd", { text: "↵" })),
       dry.length ? el("button", { class: "btn", id: "allGood", onclick: () => passAll(dry.map((x) => x.id)) }, "All good", el("kbd", { text: "A" })) : null,
       el("button", { class: "btn", id: "openTree", onclick: () => goTree(plant.id) }, "Open", el("kbd", { text: "⇧↵" })));
@@ -928,7 +927,7 @@ function renderActions() {
   }
   if (S.view === "forest" && S.cutoff == null && !S.pick && S.trees.length) {
     const b = (id, text, k, run, on) => el("button", { class: "btn" + (on ? " on" : ""), id, "aria-pressed": on == null ? null : String(on), onclick: run }, text, el("kbd", { text: k }));
-    put(a, lookSeg(), el("span", { class: "sep" }), b("viewFit", "Fit", "0", fitView), S.fscope ? b("viewAll", "Show all", "A", () => openScope()) : null, b("viewThirsty", "Thirsty", "H", toggleThirsty, !!S.thirsty), el("span", { class: "sep" }), b("viewPractise", "Practise", "P", () => practise(practiseHere())), b("viewTech", "Tech tree", "K", openTech));
+    put(a, lookSeg(), el("span", { class: "sep" }), b("viewFit", "Fit", "0", fitView), S.fscope ? b("viewAll", "Show all", "A", () => openScope()) : null, b("viewShaky", "Shaky", "H", toggleShaky, !!S.shaky), el("span", { class: "sep" }), b("viewPractise", "Practise", "P", () => practise(practiseHere())), b("viewTech", "Tech tree", "K", openTech));
     a.hidden = false; return;
   }
   const idea = S.view === "meaning" && !S.pick ? S.byId.get(S.sel) : null;
@@ -958,6 +957,7 @@ function renderActions() {
   }
   put(a, key("add", "Add", "Tab", () => quick("child")), key("beside", "Beside", "↵", () => quick("sibling"), true), key("rename", "Rename", "R", () => quick("rename"), true),
     key("note", "Notes", "Space", togglePanel), key("link", "Link", "L", linkFrom), key("graft", "Graft", "G", graft),
+    S.shaky && shaky(n) ? key("practise", "Practise", "P", () => practise(S.tree.id)) : null,
     el("span", { class: "sep lap" }), key("goto", "Go to", S.jump ? S.jump + "…" : "1–9", () => quick("goto"), true), key("fit", "Fit", "0", fitView, true), key("board", "Board", "V", openOnBoard, true),
     ib("nodeMore", "More", ICON.more, (e) => menu(e.currentTarget, ideaItems(n))));
   a.hidden = false;
@@ -1227,6 +1227,8 @@ function nodePanel(n) {
   return [
     S.view === "tree" && trail.length ? el("div", { class: "trail" }, trail.map((q) => el("button", { class: "chip", type: "button", title: q.title, onclick: () => go(q.id) }, numTag(q.id), q.title))) : null,
     rootLine(n),
+    shaky(n) ? el("div", { class: "examrow shakyrow", id: "shakyTag" }, el("span", { class: "chip", text: "Shaky" }), el("span", { class: "grow" }),
+      el("button", { class: "btn small", id: "shakyPractise", type: "button", onclick: () => practise(n.treeId) }, "Practise", el("kbd", { text: "P" }))) : null,
     n.oral ? el("div", { class: "examrow", id: "oralTag" }, el("span", { class: "chip" + (n.oral.shown ? "" : " ghost"), text: n.oral.shown ? "Oral: shown" : "Oral: missed" }), el("span", { class: "muted", text: n.oral.why })) : null,
     n.ghost || n.exam ? el("div", { class: "examrow" }, el("span", { class: "chip" + (n.ghost ? " ghost" : ""), id: "examTag", text: n.ghost ? "Not shown yet" : LEVELS[(n.exam.level || 1) - 1] }), el("span", { class: "muted", text: n.exam?.tier || "" })) : null,
     el("div", { class: "ph" }, numTag(n.id), el("input", { id: "nodeTitle", class: "title", value: n.title, maxLength: 140, "aria-label": "Title",
@@ -2038,6 +2040,25 @@ function renderRound(box) {
 }
 function todayMonth(d) { const [y, m] = S.tdMonth; S.tdMonth = monthOf(dayOf(new Date(y, m + d, 1, 12))); renderToday(); }
 function todayPickDay(key) { S.tdSel = key; const [y, m] = monthOf(key); if (S.tdMonth[0] !== y || S.tdMonth[1] !== m) S.tdMonth = [y, m]; renderToday(); }
+// The backlog (today.js `backlog`): more due than Today takes in about a week shows "+N waiting" in Today's head; B (or
+// a click) lists the topics holding most, and a topic can be set to Keep or Settled there (focus levels), with Undo.
+function todayBacklog() { return backlog(todayPool(false), S.todayPick?.day === dayKey() ? S.todayPick : null); }
+function backlogMenu(anchor) {
+  anchor ||= $("#todayBacklog"); if (!anchor) return;
+  const name = (id) => S.zones.find((z) => z.id === id)?.name || "";
+  const rows = todayBacklog().topics.filter((t) => name(t.id)).slice(0, 6);
+  menu(anchor, rows.map((t, i) => ({ label: `${name(t.id)} · ${t.n} · ${focus.NAMES[zoneLevel(t.id)]}`, key: String(i + 1), run: () => backlogLevel(t.id, anchor) })), { keys: true });
+}
+function backlogLevel(zoneId, anchor) {
+  const now = zoneLevel(zoneId), set = (level) => async () => {
+    const raw = S.garden.zone?.[zoneId]?.level, name = S.zones.find((z) => z.id === zoneId)?.name || "";
+    await setLevel({ zoneId, level }); if (S.todayOpen) renderToday();
+    toast(`${name}: ${focus.NAMES[level]}`, { label: "Undo", run: async () => { const o = (S.garden.zone ||= {})[zoneId] ||= {}; if (raw === undefined) delete o.level; else o.level = raw; await saveGarden(); if (S.todayOpen) renderToday(); } });
+  };
+  menu(anchor, [{ label: S.zones.find((z) => z.id === zoneId)?.name || "", disabled: true }, "-",
+    { label: (now === "keep" ? "✓ " : "") + "Keep", key: "K", disabled: now === "keep", run: set("keep") },
+    { label: (now === "settled" ? "✓ " : "") + "Settled", key: "S", disabled: now === "settled", run: set("settled") }], { keys: true });
+}
 function todayKey(k, stop, e) {
   const go = (fn) => { stop(); fn(); return true; };
   const q = S.tq;
@@ -2058,6 +2079,7 @@ function todayKey(k, stop, e) {
   if (k === "ArrowLeft" || k === "ArrowRight") return go(() => todayMonth(k === "ArrowRight" ? 1 : -1));
   if (k === "ArrowUp" || k === "ArrowDown") return go(() => todayPickDay(addDays(S.tdSel, k === "ArrowDown" ? 1 : -1)));
   if (k === "0") return go(() => todayPickDay(dayKey()));
+  if (k === "b" && $("#todayBacklog")) return go(() => backlogMenu());
   if (k === "u" && sundayDue()) return go(() => { todayClose(); startSunday(); });
   return false;
 }
@@ -2131,8 +2153,10 @@ function renderToday() {
   }
   const log = el("section", { class: "tdlog", id: "todayLog", dataset: { day: S.tdSel } },
     el("div", { class: "tdnav" }, el("h3", { id: "todayLogDay", text: S.tdSel === day ? "Today" : longDate(S.tdSel) }), el("span", { class: "grow" }), key("↑ ↓")), ...logBody);
+  const bl = todayBacklog();
   put(box,
-    el("div", { class: "tdhead" }, top, el("span", { class: "grow" }), closeBtn("todayClose", "Close", "Esc", () => todayClose())),
+    el("div", { class: "tdhead" }, top, bl.show ? el("button", { class: "btn small backlog", id: "todayBacklog", type: "button", title: "Waiting beyond today", "aria-haspopup": "menu", onclick: (e) => backlogMenu(e.currentTarget) }, `+${bl.n} waiting`, key("B")) : null,
+      el("span", { class: "grow" }), closeBtn("todayClose", "Close", "Esc", () => todayClose())),
     el("div", { class: "tdmain" }, ten, el("section", { class: "tdmonth" }, nav, cal)), log);
 }
 
@@ -2179,7 +2203,7 @@ async function monthLoad() {
   const mv = S.mv; if (!mv) return;
   const events = await store.listEvents().catch(() => []);
   if (S.mv !== mv) return;
-  mv.m = monthly.monthOf({ zones: S.allZones, trees: S.allTrees, nodes: S.nodes, links: S.links, pages: S.pages }, events, S.days, S.sundays, mv.ym, { now: clockNow(), level: zoneLevel, skipPages: chapterIds() });
+  mv.m = monthly.monthOf({ zones: S.allZones, trees: S.allTrees, nodes: S.nodes, links: S.links, pages: S.pages }, events, S.days, S.sundays, mv.ym, { now: clockNow(), skipPages: chapterIds() });
   if (!S.months[mv.ym]?.seen && (await safely(() => store.patchMonth(mv.ym, { seen: new Date().toISOString() }))) !== undefined) S.months = { ...S.months, [mv.ym]: { ...(S.months[mv.ym] || {}), seen: new Date().toISOString() } };
   if (S.mv !== mv) return;
   renderMonth(); renderTop();
@@ -2298,10 +2322,17 @@ async function monthChapter() {
 }
 function monthOpenChapter() { const p = S.mv && chapterOf(S.mv.ym); if (p) openPageAt(p.id); }
 function monthOpenStory() { const f = storyFolder(); if (f) { setOpen(f.id, true); openPageAt(f.id); } }
+// Practise one of the month's shakiest topics (⇧1–3): the month closes and the round starts on that topic.
+const SHAKY_SHOWN = 3;
+function monthPractise(i) {
+  const d = S.mv?.m?.shaky?.[i]; if (!d || i >= SHAKY_SHOWN || !S.zones.some((z) => z.id === d.id)) return;
+  monthClose(true); practise(d.id);
+}
 function monthKey(k, stop, e) {
   const go = (fn) => { stop(); fn(); return true; }, mv = S.mv;
   if (k === "y") return go(e?.shiftKey ? monthClose : todayShow);
   if (mv.busy) { stop(); return true; }
+  if (e?.shiftKey && /^Digit[1-3]$/.test(e.code || "") && mv.m) return go(() => monthPractise(+e.code.slice(5) - 1));
   if (k === "ArrowLeft" || k === "ArrowRight") return go(() => monthStep(k === "ArrowRight" ? 1 : -1));
   if (mv.stitch) {
     if (k === "Enter") return go(monthStitchSave);
@@ -2337,9 +2368,13 @@ function renderMonth() {
     fig("score", m.score ? m.score.pct + "%" : "–", "Right", monthly.scoreTier(m)),
     fig("best", m.streak.best, "Best streak"), fig("streak", m.streak.end, "End streak"),
     fig("sundays", m.sundays, "Sundays"), fig("answered", m.answered, "Answered"), fig("rounds", m.rounds, "Practice rounds"));
-  const topics = m.grew.length || m.dried.length ? el("div", { class: "mvtopics", id: "monthTopics" },
+  const shook = m.shaky.slice(0, SHAKY_SHOWN);
+  const topics = m.grew.length || shook.length ? el("div", { class: "mvtopics", id: "monthTopics" },
     m.grew.length ? el("div", { class: "mvrow", id: "monthGrew" }, el("h3", { text: "Grew" }), m.grew.slice(0, 4).map((g) => el("span", { class: "mvtag grew", dataset: { id: g.id } }, g.name, el("b", { text: " +" + g.n })))) : null,
-    m.dried.length ? el("div", { class: "mvrow", id: "monthDried" }, el("h3", { text: "Dried" }), m.dried.slice(0, 4).map((d) => el("span", { class: "mvtag dry", dataset: { id: d.id } }, d.name))) : null) : null;
+    // the shakiest topics (strength.js `shakiest`): the share right of the month's answers, and Practise on each, ⇧1–3
+    shook.length ? el("div", { class: "mvrow mvshaky", id: "monthShaky" }, el("h3", { text: "Shaky" }), shook.map((d, i) => el("div", { class: "row", dataset: { id: d.id } },
+      el("span", { class: "mvtag shaky", title: `${d.right}/${d.n} right · ${d.missed} missed` }, d.name, el("b", { text: d.pct + "%" })),
+      el("button", { class: "btn small", type: "button", dataset: { act: "practise" }, disabled: !S.zones.some((z) => z.id === d.id), onclick: () => monthPractise(i) }, "Practise", key("⇧" + (i + 1)))))) : null) : null;
   const past = monthly.monthRange(mv.ym).from < Date.now();
   const play = el("div", { class: "row mvplay" }, b("monthPlay", "Timelapse", "Space", () => monthPlay(false), "btn primary"), b("monthVideo", "Video", "⇧T", () => monthPlay(true)));
   if (!past) play.hidden = true;
@@ -2460,7 +2495,7 @@ function practiseKey(k, stop) {
 
 // ---------- timelapse ----------
 // One slider for the past (T), in the garden and in Knowledge, docked in the bottom bar. The garden is drawn from
-// history.at(t) (src/history.js): topics come as they were made, plots grow and dry as they did; nothing is written.
+// history.at(t) (src/history.js): topics come as they were made, plots grow, and pale or green with his answers (strength), as they did; nothing is written.
 // Knowledge keeps its cut (S.cutoff): what was made after t is left out. A month plays in about 10 s; longer spans
 // go a little faster per month. Ticks mark Sundays and big days (an exam brought in, a large Grow, many new ideas).
 // ⇧T records a play-through of what's showing as a video and offers the file.
@@ -2647,23 +2682,24 @@ async function loadGarden() {
   if (dirty) await store.setMeta("garden", g).catch(() => {});
 }
 const saveGarden = async () => { await safely(() => store.setMeta("garden", S.garden)); await refresh(); };
-// What the garden draws: growth is how full a topic's plot is, health is the share of its ideas not left long past due.
+// What the garden draws: growth is how full a topic's plot is, health how well his answers in it have gone lately
+// (strength.js: the last 30 days, recent ones weighing more; under 5 answers, or Settled, full health). Overdue
+// ideas no longer dry it (2026-11-25, his call: Today picks the questions, so a backlog isn't his doing).
 // A topic with no ideas yet is uncharted, and lies under mist.
 // (o.fill, beta only: the demo's Workshop topics count as fuller than they are, to show every landmark tier)
 function gardenModel(past = null) {
   // past (timelapse): history.at(t), the garden as it was then; topics not there yet are left out, an island with none is bare rock
-  const zone = new Map(S.zones.map((z) => [z.id, z])), now = past ? past.t : Date.now(), hubs = hubsOf(S.garden), at = new Map(hubs.map((h, k) => [h.id, k]));
+  const zone = new Map(S.zones.map((z) => [z.id, z])), now = past ? past.t : Date.now(), sNow = past ? past.t : clockNow(), answers = past ? past.answers : S.answers || new Map(), hubs = hubsOf(S.garden), at = new Map(hubs.map((h, k) => [h.id, k]));
   const marks = assignMarks(S.garden.islands.flatMap((isl) => isl.zoneIds).map((id) => zone.get(id)).filter(Boolean).map((z) => ({ id: z.id, name: z.name, picked: S.garden.zone[z.id]?.mark })));   // no two topics share a guessed landmark
   const ideasOf = (t) => (past ? past.byTree.get(t.id) || [] : S.byTree.get(t.id) || []).filter((n) => !n.ghost), kidN = (n) => (past ? past.kids.get(n.id) || 0 : kidsOf(n.id).length);
   const model = S.garden.islands.map((isl, i) => {
     const topics = isl.zoneIds.map((id) => zone.get(id)).filter(Boolean).map((z, k) => [z, k]).filter(([z]) => !past || past.zones.has(z.id)).map(([z, k]) => {
       const trees = S.trees.filter((t) => t.zoneId === z.id && (!past || past.trees.has(t.id))), nodes = trees.flatMap(ideasOf), rev = nodes.filter((n) => srs.reviewable(n, kidN(n))), o = S.garden.zone[z.id] || {};
-      const level = zoneLevel(z.id), mult = focus.multOf(level), due = level === "settled" ? [] : rev.filter((n) => srs.isDue(n, now, mult));   // Settled never withers
-      // only long neglect dries a topic: ideas past due by focus.js's `dry` days (about 3 weeks on Focus, 6 on Keep, where they weigh half); merely due is fine
-      const dry = due.filter((n) => Date.parse(srs.dueAt(n, mult)) + focus.dryAfter(level) * DAY <= now);
+      const level = zoneLevel(z.id), mult = focus.multOf(level), due = level === "settled" ? [] : rev.filter((n) => srs.isDue(n, now, mult));
+      const st = strength.strengthOf(nodes.map((n) => answers.get(n.id)).filter(Boolean), sNow);   // Settled stays lush whatever its answers
       // the demo's pretend ideas grow in step with the real ones
       const fill = CHANNEL && o.fill ? (past ? Math.round(o.fill * nodes.length / Math.max(1, S.trees.filter((t) => t.zoneId === z.id).flatMap((t) => S.byTree.get(t.id) || []).filter((n) => !n.ghost).length)) : o.fill) : 0;
-      return { id: z.id, name: z.name, level, biome: o.biome || BIOMES[k % 6][0], mark: marks.get(z.id), growth: Math.min(2, Math.pow((nodes.length + fill) / FULL_PLOT, 0.6)), health: rev.length ? 1 - (focus.weightOf(level) * dry.length) / rev.length : 1, ideas: nodes.length, mist: !nodes.length && charted(), due: past ? [] : due.map((n) => n.id), trees };
+      return { id: z.id, name: z.name, level, biome: o.biome || BIOMES[k % 6][0], mark: marks.get(z.id), growth: Math.min(2, Math.pow((nodes.length + fill) / FULL_PLOT, 0.6)), health: level === "settled" ? 1 : strength.healthOf(st.score), strength: st.score, answers: st.n, ideas: nodes.length, mist: !nodes.length && charted(), due: past ? [] : due.map((n) => n.id), trees };
     });
     if (!topics.length) topics.push({ id: null, name: "", biome: "bloom", mark: "kit", growth: 0.04, health: 1, ideas: 0, mist: !past && charted(), due: [], trees: [] });
     return { id: isl.id, name: isl.name, hub: at.get(hubKey(isl)) || 0, landmark: isl.landmark, patron: i === 0 && isl.landmark === "arches" ? S.garden.patron || "none" : undefined, mountain: isl.landmark === "arches" || !!isl.mountain, topics };
@@ -2732,8 +2768,8 @@ const goTopic = (zoneId) => { const i = S.model.findIndex((isl) => isl.topics.so
 // knowledge view, a graph or its board; in a graph each idea is picked and flown to as it comes up.
 function water(ids, treeId) { const q = ids || (treeId ? dueList(treeId) : dueList(null)).map((n) => n.id); if (treeId) S.fsel = treeId; reviewIds(q); }
 // ---------- focus levels ----------
-// How hard a topic is kept (focus.js): Focus, normal intervals; Keep, about twice as long, and what waits weighs half
-// on the garden; Settled, four times as long, never withers and stays out of watering rounds. An island sets the
+// How hard a topic is kept (focus.js): Focus, normal intervals; Keep, about twice as long; Settled, four times as long,
+// always lush on the garden and out of watering rounds. An island sets the
 // level of its topics; a topic can take its own and then keeps it. An exam topic starts at Keep.
 const RANK = { focus: 0, keep: 1, settled: 2 };
 const examZones = () => new Set(S.trees.filter((t) => t.exam).map((t) => t.zoneId));
@@ -2813,7 +2849,7 @@ function renderGarden() {
     const o = (S.garden.zone[t.id] ||= {});
     put(box, head(() => pickTopic(-1), name(t.name, async (v) => { if (await safely(() => store.updateZone(t.id, { name: v }))) refresh(); }), ib("topicMore", "Move to island", ICON.more, (e) => topicMenu(t, e.currentTarget))),
       el("div", { class: "gtop" }, ctl, el("div", { class: "gacts" }, act("newGraph", "New knowledge graph", "N", () => newGraph(t.id), true), act("scopeGraphs", "Knowledge graphs", "⇧Tab", () => openScope(t.id)), act("topicMap", "Meaning map", "M", () => goMeaning(t.id)), act("techBtn", "Tech tree", "K", openTech), act("practiseBtn", "Practise", "P", () => practise(t.id)), t.growth >= 2 ? act("splitTopic", "Split", "S", () => splitTopic(t)) : null)),
-      el("div", { class: "stats" }, el("span", {}, el("b", { text: String(t.ideas) }), ` idea${t.ideas === 1 ? "" : "s"}`), el("span", {}, el("b", { text: pct(t.growth) }), " grown"), el("span", {}, el("b", { text: pct(t.health) }), " healthy")),
+      el("div", { class: "stats" }, el("span", {}, el("b", { text: String(t.ideas) }), ` idea${t.ideas === 1 ? "" : "s"}`), el("span", {}, el("b", { text: pct(t.growth) }), " grown"), t.strength != null ? el("span", { id: "topicStrength" }, el("b", { text: pct(t.strength) }), " right") : null),
       el("h3", { text: "Knowledge graphs" }),
       t.trees.length ? el("div", { class: "rows" }, t.trees.map((tr, k) => { const n = (S.byTree.get(tr.id) || []).length; return row(k < 9 ? String(k + 1) : "", tr.name, `${n} idea${n === 1 ? "" : "s"}`, 0, () => goTree(tr.id)); })) : el("p", { class: "muted", text: "None yet." }),
       el("div", { class: "gset" }, levelRow(S.garden.islands[S.isle], t), pickRow("topicBiome", "Biome", BIOMES, t.biome, (v) => { o.biome = v; saveGarden(); }), pickRow("topicMark", "Landmark", MARKS, t.mark, (v) => { o.mark = v; saveGarden(); })));
@@ -3025,7 +3061,7 @@ function techData() {
   const model = gardenModel(), rec = new Map(S.garden.islands.map((q) => [q.id, q]));
   return { islands: model.map((q) => ({ id: q.id, name: q.name, hub: q.hub, after: rec.get(q.id)?.after || null, from: rec.get(q.id)?.from || null })),
     topics: model.flatMap((q, i) => q.topics.filter((t) => t.id).map((t) => ({ id: t.id, name: t.name, isle: i, ideas: t.ideas, growth: t.growth, mist: t.mist }))),
-    trees: S.trees, nodes: S.nodes.map((n) => ({ ...n, st: n.ghost ? "ghost" : thirst(n) })), links: S.links };
+    trees: S.trees, nodes: S.nodes.map((n) => ({ ...n, st: n.ghost ? "ghost" : S.shaky && shaky(n) ? "shaky" : "ok" })), links: S.links };
 }
 function openTech() {
   if (S.view === "tree" || S.view === "meaning") { S.pendingSel = S.sel; const z = S.tree ? S.tree.zoneId : S.scope; location.hash = "#/techtree" + (z ? "/" + encodeURIComponent(z) : ""); return; }
@@ -3106,7 +3142,9 @@ async function growsFrom(x) {
   rec.after = v.after || null; rec.from = from || null;
   await saveGarden();
 }
-function toggleThirsty() { S.thirsty = !S.thirsty; setPref("thirsty", S.thirsty ? "1" : "0"); if (S.view === "forest") buildForest(); else if (S.view === "tree") rebuild(); renderActions(); }
+// H in the knowledge views (and the board's ring): Shaky on or off, remembered (pref `shaky`; Thirsty's `thirsty` is
+// let go, as it meant overdue)
+function toggleShaky() { S.shaky = !S.shaky; setPref("shaky", S.shaky ? "1" : "0"); if (S.view === "forest") buildForest(); else if (S.view === "tree") rebuild(); else if (S.view === "notes" && S.board) S.board.redraw?.(); renderActions(); }
 function techMode(m) { tech.setMode(m); renderActions(); }
 function techEsc() { if (!tech.key("Escape")) location.hash = S.techBack; }
 function techKey(k, stop) {
@@ -3272,14 +3310,14 @@ function onKey(e) {
     if (k.startsWith("Arrow")) { stop(); stepForest(k === "ArrowRight" || k === "ArrowUp" ? 1 : -1); return renderActions(); }
     if (k === "Enter" && e.shiftKey && treeOf(S.fsel)) { stop(); return goTree(S.fsel); }
     if (k === "Enter" && treeOf(S.fsel)) { stop(); return startReview(S.fsel); }
-    if (k === "a" && treeOf(S.fsel)) { stop(); return passAll((S.byTree.get(S.fsel) || []).filter((x) => thirst(x) !== "ok").map((x) => x.id)); }
+    if (k === "a" && treeOf(S.fsel)) { stop(); return passAll((S.byTree.get(S.fsel) || []).filter((x) => shaky(x)).map((x) => x.id)); }
     return;
   }
   if (S.view === "forest") {
     if (k === "m") { stop(); return setLook("meaning"); }
     if (k === "n") { stop(); return newGraph(); }
     if (k === "v") { stop(); return toggleJoined(); }
-    if (k === "h") { stop(); return toggleThirsty(); }
+    if (k === "h") { stop(); return toggleShaky(); }
     if (k === "a" && S.fscope) { stop(); return openScope(); }
     if (k === "z") { stop(); return newZone(); }
     if (k.startsWith("Arrow")) { stop(); return stepForest(k === "ArrowRight" || k === "ArrowUp" ? 1 : -1); }
@@ -3298,6 +3336,7 @@ function onKey(e) {
     return;
   }
   if (k === "v") { stop(); return openOnBoard(); }
+  if (k === "h") { stop(); return toggleShaky(); }
   if (k === "m") { stop(); S.pendingSel = S.sel; return goMeaning(S.tree.zoneId); }
   if (k === "Tab") { stop(); quick("child"); }
   else if (k === "Enter") { stop(); quick("sibling"); }
@@ -3492,7 +3531,7 @@ function graphBoard(tr) {
   const pick = (id) => { S.gsel = id || null; S.glink = null; board.selectLink(null); board.select(S.gsel); S.g3?.select(S.gsel); drawGraphFoot(info, tr); drawIdeaCard(); };
   const pickLink = (id) => { S.glink = id; S.gsel = null; board.select(null); board.selectLink(id); S.g3?.select(null); drawGraphFoot(info, tr); drawIdeaCard(); };
   const board = createMiniWeb({ host, edit: true, onPick: pick, onOpen: (id) => openIdea(tr, id), num: (id) => S.num.get(id),
-    ring: (id) => { const n = S.byId.get(id); return n && !n.ghost && thirst(n) !== "ok" ? T.link : null; }, mask: (id) => (masked(id) ? "?" : null),
+    ring: (id) => (S.shaky && shaky(S.byId.get(id)) ? T.link : null), mask: (id) => (masked(id) ? "?" : null),
     onMove: (list) => { for (const [id, x, y] of list) { const n = S.byId.get(id); if (n) n.xy = [x, y]; } safely(() => store.placeNodes(list)); S.g3?.rebuild(); },
     onDrop: (id, to) => boardGraft(id, to),
     onNew: (pid, x, y) => boardAsk({ parentId: pid, at: { x, y } }),
@@ -4823,7 +4862,7 @@ async function init() {
   stage.onTap = onTap; stage.labelOpacity = labelOpacity; stage.onGrab = grabIdea; stage.onDouble = onDouble; stage.onMenu = onMenu;
   vocab = createVocab({ el, pinIcon: () => icon(ICON.pin), panelActions: (g, done) => [el("button", { class: "btn", type: "button", dataset: { act: "claude" }, onclick: () => { done(); fleshOut({ termId: g.id }); } }, "Claude"), el("button", { class: "btn", type: "button", dataset: { act: "google" }, onclick: () => google(g.term) }, "Google")], terms: () => S.vocab || [], onEdit: (id) => editTerm({ id }), seenIn, openPage: (id) => { if (S.view === "notes") pickPage(id); else location.hash = notesHash(id); } }); vocab.reindex();
   selPanel = createQuick({ el, roots: () => [...document.querySelectorAll(".page .blocks, .talkp .tkturn.claude .md")], actions: selActions, blockSel: () => (document.activeElement?.classList.contains("bkeys") && S.ed?.picked?.()) || null });   // picked blocks, while they have the keys
-  S.joined = pref("joined", "0") === "1"; S.thirsty = pref("thirsty", "0") === "1";   // off since the day's 10 took over from watering; H shows it
+  S.joined = pref("joined", "0") === "1"; S.shaky = pref("shaky", "0") === "1";   // H: what he keeps missing, in ochre; off by default
   if (desktop) desktopUpdate().then((u) => { S.desk = u; });
   if (android) droidStart();
   stage.labelRank = (L) => (L.id === S.sel || (!ideaView() && L.id === S.fsel) ? 0 : S.near.has(L.id) ? 1 + L.depth * 0.01 : 2 + L.depth);
@@ -4844,13 +4883,15 @@ async function init() {
     const c = await store.counts().catch(() => null);
     if (c && !c.zones && !(await store.getMeta("demo").catch(() => null))) await store.importAll(demoBackup());
   }
-  window.bonsai = { S, store, sync, refresh, get stage() { return stage; }, get isles() { return isles; }, get tech() { return tech; }, get vocab() { return vocab; }, thirst, water, openTree, graphItems, dueByLevel, setLevel, zoneLevel, rootsFor,
+  window.bonsai = { S, store, sync, refresh, get stage() { return stage; }, get isles() { return isles; }, get tech() { return tech; }, get vocab() { return vocab; }, shaky, water, openTree, graphItems, dueByLevel, setLevel, zoneLevel, rootsFor,
     timelapse: { set secs(v) { tlSecs = v; }, get state() { return S.tl; } },
     sunday: { list: () => store.listSundays(), start: startSunday, setClock: (t) => { sunClock = t == null ? null : +new Date(t); renderTop(); }, get due() { return sundayDue(); } },
     bank: { run: bankRun, count: bankCount, short: () => bankPool().filter((n) => haveQs(n) < BANK_PER).length, redo: () => bankPool().reduce((a, n) => a + bankWork(n).redo.length, 0), next: () => { const b = bankNext(); return b && { zone: b.zone?.id, ids: b.nodes.map((n) => n.id), tiers: [...b.work.values()].map((w) => w.tier) }; }, get on() { return bank.on; } },
     month: { show: monthShow, close: monthClose, get state() { return S.mv; }, months: () => S.months, get due() { return monthDue(); } },
     practise: { start: practise, pool: (id) => practisePool(practiseScope(id)).map((x) => x.id), get state() { return S.pr; } },
-    today: { pick: () => S.todayPick, days: () => S.days, pool: () => todayPool(), show: todayShow, close: todayClose, get open() { return !!S.todayOpen; }, get left() { return todayLeft(); },
+    strength: { get answers() { return S.answers; }, model: (past = null) => gardenModel(past), shaky: (id) => shaky(S.byId.get(id)),
+      marked: (treeId) => { const tr = treeOf(treeId), nodes = S.byTree.get(treeId) || [], m = tr ? looksFor(tr, nodes, false) : new Map(); return nodes.filter((n) => m.get(n.id)?.color === T.link).map((n) => n.id); } },
+    today: { backlog: () => todayBacklog(), pick: () => S.todayPick, days: () => S.days, pool: () => todayPool(), show: todayShow, close: todayClose, get open() { return !!S.todayOpen; }, get left() { return todayLeft(); },
       setClock: (t) => { sunClock = t == null ? null : +new Date(t); renderTop(); } } };
   await go();
   if (android) { droidToday(); droidPoll(); }

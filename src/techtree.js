@@ -233,7 +233,7 @@ export function createTechTree({ host, saved = {}, onSelect = () => {}, onOpen =
       else if (x.kind === "isle") { ctx.fillStyle = C.card; dot(sx, sy, r); ctx.fillStyle = rgba(hue, 0.22); dot(sx, sy, r); ctx.strokeStyle = hue; ctx.lineWidth = 2.2; ring(sx, sy, r); }
       else if (st === "ghost") { ctx.fillStyle = C.card; dot(sx, sy, r); ctx.setLineDash([2.5, 2.5]); ctx.strokeStyle = C.muted; ctx.lineWidth = 1.2; ring(sx, sy, r); ctx.setLineDash([]); }   // not shown in an exam yet
       else { ctx.fillStyle = x.kind === "key" && !folded && hasKids(x.h) ? hue : x.kind === "key" ? C.card : hue; dot(sx, sy, r); ctx.strokeStyle = x.kind === "key" ? armColour(hue) : hue; ctx.lineWidth = x.kind === "key" ? 1.6 : 1.1; ring(sx, sy, r); }
-      if (st && st !== "ok" && st !== "ghost") { ctx.fillStyle = C.sap; dot(sx + r * 0.75, sy - r * 0.75, x.kind === "idea" ? 1.8 : 2.4); }   // due for watering
+      if (st && st !== "ok" && st !== "ghost") { ctx.fillStyle = C.sap; dot(sx + r * 0.75, sy - r * 0.75, x.kind === "idea" ? 1.8 : 2.4); }   // shaky (Shaky on, H in the knowledge view)
       if (folded && x.kind === "isle") { ctx.strokeStyle = hue; ctx.lineWidth = 1; ctx.globalAlpha = x.a * 0.7; ring(sx, sy, r + 3.5); ctx.globalAlpha = x.a; }   // an island with its ideas tucked away
       if (n) {
         ctx.font = FONT.num; ctx.textAlign = "center"; ctx.textBaseline = "middle";

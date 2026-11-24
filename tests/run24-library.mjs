@@ -76,11 +76,11 @@ await page.fill("#notesSearch", "");
 // every idea the same size
 t.eq(await state(page, async () => { const { nodeRadius } = await import("./layout.js"); return [nodeRadius(1, true), nodeRadius(40, false)]; }), [0.26, 0.26], "the first idea is the same size as the rest");
 
-// H shows or hides the ochre for what needs water in the knowledge view
+// H shows or hides Shaky, the ochre for what he keeps missing, in the knowledge view
 await page.evaluate(() => { location.hash = "#/forest"; }); await page.waitForFunction(() => bonsai.S.view === "forest");
-t.eq(await page.getAttribute("#viewThirsty", "aria-pressed"), "false", "Thirsty starts off");
+t.eq(await page.getAttribute("#viewShaky", "aria-pressed"), "false", "Shaky starts off");
 await page.keyboard.press("h");
-t.eq(await page.getAttribute("#viewThirsty", "aria-pressed"), "true", "H turns it on");
-t.eq(await state(page, () => localStorage.getItem("bonsai-beta.thirsty")), "1", "and it's remembered");
-await page.screenshot({ path: "tests/shots/library-thirsty.png" });
+t.eq(await page.getAttribute("#viewShaky", "aria-pressed"), "true", "H turns it on");
+t.eq(await state(page, () => localStorage.getItem("bonsai-beta.shaky")), "1", "and it's remembered");
+await page.screenshot({ path: "tests/shots/library-shaky.png" });
 await t.end();

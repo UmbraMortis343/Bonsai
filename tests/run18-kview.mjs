@@ -124,12 +124,12 @@ await key("k"); await page.waitForFunction(() => bonsai.S.view === "tech");
 t.eq(await page.evaluate(() => location.hash), "#/techtree/" + encodeURIComponent(ztech), "K in a graph opens the tech tree on its topic");
 await page.evaluate(() => history.back()); await page.waitForSelector(".lbl.trunk");
 
-// ---- a round in a graph (the day's 10 run the same way, run37-today): each idea comes up picked; Thirsty (H, off by default) shows what's waiting in ochre
+// ---- a round in a graph (the day's 10 run the same way, run37-today): each idea comes up picked; Shaky (H, off by default) shows what he keeps missing in ochre
 await page.evaluate(() => { location.hash = "#/garden"; }); await page.waitForFunction(() => bonsai.S.view === "forest");
 t.eq(await page.evaluate(() => location.hash), "#/forest", "the old watering screen lands in Knowledge");
-t.eq(await page.getAttribute("#viewThirsty", "aria-pressed"), "false", "Thirsty starts off");
+t.eq(await page.getAttribute("#viewShaky", "aria-pressed"), "false", "Shaky starts off");
 await state(page, async () => { const old = new Date(Date.now() - 3 * 864e5).toISOString(); await bonsai.store.restoreRows({ nodes: bonsai.S.nodes.map((n) => ({ ...n, createdAt: old })) }); await bonsai.refresh(); });   // three days on: ideas are waiting for water
-const syn = await state(page, () => bonsai.S.trees.find((x) => (bonsai.S.byTree.get(x.id) || []).some((n) => !n.ghost && bonsai.thirst(n) !== "ok")).id);
+const syn = await state(page, () => bonsai.dueByLevel().focus[0].treeId);
 await page.evaluate((id) => { location.hash = "#/tree/" + id; }, syn); await page.waitForSelector(".lbl.trunk");
 await page.waitForTimeout(600); await page.evaluate((id) => bonsai.water(null, id), syn);   // no water key any more: a round straight from the hook
 await page.waitForSelector("#review:not([hidden]) #showAnswer");

@@ -109,7 +109,7 @@ const shape = (page) => state(page, () => bonsai.S.hubs.map((h) => [h.name, h.is
   });
   await page.waitForFunction(() => bonsai.isles.ready, null, { timeout: 90000 });
   await key(page, "1"); await key(page, "1");
-  t.eq(await page.textContent("#gpanel .stats"), "485 ideas200% grown100% healthy", "the topic has passed 200%");
+  t.eq(await page.textContent("#gpanel .stats"), "485 ideas200% grown", "the topic has passed 200%");
   t.eq(await page.locator("#splitTopic").count(), 1, "Split is offered past 200%");
   await key(page, "s"); await page.waitForSelector(".dialog #splitParts");
   t.eq(await page.locator("#splitParts .grow-row").allTextContents(), ["Mechanics201", "Electromagnetism151", "Quantum131"], "the split shows the main branches of the topic read as one graph");

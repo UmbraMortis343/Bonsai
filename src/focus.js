@@ -1,21 +1,19 @@
 // Focus levels, pure. An island sets the level of its topics; a topic can keep its own.
 //   focus:   normal intervals (this term's subjects)
-//   keep:    intervals about twice as long, and long-neglected ideas weigh half as much on the garden
-//   settled: intervals four times as long, never withers, left out of the day's 10 (a rare bonus question)
+//   keep:    intervals about twice as long
+//   settled: intervals four times as long, left out of the day's 10 (a rare bonus question), always lush on the garden
 // Stored in the garden meta: `islands[i].level` and `zone[id].level` ("isle" for a topic told to follow its island
 // when it would otherwise start at its own default). An exam topic starts at Keep.
 // The stretch is worked out when an idea's due date is read (srs.dueAt with `mult`), not saved on the idea, so
 // moving a topic to another level moves its ideas' dates at once and nothing has to be rewritten.
 export const LEVELS = ["focus", "keep", "settled"];
 export const NAMES = { focus: "Focus", keep: "Keep", settled: "Settled" };
-// dry: days past due before an idea counts as dried out, on the garden (a topic's health) and in the ochre and grey
-// of Thirsty (H). Reviewing is the day's 10 now (today.js), so being due is no fault: a topic only starts drying
-// when its ideas have waited about three weeks past due on Focus, six on Keep (twice Focus, as its intervals are),
-// and Settled never does. weight: how much a dried idea counts against its topic's health.
+// Levels only stretch the schedule now: what's overdue no longer dries the garden (2026-11-25, his call: Today picks
+// the questions, so a backlog isn't his doing). The garden follows how his answers go (strength.js).
 const SPEC = {
-  focus: { mult: 1, weight: 1, dry: 21 },
-  keep: { mult: 2, weight: 0.5, dry: 42 },
-  settled: { mult: 4, weight: 0, dry: Infinity },
+  focus: { mult: 1 },
+  keep: { mult: 2 },
+  settled: { mult: 4 },
 };
 export const isLevel = (v) => LEVELS.includes(v);
 const isleOf = (zoneId, garden) => (garden?.islands || []).find((q) => (q.zoneIds || []).includes(zoneId));
@@ -29,8 +27,6 @@ export function ownLevel(zoneId, garden, exam = false) {
 }
 export const levelOf = (zoneId, garden, exam = false) => ownLevel(zoneId, garden, exam) || isleLevel(isleOf(zoneId, garden));
 export const multOf = (level) => SPEC[level]?.mult ?? 1;
-export const weightOf = (level) => SPEC[level]?.weight ?? 1;
-export const dryAfter = (level) => SPEC[level]?.dry ?? 1;
 // Every topic's level at once: Map zoneId → level. exams: Set of zone ids holding exam graphs.
 export function levelMap(garden, zoneIds, exams = new Set()) {
   const m = new Map();

@@ -187,7 +187,7 @@ export function buildWorld(isl, N) {
   mark("fields");
   for (let j = 0; j < N * N; j++) {
     const b = biome[j]; if (b === -2) continue;
-    if (b < 0) { dryness[j] = -1; dev[j] = 1; } else { const T = TOPICS[b]; dryness[j] = (1 - T.health) * 1.4 + F.edge[j]; dev[j] = F.seedD[j] < 0.08 + 0.56 * T.growth ? 1 : 0; }   // neglect dries a biome from its edges inward; growth spreads from its heart outward
+    if (b < 0) { dryness[j] = -1; dev[j] = 1; } else { const T = TOPICS[b]; dryness[j] = (1 - T.health) * 1.4 + F.edge[j]; dev[j] = F.seedD[j] < 0.08 + 0.56 * T.growth ? 1 : 0; }   // a weak topic (strength.js) dries a biome from its edges inward; growth spreads from its heart outward
     let h = F.h0[j];
     if (dryness[j] > 0.62 && F.crk[j] < crackW) { h -= Math.max(1.3, s * 2); crackA[j] = 1; }
     if (F.rim[j]) { h = G + 2; flag[j] = 1; crackA[j] = 0; }
@@ -573,7 +573,8 @@ export function buildWorld(isl, N) {
   };
   const shell = (x, z, ang, sc) => { const r0 = 2 * u0 * sc, g0 = groundAt(x, z), end = Math.PI * 5; for (let p = 0; p < end; p += 0.3 / Math.max(1, r0)) { const rr = r0 * (0.12 + 0.88 * p / end), X = Math.round(x + Math.cos(p + ang) * rr), Z = Math.round(z + Math.sin(p + ang) * rr); if (X < 1 || Z < 1 || X >= N - 1 || Z >= N - 1) continue; const jj = J(X, Z), h = ht[jj]; if (h >= 0 && Math.abs(h - g0) <= 2 && wd[jj] > 1 && !flag[jj]) grid[I(X, h, Z)] = M.bone; } };
   TOPICS.forEach((t, i) => {
-    if (t.health > 0.6) return; const a = seeds[i][2]; let placed = 0;
+    if (t.health >= 0.3) return; const a = seeds[i][2];   // bones only on a topic far gone; strength.js never goes below 0.45, so never dead
+    let placed = 0;
     for (let k = 0; k < 40 && placed < 9; k++) {
       const rad = 0.3 + hash2(k, i, 91) * 0.66, an = a + (hash2(k, i, 92) - 0.5) * 1.0, x = Math.round(c + Math.cos(an) * rad * R), z = Math.round(c + Math.sin(an) * rad * R); if (x < 8 || z < 8 || x > N - 8 || z > N - 8) continue;
       const j = J(x, z), q = Math.round(V(1.6)); if (biome[j] !== i || dryness[j] < 0.62 || wd[j] < 2.5 || flag[j] || steepA[j] || get(x, ht[j] + 1, z)) continue;

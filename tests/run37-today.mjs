@@ -125,7 +125,7 @@ t.eq(await page.textContent("#todayStreak b"), "2", "two days in a row");
 t.eq(await page.textContent("#todayScore"), String(pick2.ids.length), "all easy, all good");
 await key("Escape"); await page.evaluate(() => bonsai.today.setClock(null));
 
-// dryness only after long neglect: a Focus topic's ideas ten days past due leave it healthy; four weeks dries it
+// overdue never dries a topic now (strength.js: the garden follows answers): ten days or four weeks past due look the same
 await page.evaluate(() => { location.hash = "#/"; }); await page.waitForFunction(() => bonsai.S.view === "isles");
 await page.evaluate(() => bonsai.isles?.setActive(false));
 const zone = await state(page, () => { const S = bonsai.S; return S.model.flatMap((q) => q.topics).find((q) => q.id && q.level === "focus" && q.ideas > 4).id; });
@@ -135,8 +135,8 @@ const health = (days) => state(page, async ({ zone, days }) => {
   await bonsai.store.restoreRows({ nodes }); await bonsai.refresh();
   return S.model.flatMap((q) => q.topics).find((q) => q.id === zone).health;
 }, { zone, days });
-t.eq(await health(10), 1, "ten days past due: no dryness");
-t.eq((await health(25)) < 0.5, true, "over three weeks past due: it dries");
+const h10 = await health(10), h25 = await health(25);
+t.eq([h10 === h25, h25 >= 0.45], [true, true], "however long past due, the topic's look follows its answers");
 t.eq(await noWater(), 0, "no water in the garden");
 
 // ----- the phone: Today fits, and so does the top bar with its button -----

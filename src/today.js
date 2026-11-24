@@ -67,6 +67,18 @@ export function pickToday(pool, day, n = DAILY) {
   return { day, ids: picked.map((x) => x.id), kinds: assignKinds(picked, day), bonus, rated: {}, ...(roots.length ? { roots } : {}) };
 }
 
+// The backlog (2026-11-25): due ideas waiting beyond today's pick. When more wait than Today can take in about a week
+// (BACKLOG_DAYS × the daily count), Today shows how many with the topics holding most, so one can be set to Keep or
+// Settled (fewer due) on the spot. pool: todayPool's { focus, keep } (Settled is left out of the 10 anyway);
+// pick: today's pick (its ideas don't count). { n, show, topics: [{ id, n }] most first }.
+export const BACKLOG_DAYS = 7;
+export function backlog(pool, pick = null, n = DAILY) {
+  const skip = new Set(pick?.ids || []), by = new Map(); let k = 0;
+  for (const x of [...(pool.focus || []), ...(pool.keep || [])]) { if (skip.has(x.id)) continue; k++; by.set(x.zone, (by.get(x.zone) || 0) + 1); }
+  const topics = [...by].map(([id, c]) => ({ id, n: c })).sort((a, b) => b.n - a.n || String(a.id).localeCompare(String(b.id)));
+  return { n: k, show: k > BACKLOG_DAYS * n, topics };
+}
+
 const GOOD = new Set(["good", "easy"]);
 // A day's record from its pick: n ideas asked today, asked so far, good (rated good or easy), done when all are.
 // live: ids still there (an idea deleted since the pick no longer counts). An idea rated "void" (he found its question

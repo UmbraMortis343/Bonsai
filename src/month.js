@@ -3,11 +3,9 @@
 // tick) and one chapter of the story so far, written to "you", a chapter a month. No browser needed.
 // main.js shows it (`monthShow`, ⇧Y) and keeps what's made in meta `months` ({ "YYYY-MM": { at, pattern, links,
 // chapterPageId, seen } }); chapters are Library pages in a Story folder.
-import { createHistory, DAY } from "./history.js";
 import { streak, addDays } from "./today.js";
 import { dayOf } from "./sunday.js";
-import { reviewable, dueAt } from "./srs.js";
-import { dryAfter, multOf } from "./focus.js";
+import { shakiest } from "./strength.js";
 
 export const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 export const MAX_LINKS = 8;
@@ -23,15 +21,11 @@ export const monthRange = (ym) => { const [y, m] = parts(ym); return { from: new
 
 // Practice answers more than this apart are separate rounds.
 const ROUND_GAP = 30 * 60000;
-// A topic dried when its share of ideas left long past due (focus.js `dry`) rose by at least this much.
-const DRIED = 0.05;
 
-// The month's numbers. data: { zones, trees, nodes, links, pages }; events: the log (all of it, or at least from the
-// month's start; older ones let the timelapse history replay what was due when the month began); days: meta `days`;
-// sundays: meta `sundays`; ym: "YYYY-MM". opts: now, level(zoneId) → focus|keep|settled, skipPages (ids, e.g. the
-// story's chapters), caps.
+// The month's numbers. data: { zones, trees, nodes, links, pages }; events: the log (at least the month's); days: meta
+// `days`; sundays: meta `sundays`; ym: "YYYY-MM". opts: now, skipPages (ids, e.g. the story's chapters), caps.
 export function monthOf(data, events = [], days = {}, sundays = [], ym, opts = {}) {
-  const { now = Date.now(), level = () => "focus", skipPages = new Set(), caps = {} } = opts;
+  const { now = Date.now(), skipPages = new Set(), caps = {} } = opts;
   const { added: maxAdded = 80, missed: maxMissed = 20, older: maxOlder = 60 } = caps;
   const { zones = [], trees = [], nodes = [], links = [], pages = [] } = data;
   const { from, to } = monthRange(ym), end = Math.max(from, Math.min(to, now)), inMonth = (x) => { const t = typeof x === "number" ? x : ms(x); return t >= from && t < end; };
@@ -64,25 +58,12 @@ export function monthOf(data, events = [], days = {}, sundays = [], ym, opts = {
   for (const e of tries) { const t = ms(e.at); if (t - last > ROUND_GAP) rounds++; last = t; }
   const held = sundays.filter((s) => s.day && s.day >= dayOf(from) && s.day <= dayOf(end - 1));
 
-  // topics: which grew (ideas added), which dried (more left long past due at the month's end than its start)
+  // topics: which grew (ideas added); the shakiest (strength.js `shakiest`: the lowest share right of the month's
+  // answers, reviews and practice, then the most missed; at least MONTH_MIN answers)
   const grewBy = new Map();
   for (const n of addedAll) { const z = topicOf(n); grewBy.set(z, (grewBy.get(z) || 0) + 1); }
   const grew = [...grewBy].map(([id, n]) => ({ id, name: zoneOf.get(id)?.name || "", n })).sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
-  const hist = createHistory({ zones, trees, nodes, links, events, pages }, now);
-  const dryShare = (t) => {
-    const past = hist.at(t), out = new Map();
-    for (const n of past.nodes) {
-      const z = topicOf(n); if (!z) continue;
-      const lv = level(z); if (lv === "settled" || !reviewable(n, past.kids.get(n.id) || 0)) continue;
-      const o = out.get(z) || { rev: 0, dry: 0 }; o.rev++;
-      if (Date.parse(dueAt(n, multOf(lv))) + dryAfter(lv) * DAY <= t) o.dry++;
-      out.set(z, o);
-    }
-    return out;
-  };
-  const a = dryShare(from), b = dryShare(end), share = (o) => (o?.rev ? o.dry / o.rev : 0);
-  const dried = [...b].filter(([id, o]) => o.dry && share(o) - share(a.get(id)) >= DRIED)
-    .map(([id, o]) => ({ id, name: zoneOf.get(id)?.name || "", was: share(a.get(id)), now: share(o), dry: o.dry })).sort((x, y) => (y.now - y.was) - (x.now - x.was));
+  const shaky = shakiest(evs, (id) => topicOf(byId.get(id)), from, end).map((o) => ({ ...o, name: zoneOf.get(o.id)?.name || "" }));
 
   // what was missed: ideas rated again or hard in reviews, most first
   const miss = new Map();
@@ -123,7 +104,7 @@ export function monthOf(data, events = [], days = {}, sundays = [], ym, opts = {
     ideas: addedAll.length, graphs: graphs.length, pages: notes.length, links: linksMade.length,
     today: { due, done }, streak: { best, end: atEnd }, score: asked ? { good, asked, pct: Math.round((good / asked) * 100) } : null,
     sundays: held.length, answered: reviews.length, practised: tries.length, rounds,
-    grew, dried, added, missed, missedCount: missedAll.length, older, stitched,
+    grew, shaky, added, missed, missedCount: missedAll.length, older, stitched,
     held: held.map((s) => ({ day: s.day, summary: s.summary || "", kept: s.kept || {}, undone: !!s.undone })),
     keys: keyed, topicKey, pairs: [...pairs].filter((p) => p.split("|").every((id) => keyOf.has(id))),
   };
@@ -151,7 +132,7 @@ export function numbersText(m) {
 }
 
 // The month as a compact outline for a prompt: what was added per topic (idea names, with keys when asked for), the
-// Sundays and what they stitched, what was missed, which topics dried; kept under `max` characters (older ideas,
+// Sundays and what they stitched, what was missed, the shakiest topics; kept under `max` characters (older ideas,
 // then the month's ideas past the first few per topic, are dropped first).
 export function monthText(m, { keys = false, max = 9000, older = keys } = {}) {
   const k = (i) => (keys ? `${i.key} | ` : "");
@@ -178,7 +159,7 @@ export function monthText(m, { keys = false, max = 9000, older = keys } = {}) {
   if (m.stitched.length) out.push("", "Links stitched on Sundays:", ...m.stitched.map((l) => `${l.a} ↔ ${l.b}${l.label ? ` (${l.label})` : ""}`));
   const how = (i) => [i.again && `again ×${i.again}`, i.hard && `hard ×${i.hard}`].filter(Boolean).join(", ");
   out.push("", `Missed in review (${m.missedCount}):`, ...(m.missed.length ? m.missed.map((i) => (keys ? line(i, ` | ${how(i)}`) : `${i.title} (${i.where}): ${how(i)}`)) : ["(none)"]));
-  if (m.dried.length) out.push("", "Topics left to dry: " + m.dried.map((d) => `${d.name} (${Math.round(d.now * 100)}% long overdue, was ${Math.round(d.was * 100)}%)`).join(", "));
+  if (m.shaky.length) out.push("", "Shakiest topics: " + m.shaky.slice(0, 3).map((d) => `${d.name} (${d.pct}% right of ${d.n}, ${d.missed} missed)`).join(", "));
   if (m.grew.length) out.push("Topics that grew most: " + m.grew.slice(0, 5).map((g) => `${g.name} +${g.n}`).join(", "));
   let text = out.join("\n");
   if (older && m.older.length) {

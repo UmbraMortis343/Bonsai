@@ -1114,3 +1114,12 @@ body[data-talk="1"][data-nbar="off"] .notes{grid-template-columns:minmax(0,1fr) 
 .tkdel{width:28px;height:28px;color:var(--muted);visibility:hidden}
 .tkrow:hover .tkdel,.tkdel:focus-visible{visibility:visible}
 @media (pointer:coarse){ .tkdel{visibility:visible} }
+/* Shaky (H): an idea he keeps missing, and the backlog in Today; the earth ochre */
+.examrow.shakyrow{align-items:center}
+.examrow.shakyrow .chip{border-color:var(--sap);color:var(--sap)}
+.btn.backlog{color:var(--sap);border-color:var(--sap);font-variant-numeric:tabular-nums}
+.mvtag.shaky{color:var(--sap);border-color:var(--sap);display:inline-flex;gap:6px;align-items:center}
+.mvtag.shaky b{font-weight:600;font-variant-numeric:tabular-nums}
+.mvshaky{display:flex;flex-direction:column;gap:4px;align-items:flex-start}
+.mvshaky .row{gap:6px;align-items:center}
+.mvshaky .btn,.shakyrow .btn,.btn.backlog{padding:2px 8px;font-size:13px;min-height:0}
