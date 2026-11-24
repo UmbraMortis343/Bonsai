@@ -4,7 +4,7 @@
 import { createServer } from "node:http";
 
 export function fakeSupabase(port) {
-  const rows = new Map(), codes = new Map(), log = [];
+  const rows = new Map(), codes = new Map(), users = new Map(), log = [];
   let tick = Date.parse("2026-01-01T00:00:00Z");
   const userOf = (req) => { const t = (req.headers.authorization || "").replace("Bearer ", ""); return t.startsWith("tok-") ? t.slice(4) : null; };
   const server = createServer(async (req, res) => {
@@ -16,6 +16,15 @@ export function fakeSupabase(port) {
     if (url.pathname === "/auth/v1/otp") { codes.set(body.email, "123456"); return send(200, {}); }
     if (url.pathname === "/auth/v1/verify") {
       if (codes.get(body.email) !== body.token) return send(403, { msg: "Token has expired or is invalid" });
+      return send(200, { access_token: "tok-" + body.email, refresh_token: "ref-" + body.email, expires_in: 3600, user: { id: "u-" + body.email, email: body.email } });
+    }
+    if (url.pathname === "/auth/v1/signup") {
+      if (users.has(body.email)) return send(422, { msg: "User already registered", error_code: "user_already_exists" });
+      users.set(body.email, body.password);
+      return send(200, { access_token: "tok-" + body.email, refresh_token: "ref-" + body.email, expires_in: 3600, user: { id: "u-" + body.email, email: body.email } });
+    }
+    if (url.pathname === "/auth/v1/token" && url.searchParams.get("grant_type") === "password") {
+      if (users.get(body.email) !== body.password) return send(400, { msg: "Invalid login credentials", error_code: "invalid_credentials" });
       return send(200, { access_token: "tok-" + body.email, refresh_token: "ref-" + body.email, expires_in: 3600, user: { id: "u-" + body.email, email: body.email } });
     }
     if (url.pathname === "/auth/v1/token") { const e = String(body.refresh_token).replace("ref-", ""); return send(200, { access_token: "tok-" + e, refresh_token: "ref-" + e, expires_in: 3600, user: { id: "u-" + e, email: e } }); }

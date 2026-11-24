@@ -14,10 +14,11 @@ const device = async () => {
   await page.goto(t.url); await page.waitForSelector("body[data-ready]"); await page.evaluate(() => bonsai.isles?.setActive(false));
   return page;
 };
-const signIn = async (page) => {
+// Email and password (0.40.1): the first device makes the account when asked, the second just signs in.
+const signIn = async (page, first = false) => {
   await page.click("#moreBtn"); await page.click('.mi:has-text("Sync devices")');
-  await page.fill("#f-email", "me@example.com"); await page.keyboard.press("Enter");
-  await page.waitForSelector("#f-code"); await page.fill("#f-code", "123456"); await page.keyboard.press("Enter");
+  await page.fill("#f-email", "me@example.com"); await page.fill("#f-password", "garden-pass"); await page.keyboard.press("Enter");
+  if (first) { await page.waitForSelector('.dialog h2:has-text("No account")'); await page.click('.dialog .btn.primary:has-text("Make one")'); }
   await page.waitForFunction(() => document.querySelector("#toast")?.textContent.startsWith("Synced"));
 };
 const syncNow = (page) => page.evaluate(() => bonsai.sync.syncNow());
@@ -31,7 +32,7 @@ const ids = await A.evaluate(async () => {
   const n = await bonsai.store.addNode(g.rootId, { title: "Lenz's law", note: "opposes the change" });
   await bonsai.store.setMeta("ai", true); await bonsai.refresh(); return { z: z.id, g: g.id, n: n.id };
 });
-await signIn(A);
+await signIn(A, true);
 t.eq([[...fake.rows.values()].some((r) => r.store === "nodes" && r.id === ids.n && r.data.title === "Lenz's law"), [...fake.rows.values()].every((r) => r.channel === ""), [...fake.rows.values()].some((r) => r.store === "meta" && r.id === "ai")], [true, true, false],
   "signing in sends what was already here, on the app's channel; the meaning model's switch stays behind");
 

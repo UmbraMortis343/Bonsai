@@ -747,11 +747,25 @@ async function syncDialog() {
     if (await dialog({ title: "Sync", ok: "Sync now", cancel: "Close", body })) syncNowUI();
     return;
   }
-  const a = await dialog({ title: "Sync devices", fields: [{ name: "email", label: "Email", placeholder: "you@example.com" }], ok: "Send code" }); if (!a?.email?.includes("@")) return;
-  try { await sync.sendCode(a.email); } catch (e) { return toast(e.message || "The code couldn't be sent"); }
+  let mail = "";
   for (let tries = 0; tries < 3; tries++) {
-    const b = await dialog({ title: `Code sent to ${a.email.trim()}`, fields: [{ name: "code", label: "Code", placeholder: "From the email", max: 10 }], ok: "Sign in" }); if (!b?.code) return;
-    try { syncDone(await sync.signIn(a.email, b.code)); await refresh(); renderChrome(); return; } catch (e) { toast(e.message || "That code didn't work"); }
+    const a = await dialog({ title: "Sync devices", fields: [{ name: "email", type: "email", label: "Email", placeholder: "you@example.com", value: mail },
+      { name: "password", type: "password", label: "Password", placeholder: "6 or more characters" }], ok: "Sign in" });
+    if (!a?.email?.includes("@") || !a.password) return;
+    mail = a.email.trim();
+    try { syncDone(await sync.signInPassword(mail, a.password)); await refresh(); renderChrome(); return; }
+    catch (e) {
+      const why = (e.data?.error_code || e.message || "").toLowerCase();
+      if (why.includes("not_confirmed") || why.includes("not confirmed")) { toast("Confirm your email with the link Supabase sent, then sign in"); continue; }
+      if (!(why.includes("invalid") && why.includes("credentials"))) { toast(e.message || "Sign-in failed"); continue; }
+      if (!(await dialog({ title: "No account with that email and password", body: el("p", { class: "muted", text: mail }), ok: "Make one", cancel: "Try again" }))) continue;
+      if (a.password.length < 6) { toast("The password needs 6 or more characters"); continue; }
+      try {
+        const r = await sync.signUp(mail, a.password);
+        if (r?.confirm) return toast("Check your email for Supabase's link, then sign in here");
+        syncDone(r); await refresh(); renderChrome(); return;
+      } catch (e2) { toast(e2.message || "The account couldn't be made"); }
+    }
   }
 }
 function syncNowUI() { sync.syncNow().then((r) => { syncDone(r); }).catch((e) => toast(e.message || "Sync failed")); }

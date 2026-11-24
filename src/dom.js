@@ -51,7 +51,8 @@ export function dialog({ title, fields = [], ok = "Save", danger = false, body =
         input = el("input", { type: "hidden", id, value: f.value || "" });
         field = el("div", { class: "swatches" }, f.options.map(([name, hex]) => el("button", { type: "button", class: "sw" + ((f.value || "") === hex ? " on" : "") + (hex ? "" : " none"), title: name, "aria-label": name, style: hex ? `background:${hex}` : "",
           onclick: (e) => { input.value = hex; for (const b of field.children) b.classList.toggle("on", b === e.currentTarget); } })));
-      } else input = el("input", { type: "text", id, value: f.value || "", maxLength: f.max || 140, required: f.required !== false, autocomplete: "off", placeholder: f.placeholder });
+      } else if (f.type === "password" || f.type === "email") input = el("input", { type: f.type, id, value: f.value || "", maxLength: 200, required: f.required !== false, autocomplete: f.autocomplete || (f.type === "email" ? "email" : "current-password"), placeholder: f.placeholder });
+      else input = el("input", { type: "text", id, value: f.value || "", maxLength: f.max || 140, required: f.required !== false, autocomplete: "off", placeholder: f.placeholder });
       inputs[f.name] = input;
       form.append(el("label", { for: id }, el("span", { text: f.label }), input, field));
     }
@@ -61,7 +62,7 @@ export function dialog({ title, fields = [], ok = "Save", danger = false, body =
     const close = open(scrim, () => resolve(result));
     function finish(v) { result = v; close(); }
     form.addEventListener("submit", (e) => { e.preventDefault(); const out = {}; for (const [k, i] of Object.entries(inputs)) out[k] = i.value; finish(out); });
-    const pick = fields.find((f) => f.autofocus), first = (pick && inputs[pick.name]) || form.querySelector("input[type=text],textarea,select") || form.querySelector("button.primary,button.danger-fill");
+    const pick = fields.find((f) => f.autofocus), first = (pick && inputs[pick.name]) || form.querySelector("input[type=text],input[type=email],input[type=password],textarea,select") || form.querySelector("button.primary,button.danger-fill");
     first?.focus(); if (pick && first?.setSelectionRange) first.setSelectionRange(first.value.length, first.value.length); else first?.select?.();
   });
 }

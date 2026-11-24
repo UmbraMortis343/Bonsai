@@ -2,6 +2,9 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.40.1 — 2026-11-24
+- Sync signs in with your email and a password, as Marginalia does, instead of an emailed code (Supabase only puts a code in its emails with a mail server of your own). The first device makes the account; every other device signs in with the same email and password.
+
 ## 0.40.0 — 2026-11-23
 - Pen pages: quick actions with the pen. The pen's side (barrel) button opens a quick menu at the nib, ten square tiles for the tools, Undo and Colour; holding the pen still for a moment, or Q, opens it too. The eraser button still erases; Side button (⇧E, on the rail) sets the barrel back to erasing.
 - What the lasso holds gets a bar just under it: To text (X), Discuss (Alt+6), Copy as picture (C), Colour (⇧C), Duplicate (D), Delete.

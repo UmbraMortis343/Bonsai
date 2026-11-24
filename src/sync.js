@@ -39,9 +39,25 @@ async function token() {
 
 // ---------- signing in ----------
 export async function sendCode(mail) { await call("/auth/v1/otp", { method: "POST", auth: false, body: { email: mail.trim(), create_user: true } }); }
+// Email and password (0.40.1, as Marginalia does): the emailed code needed a custom mail server on Supabase to put the
+// code in the email. A new account is made on first sign-in; if the project asks for the email to be confirmed,
+// Supabase's own link does it and no template change is needed.
+export async function signInPassword(mail, password) {
+  const d = await call("/auth/v1/token?grant_type=password", { method: "POST", auth: false, body: { email: mail.trim(), password } });
+  return begin(d, mail);
+}
+export async function signUp(mail, password) {
+  const d = await call("/auth/v1/signup", { method: "POST", auth: false, body: { email: mail.trim(), password } });
+  if (!d?.access_token) return { confirm: true };
+  return begin(d, mail);
+}
 export async function signIn(mail, code) {
   const d = await call("/auth/v1/verify", { method: "POST", auth: false, body: { type: "email", email: mail.trim(), token: String(code).trim() } });
   if (!d?.access_token) throw new Error("That code didn't work");
+  return begin(d, mail);
+}
+function begin(d, mail) {
+  if (!d?.access_token) throw new Error("Sign-in failed");
   keep(fromAuth(d, mail.trim()));
   if (ls.get("for") !== session.user) { ls.set("cursor", null); ls.set("for", session.user); }   // a first sync for this account: send everything here
   ls.set("full", "1");
