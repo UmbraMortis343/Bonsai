@@ -2,6 +2,12 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.43.0 — 2026-11-25
+- The garden follows how your answers go, not what's overdue. A topic's look comes from the last 30 days of answers (Today, practice, orals; recent ones count more); with fewer than 5 it stays lush, Settled always does, and a weak topic goes pale and dry but never dead. The timelapse replays it.
+- H is now Shaky: ideas you keep missing, in ochre, with Practise in their panel. The tech tree and the board follow the same toggle.
+- Month in review lists its shakiest topics with Practise (⇧1–3) in place of Dried.
+- Today shows "+N waiting" when more is due than a week of Today can cover; B sets a topic to Keep or Settled.
+
 ## 0.42.0 — 2026-11-24
 - Month in review (⇧Y, the menu, or the month's name on Today's calendar; offered on Today in the first week after a month ends): the month's numbers (ideas, graphs and notes added, mornings done, % right, streaks, Sundays, questions answered, practice rounds, topics that grew and dried), its timelapse (Space plays just that month in the garden, ⇧T saves it as a video), the month's stitch in Bonsai Desktop (F: Claude's big pattern and cross-topic links to tick, ↵ keeps them, Undo) and the story so far (C): a chapter a month written to you, reading the chapters before it, kept as editable pages in a Story folder in the Library (copy and paste without Bonsai Desktop).
 
