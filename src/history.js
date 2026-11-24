@@ -20,6 +20,7 @@ export function createHistory({ zones = [], trees = [], nodes = [], links = [], 
     const at = ms(e.at); if (!(at >= 0)) continue;
     if (e.type === "node.create") woke.set(e.ref, Math.max(woke.get(e.ref) || 0, at));
     else if (e.type === "node.review" && e.data?.rating) { if (!logged.has(e.ref)) logged.set(e.ref, []); logged.get(e.ref).push({ at, rating: e.data.rating }); }
+    else if (e.type === "node.practise" && e.data?.due) { if (!logged.has(e.ref)) logged.set(e.ref, []); logged.get(e.ref).push({ at, moved: e.data }); }   // practise.js: only the due date (and the ease on a miss) moved
   }
   const ideas = nodes.filter((n) => !n.ghost).map((n) => {
     const made = ms(n.createdAt), born = Math.min(now, Math.max(made >= 0 ? made : now, woke.get(n.id) || 0));
@@ -38,7 +39,11 @@ export function createHistory({ zones = [], trees = [], nodes = [], links = [], 
   function ideaAt(x, t) {
     if (t >= x.settled) return x.n.srs ? x.n : { ...x.n, createdAt: iso(x.born) };
     let s = x.pass, seen = x.pass ? x.born : undefined;
-    for (const r of x.steps) { if (r.at > t) break; s = rate({ srs: s }, r.rating, r.at); seen = r.at; }
+    for (const r of x.steps) {
+      if (r.at > t) break;
+      if (r.moved) { if (s) s = { ...s, due: r.moved.due, ...(r.moved.ease != null ? { ease: r.moved.ease } : {}) }; continue; }
+      s = rate({ srs: s }, r.rating, r.at); seen = r.at;
+    }
     return { ...x.n, createdAt: iso(x.born), srs: s, reviewedAt: seen != null ? iso(seen) : null };
   }
   return {

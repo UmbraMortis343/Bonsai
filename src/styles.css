@@ -897,6 +897,9 @@ input.bask::placeholder{color:var(--muted)}
 .tqcard{display:grid;gap:12px;align-content:start}
 .tqcard .tdhead{margin-bottom:0}
 .tqpath{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+/* practise (practise.js): the scope named over the round and its end */
+.tqscope{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:45%;flex:none}
+.prend .tdscore{margin-right:8px}
 .tqcard h2{font-size:21px;line-height:1.3;text-wrap:balance}
 .tqcard h2.tqcue{font-size:18px;font-weight:500}
 .tqcard textarea{width:100%;font:inherit;padding:9px 11px;border:1px solid var(--line);border-radius:4px;background:var(--card);color:var(--ink);resize:vertical;min-height:84px}
