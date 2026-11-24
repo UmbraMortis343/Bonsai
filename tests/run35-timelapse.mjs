@@ -105,7 +105,8 @@ if (rec) {
 t.eq(await pend(), before, "still nothing written");
 
 // ---- Knowledge: the same slider over the rings ----
-await page.evaluate(() => { location.hash = "#/forest"; }); await page.waitForSelector(".lbl.zone");
+await page.evaluate(() => { location.hash = "#/forest"; });
+await page.waitForFunction(() => [...document.querySelectorAll(".lbl.zone")].some((l) => l.offsetParent && getComputedStyle(l).visibility !== "hidden" && +getComputedStyle(l).opacity > 0), null, { timeout: 60000 });   // any topic name showing (which comes first depends on the camera)
 const all = await state(page, () => bonsai.S.flora.ids.length);
 await key("t"); await page.waitForSelector("#timeline:not([hidden]) #timeRange");
 t.eq(await state(page, () => [bonsai.S.tl.where, bonsai.S.cutoff != null, document.querySelectorAll("#timeline .tick").length > 5]), ["knowledge", true, true], "T opens the same slider in Knowledge");
