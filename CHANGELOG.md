@@ -2,6 +2,9 @@
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.
 
+## 0.42.0 — 2026-11-24
+- Month in review (⇧Y, the menu, or the month's name on Today's calendar; offered on Today in the first week after a month ends): the month's numbers (ideas, graphs and notes added, mornings done, % right, streaks, Sundays, questions answered, practice rounds, topics that grew and dried), its timelapse (Space plays just that month in the garden, ⇧T saves it as a video), the month's stitch in Bonsai Desktop (F: Claude's big pattern and cross-topic links to tick, ↵ keeps them, Undo) and the story so far (C): a chapter a month written to you, reading the chapters before it, kept as editable pages in a Story folder in the Library (copy and paste without Bonsai Desktop).
+
 ## 0.41.0 — 2026-11-24
 - Bonsai for Android: an app for the phone (Bonsai.apk, and Bonsai-Beta.apk for the beta) that opens the live Bonsai and updates as the website does. Reminders for Today, morning and evening, each at its own time, set from Today. A Today widget for the home screen with the streak and what's left. Share → Bonsai from any app: text, links and pictures go into a new page or onto the end of one you pick, with Undo. `#/?today=1` opens Today.
 - Practise: P, or Practise in a graph's, topic's or island's menu and panel, runs a round of up to 10 in the Today box, due or not, oldest and weakest first. It isn't a review: Today's score, streak and calendar don't count it. Right moves that idea's next review a quarter of its interval later (never past a full review's), partly leaves it, missed brings it back tomorrow. The day's log lists what was practised. At the end: how many right, then Another 10 or Done.
