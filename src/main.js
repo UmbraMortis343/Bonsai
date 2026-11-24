@@ -20,12 +20,13 @@ import { createMiniWeb } from "./miniweb.js";
 import { MARK_LIST, assignMarks } from "./marks.js";
 import { readExam, planExam, LEVELS } from "./exams.js";
 import { createVocab, createQuick, fleshPrompt, readFlesh } from "./vocab.js";
-import { desktop, canSee, liveStatus, liveProblem, askClaude, desktopUpdate } from "./live.js";
+import { desktop, canSee, liveStatus, liveProblem, askClaude, desktopUpdate, android, androidInfo, androidTake, androidToday, androidUpdate, reminders, setReminders, saveBlob } from "./live.js";
 import { oralOpen, oralPrompt, readOral, oralMarkPrompt, readMarks } from "./paper.js";
 import { weekOf, sundayOpen, sundayPrompt, readTurn, stitchPrompt, readStitch, tally, isSunday, dayOf, SUNDAY_MAX } from "./sunday.js";
 import * as sync from "./sync.js";
 import { KINDS, KIND_NAME, REBUILD_Q, questionFor, usableQs, pickHide, questionsPrompt, readQuestions, dayNumber, cleanQs, BANK_PER, BANK_BATCH, MARK_NAME, MARK_RATING, markPrompt, readMark, needsRedo, isStale, pointsOf, cleanPts } from "./questions.js";
-import { createInk, lastPaper } from "./ink.js";
+import { createInk, lastPaper, textHtml } from "./ink.js";
+import { shrinkImage } from "./images.js";
 import { TALK_SYSTEM, talkPrompt, pastePrompt, talkId, lastAt, sortTalks } from "./talk.js";
 import * as focus from "./focus.js";
 import { createHistory } from "./history.js";
@@ -96,6 +97,7 @@ async function load() {
   // a topic's colour is the tech tree's: its island's, turned a little for each topic on it
   S.hues = new Map(); S.isleHues = new Map();
   S.garden.islands.forEach((q, i) => { const hue = HUES[i % HUES.length]; S.isleHues.set(q.id, hue); q.zoneIds.forEach((id, k) => S.hues.set(id, shade(hue, k))); });
+  droidToday();
 }
 const tint = (hex, k) => (/^#[0-9a-f]{6}$/i.test(hex) ? shade(hex, k) : hex);
 // A graph's shape, worked out once and kept until its ideas or the links between them change.
@@ -559,7 +561,8 @@ async function go() {
   if (fm) { S.fscope = scopeOf(fm[1] && decodeURIComponent(fm[1])); if (from != null && !/^#\/(tree|forest|meaning)/.test(from)) S.forestBack = from || "#/"; else if (/^#\/meaning/.test(from || "")) S.forestBack = S.meanBack; }
   const home = !mm && !tm && !nm && !location.hash.startsWith("#/garden") && !location.hash.startsWith("#/forest") && !(id && treeOf(id));
   showWindow(home, !!tm, !!nm);
-  if (home) { if (id) history.replaceState(null, "", "#/"); showIsles(); }
+  const wantToday = home && /^#\/\?(.*&)?today=1\b/.test(location.hash);   // #/?today=1 opens Today (the Android app's widget and reminders)
+  if (home) { if (id || wantToday) { history.replaceState(null, "", "#/"); S.hashNow = "#/"; } showIsles(); if (wantToday) todayShow(); }
   else if (nm) showNotes(nm[1] && decodeURIComponent(nm[1]));
   else if (tm) showTech(tm[1] && decodeURIComponent(tm[1]));
   else if (mm) showMeaning(mm[1] && decodeURIComponent(mm[1]));
@@ -775,6 +778,7 @@ const syncStart = () => sync.start({
   onError: (e) => { if (e instanceof TypeError || !navigator.onLine) return; const m = e.message || "Sync failed"; if (m !== syncErr) { syncErr = m; toast(m.startsWith("Sync") ? m : "Sync: " + m); } },
 });
 const DESKTOP_URL = "https://github.com/UmbraMortis343/Bonsai/releases?q=desktop&expanded=true";
+const ANDROID_URL = "https://github.com/UmbraMortis343/Bonsai/releases?q=android&expanded=true";
 function appMenu(anchor) {
   const archived = [...S.allZones.filter((z) => z.archived), ...S.allTrees.filter((t) => t.archived)];
   menu(anchor, [
@@ -794,6 +798,9 @@ function appMenu(anchor) {
     shell.canInstall() && { label: "Install app", run: () => shell.install() },
     { label: sync.signedIn() ? `Sync · ${syncAgo()}` : "Sync devices", run: syncDialog },
     S.desk && { label: `Bonsai Desktop ${S.desk.latest}`, run: () => window.open(S.desk.url, "_blank", "noopener") },
+    android && { label: "Reminders", run: remindersDialog },
+    S.droid && { label: `Bonsai Android ${S.droid.latest}`, run: () => window.open(S.droid.url, "_blank", "noopener") },
+    !android && /Android/.test(navigator.userAgent) && { label: "Bonsai for Android", run: () => window.open(ANDROID_URL, "_blank", "noopener") },
     !desktop && /Windows/.test(navigator.userAgent) && { label: "Bonsai for Windows", run: () => window.open(DESKTOP_URL, "_blank", "noopener") },
     { label: `Bonsai ${CHANNEL ? CHANNEL + " " : ""}${shell.version}`, disabled: true },
   ]);
@@ -872,8 +879,7 @@ function shortcuts() {
 }
 async function exportBackup() {
   const data = await safely(() => store.exportAll()); if (!data) return;
-  const a = el("a", { href: URL.createObjectURL(new Blob([JSON.stringify(data)], { type: "application/json" })), download: `bonsai-${new Date().toISOString().slice(0, 10)}.json` });
-  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  if (!(await saveBlob(new Blob([JSON.stringify(data)], { type: "application/json" }), `bonsai-${new Date().toISOString().slice(0, 10)}.json`))) return toast("The backup couldn't be saved");
   toast("Backup saved");
 }
 async function importBackup(file) {
@@ -1764,6 +1770,7 @@ function todayLeft() {
 }
 const todayDue = () => todayLeft() > 0 || sundayDue();
 async function todaySaveDay() {
+  droidToday();
   const r = todayRecord(); if (!r) return;
   const day = dayKey(), days = { ...((await store.getMeta("days").catch(() => null)) || S.days || {}) }, was = days[day];
   if (was && was.n === r.n && was.asked === r.asked && was.good === r.good && was.done === r.done) { S.days = days; return; }
@@ -2066,9 +2073,10 @@ function renderToday() {
       : el("div", { class: "row" }, el("button", { class: "btn primary", id: "todayGo", onclick: todayStart }, "Start", key("↵")), el("span", { class: "muted", id: "todayProgress", text: `${rec.asked}/${rec.n}` }), el("span", { class: "grow" }), squares),
     sundayDue() ? el("div", { class: "row" }, el("button", { class: "btn", id: "todaySunday", onclick: () => { todayClose(); startSunday(); } }, "Sunday", key("U"))) : null,
     el("p", { class: "muted tdbank", id: "bankLine", hidden: !bank.on, text: bank.on ? bankLabel() : "" }),
-    desktop || CHANNEL ? el("div", { class: "row tdtools" },
+    desktop || CHANNEL || android ? el("div", { class: "row tdtools" },
       desktop ? el("button", { class: "btn", id: "todayBank", onclick: bankMenu }, bank.on ? "Stop" : "Write questions", key("⇧W")) : null,
-      CHANNEL ? el("button", { class: "btn", id: "todayRepick", onclick: todayRepick }, "Repick", key("⇧R")) : null) : null);
+      CHANNEL ? el("button", { class: "btn", id: "todayRepick", onclick: todayRepick }, "Repick", key("⇧R")) : null,
+      android ? el("button", { class: "btn", id: "todayRemind", onclick: remindersDialog }, "Reminders") : null) : null);
   const run = streak(S.days, day);
   const top = el("div", { class: "tdstreak", id: "todayStreak" }, el("b", { text: String(run) }), el("span", { class: "muted", text: run === 1 ? "day" : "days" }));
   // the month
@@ -2241,9 +2249,7 @@ function tlVideo() {
     stream.getTracks().forEach((x) => x.stop());
     if (!r.keep || !chunks.length) return;
     const blob = (S.tlVideo = new Blob(chunks, { type: rec.mimeType || type || "video/webm" }));
-    const a = el("a", { href: URL.createObjectURL(blob), download: `bonsai-timelapse-${new Date().toISOString().slice(0, 10)}.${/mp4/.test(blob.type) ? "mp4" : "webm"}` });
-    document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000);
-    toast("Video saved");
+    saveBlob(blob, `bonsai-timelapse-${new Date().toISOString().slice(0, 10)}.${/mp4/.test(blob.type) ? "mp4" : "webm"}`).then((ok) => toast(ok ? "Video saved" : "The video couldn't be saved"));
   };
   if (garden) isles.onFrame = draw; else { stage.onRender = draw; stage.tickers.add(keep); stage.invalidate(); }
   tl.rec = r; rec.start(500); draw();
@@ -4263,6 +4269,179 @@ function winSwitch() {
     b("notes", "winNotes", "Library", ICON.page), el("kbd", { class: "wsk", text: "⇧Tab" }));
 }
 
+// ---------- Bonsai for Android (android/, live.js) ----------
+// In the Android app: reminders for Today (set here, scheduled on the phone), the home-screen widget's numbers,
+// and Share → Bonsai from any app, which opens a picker of where to put it, like Discord's channel picker.
+// The phone calls in through window.bonsaiAndroidPoke (something waiting: Today to open, or a share), and
+// window.bonsaiBack (the back button: true when the page took it).
+let droidT = 0;
+// Today for the widget and the reminders: { day, streak, left, done, n, next: { day, left, streak } }, where next
+// is tomorrow as it stands if nothing more is done today. Sent only when it changes.
+function droidToday() {
+  if (!android) return; clearTimeout(droidT);
+  droidT = setTimeout(() => {
+    const day = dayKey(), r = todayRecord(), left = todayLeft(), days = { ...(S.days || {}) }; if (r) days[day] = r;
+    const tom = addDays(day, 1), [y, m, d] = tom.split("-").map(Number), p = todayPool(false, +new Date(y, m - 1, d, 23, 59));
+    androidToday({ day, streak: streak(days, day), left, done: !!(r?.done && r.n), n: r ? r.n : left, next: { day: tom, left: Math.min(10, p.focus.length + p.keep.length), streak: streak(days, tom) } });
+  }, 150);
+}
+function droidPoll() {
+  if (!android) return;
+  const t = androidTake();
+  if (t.share) return shareIn(droidShare(t.share));
+  if (t.open === "today" && !S.todayOpen) { closeAll(); todayShow(); }
+}
+const droidShare = (s) => ({ text: s.text, subject: s.subject, images: (s.images || []).map((i) => { try { const b = atob(i.data), u = new Uint8Array(b.length); for (let k = 0; k < b.length; k++) u[k] = b.charCodeAt(k); return new Blob([u], { type: i.type }); } catch { return null; } }).filter(Boolean) });
+// The back button: what Esc would close, else the page's history.
+function droidBack() {
+  if (S.share) { S.share.close(); return true; }
+  const g = document.querySelector(".goto"); if (g) { g.remove(); return true; }
+  if (overlayOpen()) { closeTop(); return true; }
+  if (S.todayOpen) { if (!S.tq) todayClose(); else window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); return true; }
+  if (S.review || S.oral || S.sun) { window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); return true; }
+  return false;
+}
+// Reminders: a morning one and an evening nudge, each on or off at its own time; the phone only notifies while
+// today's are waiting.
+async function remindersDialog() {
+  const r = reminders() || {};
+  const row = (k, label, on, at) => el("label", { class: "remrow", for: `rem-${k}` }, el("input", { type: "checkbox", id: `rem-${k}On`, checked: !!on }), el("span", { class: "grow", text: label }), el("input", { type: "time", id: `rem-${k}`, value: at, step: 60 }));
+  const body = el("div", { class: "rems", id: "remBody" }, row("morning", "Morning", r.morningOn, r.morning || "07:30"), row("evening", "Evening", r.eveningOn, r.evening || "19:00"),
+    r.allowed === false && (r.morningOn || r.eveningOn) ? el("p", { class: "muted", id: "remOff", text: "Notifications are off for Bonsai in Android's settings" }) : null);
+  if (!(await dialog({ title: "Reminders", body, ok: "Save" }))) return;
+  const v = (id) => body.querySelector("#" + id);
+  const out = setReminders({ morningOn: v("rem-morningOn").checked, morning: v("rem-morning").value || "07:30", eveningOn: v("rem-eveningOn").checked, evening: v("rem-evening").value || "19:00" });
+  const on = [out?.morningOn && out.morning, out?.eveningOn && out.evening].filter(Boolean);
+  toast(on.length ? `Reminders ${on.join(", ")}` : "Reminders off");
+}
+function droidEvent(e) { if (e?.type === "notify" && !e.allowed) toast("Notifications are off for Bonsai in Android's settings"); }
+
+// Share into Bonsai: text, a link, pictures. shareIn({ text, subject, url, images: [Blob] }) opens the picker:
+// New page first, then pages, the latest edited first, with the folder they're in; search at the top. A new page
+// takes its title from the subject or the first line, the rest as blocks, a link as a link (and as its Source),
+// pictures as image blocks. An existing page gets it all at its end (a pen page: a text box and pictures under
+// what's there). Then the page opens, with Undo. Resolves to the page's id, or null.
+const URL_RE = /https?:\/\/[^\s<>"]+/;
+const trimUrl = (u) => u.replace(/[.,;:!?'")\]]+$/, "");
+const linkify = (html) => html.replace(/(^|[\s(>])(https?:\/\/[^\s<"]+)/g, (m, a, u) => { const t = trimUrl(u), rest = u.slice(t.length); return `${a}<a href="${t}" target="_blank" rel="noopener">${t}</a>${rest}`; });
+const escHtml = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+function sharePlan({ text = "", subject = "", url = "", images = [] } = {}) {
+  text = String(text || "").replace(/\r\n?/g, "\n").trim(); subject = String(subject || "").trim();
+  url = trimUrl(String(url || text.match(URL_RE)?.[0] || ""));
+  const lines = text.split("\n"), first = (lines[0] || "").replace(URL_RE, "").replace(/\s+[-–—|:]\s*$/, "").trim();
+  let title = subject, body = text;
+  if (!title && first) { title = first; body = lines.slice(1).join("\n").trim(); }
+  if (!title && url) { try { const u = new URL(url); title = (u.host + u.pathname).replace(/\/$/, ""); } catch { title = url; } if (body.trim() === url) body = ""; }
+  return { title: title.slice(0, 120), body, text, url, images: images.filter((b) => b instanceof Blob) };
+}
+// a plan's words as blocks: the text (links made links), then the link if the text doesn't hold it
+function shareBlocks(text, url) {
+  const out = textToBlocks(text).map((b) => (b.type === "code" || b.type === "table" ? b : { ...b, html: linkify(b.html || "") }));
+  if (url && !text.includes(url)) out.push({ id: "b" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), type: "text", indent: 0, html: `<a href="${escHtml(url)}" target="_blank" rel="noopener">${escHtml(url)}</a>` });
+  return out;
+}
+async function shareImages(plan) {
+  const out = [];
+  for (const b of plan.images) { try { out.push(await shrinkImage(b)); } catch {} }
+  if (out.length < plan.images.length) toast(`${plan.images.length - out.length} picture${plan.images.length - out.length === 1 ? "" : "s"} couldn't be read`);
+  return out;
+}
+async function imageBlocks(recs) {
+  const out = [];
+  for (const rec of recs) { const fileId = await store.putFile(rec); out.push({ id: "b" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), type: "image", indent: 0, html: "", fileId, w: rec.w, h: rec.h, width: rec.w >= rec.h ? 100 : Math.max(30, Math.round((100 * rec.w) / rec.h)), caption: "" }); }
+  return out;
+}
+// how far down a pen page's ink and items reach
+function inkBottom(ink) {
+  let y = 0;
+  for (const s of ink?.strokes || []) for (let i = 1; i < (s.p || []).length; i += 3) y = Math.max(y, s.p[i]);
+  for (const it of ink?.items || []) {
+    if (it.t === "img") y = Math.max(y, it.y + it.h);
+    else { const text = String(it.html || "").split(/<br>|<\/div>/).map((l) => l.replace(/<[^>]+>/g, "")); y = Math.max(y, it.y + 36 * text.reduce((a, l) => a + Math.max(1, Math.ceil(l.length / Math.max(10, (it.w || 300) / 8))), 0)); }
+  }
+  return y;
+}
+async function shareInto(target, plan) {
+  await flushPage(); await load();
+  if (target === "new") {
+    const props = plan.url ? [{ id: "std-url", name: "Source", type: "url", value: plan.url }] : [];
+    const blocks = [...shareBlocks(plan.body, plan.url), ...(await imageBlocks(await shareImages(plan)))];
+    const p = await safely(() => store.addPage({ title: plan.title, blocks, props })); if (!p) return null;
+    await sharedOpen(p.id);
+    toast("New page", { label: "Undo", run: async () => { await flushPage(); await safely(() => store.deletePage(p.id)); if (S.npage === p.id) S.npage = null; S.ed?.destroy(); S.ed = null; await load(); if (S.view === "notes") redrawNotes(); } });
+    return p.id;
+  }
+  const p = pageOf(target); if (!p) return null;
+  const recs = await shareImages(plan); let patch, undo;
+  if (p.kind === "ink") {
+    const ink = { paper: p.ink?.paper, strokes: p.ink?.strokes || [], items: [...(p.ink?.items || [])] }, G = 36;
+    let y = Math.ceil((inkBottom(p.ink) + (p.ink?.strokes?.length || p.ink?.items?.length ? G : 0)) / G) * G || G;
+    const words = plan.text + (plan.url && !plan.text.includes(plan.url) ? (plan.text ? "\n" : "") + plan.url : "");
+    const sid = () => "s" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    if (words) { const it = { id: sid(), t: "text", x: 40, y, w: 440, html: textHtml(words), c: 0 }; ink.items.push(it); y = Math.ceil((inkBottom({ items: [it] }) + G) / G) * G; }
+    for (const rec of recs) { const w = Math.min(480, Math.max(60, rec.w / 2)), h = (w * rec.h) / rec.w; ink.items.push({ id: sid(), t: "img", x: 40, y, w, h, src: `data:${rec.type};base64,${rec.data}` }); y = Math.ceil((y + h + G) / G) * G; }
+    patch = { ink }; undo = { ink: p.ink };
+  } else {
+    patch = { blocks: [...(p.blocks || []), ...shareBlocks(plan.text, plan.url), ...(await imageBlocks(recs))] }; undo = { blocks: p.blocks || [] };
+  }
+  if (!(await safely(() => store.updatePage(p.id, patch)))) return null;
+  await sharedOpen(p.id);
+  toast(`Added to ${p.title || "Untitled"}`, { label: "Undo", run: async () => { await flushPage(); S.ed?.destroy(); S.ed = null; await safely(() => store.updatePage(p.id, undo)); await sharedOpen(p.id); } });
+  return p.id;
+}
+async function sharedOpen(id) {
+  await load();
+  if (S.view === "notes") { S.ed?.destroy(); S.ed = null; S.npage = id; redrawNotes(); }
+  else location.hash = notesHash(id);
+}
+function shareIn(payload) {
+  const plan = sharePlan(payload);
+  if (!plan.text && !plan.url && !plan.images.length) return Promise.resolve(null);
+  S.share?.close(); document.querySelector(".goto")?.remove();
+  return new Promise((resolve) => {
+    let at = 0, rows = [];
+    const pages = () => S.pages.filter((p) => !isFolder(p)).sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+    const where = (p) => pagePath(p).map((q) => q.title || "Untitled").join(" › ");
+    const list = el("div", { class: "glist2", role: "listbox", id: "shareList" });
+    const draw = () => {
+      const q = input.value.trim().toLowerCase();
+      const rank = (p) => (!q ? 0 : (p.title || "Untitled").toLowerCase().includes(q) ? 0 : where(p).toLowerCase().includes(q) ? 1 : 9);   // by name, then by the folder it's in
+      const hits = pages().map((p) => [rank(p), p]).filter(([r]) => r < 9).sort((a, b) => a[0] - b[0]).slice(0, 60).map(([, p]) => p);
+      rows = [{ id: "new", label: "New page", where: plan.title, d: ICON.plus }, ...hits.map((p) => ({ id: p.id, label: p.title || "Untitled", where: where(p), d: p.kind === "ink" ? ICON.ink : ICON.page }))];
+      at = Math.min(at, rows.length - 1);
+      put(list, rows.map((r, i) => el("button", { class: "grow2 res" + (i === at ? " on" : "") + (r.id === "new" ? " new" : ""), type: "button", role: "option", "aria-selected": String(i === at), dataset: { id: r.id }, onmousedown: (e) => e.preventDefault(), onclick: () => pick(r.id) },
+        icon(r.d), el("span", { class: "gl", text: r.label }), el("span", { class: "muted gw", text: r.where }))));
+      list.querySelector(".on")?.scrollIntoView({ block: "nearest" });
+    };
+    const shut = () => { scrim.remove(); box.remove(); S.share = null; for (const t of thumbs) URL.revokeObjectURL(t.src); };
+    const close = () => { if (!box.isConnected) return; shut(); resolve(null); };
+    const pick = async (id) => { if (!box.isConnected) return; shut(); resolve(await shareInto(id, plan)); };
+    const keys = (e) => {
+      e.stopPropagation();
+      if (e.key === "Escape") { e.preventDefault(); close(); }
+      else if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); at = (at + (e.key === "ArrowDown" ? 1 : rows.length - 1)) % rows.length; draw(); }
+      else if (e.key === "Enter") { e.preventDefault(); if (rows[at]) pick(rows[at].id); }
+    };
+    const input = el("input", { id: "shareSearch", placeholder: "Search pages", "aria-label": "Search pages", autocomplete: "off", oninput: () => { at = 0; draw(); }, onkeydown: keys });
+    const thumbs = plan.images.slice(0, 4).map((b) => el("img", { class: "shthumb", src: URL.createObjectURL(b), alt: "" }));
+    const what = el("div", { class: "shwhat", id: "shareWhat" }, thumbs, plan.images.length > 4 ? el("span", { class: "muted", text: `+${plan.images.length - 4}` }) : null,
+      plan.text || plan.url ? el("span", { class: "muted shtext", text: (plan.text || plan.url).split("\n")[0] }) : null);
+    const box = el("div", { class: "goto sharepick", id: "sharePick", role: "dialog", "aria-label": "Share into", tabIndex: -1, onkeydown: keys },
+      el("div", { class: "grow1" }, icon(ICON.search), input, el("kbd", { text: "Esc" }), ib("shareCancel", "Cancel", ICON.close, () => close())), what, list);
+    const scrim = el("div", { class: "sharescrim", onpointerdown: () => close() });
+    const tst = $("#toast"); if (tst) tst.hidden = true;
+    document.body.append(scrim, box); S.share = { close: () => close() };
+    draw();
+    if (matchMedia("(pointer: fine)").matches) input.focus(); else box.focus();   // on a phone the keyboard waits for a tap on search
+  });
+}
+function droidStart() {
+  document.body.dataset.android = "1";
+  window.bonsaiAndroidPoke = droidPoll; window.bonsaiAndroidEvent = droidEvent; window.bonsaiBack = droidBack;
+  androidUpdate().then((u) => { S.droid = u; });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) droidToday(); });
+}
+
 // ---------- start ----------
 async function init() {
   T = theme();
@@ -4275,6 +4454,7 @@ async function init() {
   selPanel = createQuick({ el, roots: () => [...document.querySelectorAll(".page .blocks, .talkp .tkturn.claude .md")], actions: selActions, blockSel: () => (document.activeElement?.classList.contains("bkeys") && S.ed?.picked?.()) || null });   // picked blocks, while they have the keys
   S.joined = pref("joined", "0") === "1"; S.thirsty = pref("thirsty", "0") === "1";   // off since the day's 10 took over from watering; H shows it
   if (desktop) desktopUpdate().then((u) => { S.desk = u; });
+  if (android) droidStart();
   stage.labelRank = (L) => (L.id === S.sel || (!ideaView() && L.id === S.fsel) ? 0 : S.near.has(L.id) ? 1 + L.depth * 0.01 : 2 + L.depth);
   stage.onHover = (hit, e) => {
     stage.container.style.cursor = hit && !(S.view === "forest" && hit.kind === "link") ? "pointer" : "";
@@ -4300,6 +4480,7 @@ async function init() {
     today: { pick: () => S.todayPick, days: () => S.days, pool: () => todayPool(), show: todayShow, close: todayClose, get open() { return !!S.todayOpen; }, get left() { return todayLeft(); },
       setClock: (t) => { sunClock = t == null ? null : +new Date(t); renderTop(); } } };
   await go();
+  if (android) { droidToday(); droidPoll(); }
   document.body.dataset.ready = "1";
   syncStart();
   if (desktop) setTimeout(bankAuto, 1500);
