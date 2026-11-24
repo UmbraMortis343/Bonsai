@@ -27,6 +27,7 @@ import { CHANNEL } from "./channel.js";
 import { rate } from "./srs.js";
 import { creditFor, GIVES } from "./roots.js";
 import { cleanQs } from "./questions.js";
+import { practised } from "./practise.js";
 
 export const SCHEMA_VERSION = 5;
 const DB_NAME = CHANNEL ? "bonsai-" + CHANNEL : "bonsai";   // the beta never sees the real garden
@@ -340,6 +341,19 @@ export async function reviewNode(id, rating, { asked = "", roots = null } = {}) 
         s.nodes.put(c.node); logEvent(s, "node.credit", c.node.id, { from: id, step: c.step, days: c.days });
       }
     }
+    return next;
+  });
+}
+// A practice answer (practise.js): not a review. mark: right | partly | missed; mult: the idea's focus stretch; at: the
+// clock it's worked out on. Only srs.due (and the ease on a miss) may change; practisedAt is kept for the next pick.
+// The node.practise event carries the result (due, ease) so the timelapse can replay it exactly.
+export async function practiseNode(id, mark, { mult = 1, asked = "", at = Date.now() } = {}) {
+  return tx(["nodes", "events"], "readwrite", async (s) => {
+    const n = await reqP(s.nodes.get(id)); if (!n) throw new Error("That idea no longer exists.");
+    const moved = practised(n, mark, at, mult), next = { ...n, practisedAt: now() };
+    if (moved) next.srs = moved;
+    s.nodes.put(next);
+    logEvent(s, "node.practise", id, { mark, ...(asked ? { asked } : {}), ...(moved ? { was: n.srs.due, due: moved.due, ease: moved.ease } : {}) });
     return next;
   });
 }

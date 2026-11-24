@@ -29,8 +29,9 @@ import { createInk, lastPaper } from "./ink.js";
 import { TALK_SYSTEM, talkPrompt, pastePrompt, talkId, lastAt, sortTalks } from "./talk.js";
 import * as focus from "./focus.js";
 import { createHistory } from "./history.js";
-import { pickToday, recordOf, streak, monthGrid, dayLog, addDays, scoreTier, VOID } from "./today.js";
+import { pickToday, recordOf, streak, monthGrid, dayLog, addDays, scoreTier, VOID, assignKinds } from "./today.js";
 import * as roots from "./roots.js";
+import { pickPractise, practiseRecord, ROUND as PR_ROUND } from "./practise.js";
 
 const PALETTE = [["Blue", "#3b82f6"], ["Violet", "#8b5cf6"], ["Pink", "#ec4899"], ["Red", "#ef4444"], ["Orange", "#f97316"], ["Amber", "#f59e0b"], ["Green", "#22c55e"], ["Teal", "#14b8a6"], ["Cyan", "#06b6d4"]];
 const SWATCHES = [["Auto", ""], ...PALETTE];
@@ -802,6 +803,7 @@ function appMenu(anchor) {
 function treeMenu(anchor) {
   const t = S.tree;
   menu(anchor, [
+    { label: "Practise", key: "P", run: () => practise(t.id) },
     { label: "Timelapse", key: "T", run: tlToggle },
     { label: "Meaning view", key: "M", run: () => { S.pendingSel = S.sel; goMeaning(t.zoneId); } }, { label: "Tech tree", key: "K", run: openTech }, { label: "Fit view", key: "0", run: fitView },
     "-", { label: "Rename", run: () => renameThing(t, store.updateTree, "Knowledge graph") }, { label: "Colour", run: () => colourThing(t, store.updateTree) },
@@ -822,6 +824,7 @@ function zoneMenu(id, anchor) {
   const z = S.zones.find((x) => x.id === id); if (!z) return;
   const trees = S.trees.filter((t) => t.zoneId === id);
   menu(anchor, [
+    { label: "Practise", run: () => practise(id) },
     { label: "New knowledge graph", run: () => newGraph(id) }, { label: "Only this topic", run: () => openScope(id) }, { label: "Meaning view", run: () => goMeaning(id) },
     { label: "Rename", run: () => renameThing(z, store.updateZone, "Topic") }, { label: "Colour", run: () => colourThing(z, store.updateZone) },
     trees.length > 1 && { label: "Merge into one graph", run: async () => {
@@ -857,10 +860,10 @@ function shortcuts() {
   const groups = [
     ["Everywhere", [["Click", "Pick"], ["Double-click  ↵", "Go in, open"], ["Right-click", "Its menu (tech tree: open or close what's under it)"], ["Drag", "Move what you hold; on empty space, turn or pan"],
       ["Wheel", "Zoom"], ["1–9  ← ↑ ↓ →", "Pick by number, or the next one"], ["Esc", "Let go, then step back out"], ["⇧Esc", "Straight back"], ["0", "Fit"], ["V", "The other view: board and 3D, separate and joined, tree and web"], ["M", "Meaning: ideas arranged by what they mean"],
-      ["⇧Tab", "Garden, Knowledge, Library (Knowledge shows what's picked; Tab alone in the garden)"], ["[  ]", "The panel on the left, on the right"], ["/", "Search"], ["I", "Capture a thought"], ["K", "Tech tree"], ["O", "Notes beside a graph"], ["Y", "Today: the day's questions, streak, calendar"], ["U", "Sunday session (Bonsai Desktop)"], ["?", "These keys"]]],
+      ["⇧Tab", "Garden, Knowledge, Library (Knowledge shows what's picked; Tab alone in the garden)"], ["[  ]", "The panel on the left, on the right"], ["/", "Search"], ["I", "Capture a thought"], ["K", "Tech tree"], ["O", "Notes beside a graph"], ["Y", "Today: the day's questions, streak, calendar"], ["P", "Practise what's picked or in view, due or not"], ["U", "Sunday session (Bonsai Desktop)"], ["?", "These keys"]]],
     ["Building a graph", [["Tab", "Add under"], ["↵", "Add beside"], ["R", "Rename"], ["Del", "Delete (a picked link too)"], ["L", "Link"], ["G", "Graft"], ["X", "Make its own graph"], ["C", "Colour"], ["Q", "Add a question"], ["Space", "Notes"], ["⇧↵", "Open the board's graph in 3D"],
       ["Drag", "Move an idea; drop it on another to graft"], ["+ or Alt-drag", "Pull out a new idea, or a link"]]],
-    ["Today", [["↵", "Start the day's questions; send an answer"], ["Space", "Show the answer"], ["1–3", "Right, partly, missed (Got it, missed without Claude)"], ["← →", "A month back or on"], ["↑ ↓", "A day back or on"], ["0", "Back to today"], ["Esc", "Close"]]],
+    ["Today", [["↵", "Start the day's questions; send an answer; another 10 after practice"], ["Space", "Show the answer"], ["1–3", "Right, partly, missed (Got it, missed without Claude)"], ["← →", "A month back or on"], ["↑ ↓", "A day back or on"], ["0", "Back to today"], ["Esc", "Close"]]],
     ["Garden", [["D", "Day or night"], ["N  Z", "New graph, new topic"], ["S", "Split a full topic"], ["⇧1–3  ⇧0", "Focus, Keep, Settled; a topic back to its island's"]]],
     ["Timelapse", [["T", "Open or close"], ["Space", "Play or pause"], ["← →", "A day back or on"], ["⇧← ⇧→", "The marks: Sundays and big days"], ["⇧T", "Save as video"], ["Esc", "Back to now"]]],
     ["Tech tree", [["Space", "Open or close"], ["↵", "Put in the middle; again to open"], ["H  A", "Whole tree, everything open"], ["B", "What an island grows from"]]],
@@ -915,7 +918,7 @@ function renderActions() {
   }
   if (S.view === "forest" && S.cutoff == null && !S.pick && S.trees.length) {
     const b = (id, text, k, run, on) => el("button", { class: "btn" + (on ? " on" : ""), id, "aria-pressed": on == null ? null : String(on), onclick: run }, text, el("kbd", { text: k }));
-    put(a, lookSeg(), el("span", { class: "sep" }), b("viewFit", "Fit", "0", fitView), S.fscope ? b("viewAll", "Show all", "A", () => openScope()) : null, b("viewThirsty", "Thirsty", "H", toggleThirsty, !!S.thirsty), el("span", { class: "sep" }), b("viewTech", "Tech tree", "K", openTech));
+    put(a, lookSeg(), el("span", { class: "sep" }), b("viewFit", "Fit", "0", fitView), S.fscope ? b("viewAll", "Show all", "A", () => openScope()) : null, b("viewThirsty", "Thirsty", "H", toggleThirsty, !!S.thirsty), el("span", { class: "sep" }), b("viewPractise", "Practise", "P", () => practise(practiseHere())), b("viewTech", "Tech tree", "K", openTech));
     a.hidden = false; return;
   }
   const idea = S.view === "meaning" && !S.pick ? S.byId.get(S.sel) : null;
@@ -1810,6 +1813,7 @@ async function todayShow() {
 function todayClose(quiet = false) {
   if (!S.todayOpen) return; S.todayOpen = false;
   if (S.tq) { S.tq.job?.cancel(); S.tq = null; }
+  S.pr = null;
   const box = $("#today"); if (box) { box.hidden = true; box.replaceChildren(); }
   const blur = $("#todayBlur"); if (blur) blur.hidden = true;
   if (quiet) return;
@@ -1886,8 +1890,11 @@ async function tqRate(mark) {
   // right after a nudge: right for the score, but it comes back a bit sooner
   const rating = q.nudged && mark === "right" ? "hard" : MARK_RATING[mark], score = mark === "right" ? "good" : rating;
   if (q.claudeMark && mark !== q.claudeMark && n) await tqFlag(n, a, "overruled");
-  await safely(() => store.reviewNode(id, rating, { asked: a && !a.fallback ? a.kind : "", roots: rootsFor(id) }));
-  await todayRated(id, score);
+  if (q.practise) await practiseRated(q, id, q.nudged && mark === "right" ? "partly" : mark, a, mark);   // practise: not a review, not today's, no credit
+  else {
+    await safely(() => store.reviewNode(id, rating, { asked: a && !a.fallback ? a.kind : "", roots: rootsFor(id) }));
+    await todayRated(id, score);
+  }
   await tqAdvance(q);
 }
 async function tqAdvance(q) {
@@ -1901,6 +1908,7 @@ async function tqAdvance(q) {
 // The round over or stopped: back to Today with the score; the bank may carry on.
 async function tqEnd() {
   const q = S.tq; if (!q) return; q.job?.cancel(); S.tq = null;
+  if (q.practise) return practiseEnd(q);
   await refresh({ animate: true }); if (S.todayOpen) renderToday();
   setTimeout(bankAuto, 0);
 }
@@ -1922,7 +1930,7 @@ async function tqVague() {
   const q = S.tq, n = tqNode(), a = tqAsk(); if (!q || !n || q.busy) return; q.busy = true;
   q.job?.cancel();
   if (tqReal(a)) await tqFlag(n, a, "vague");
-  await todayRated(n.id, VOID);
+  if (q.practise) q.practise.results[n.id] = VOID; else await todayRated(n.id, VOID);
   toast("Not counted");
   await tqAdvance(q);
 }
@@ -1965,8 +1973,8 @@ function renderRound(box) {
   if (!n || !a) { tqEnd(); return; }
   const kids = kidsOf(n.id), open = q.phase === "shown" || q.phase === "marked", pts = tqPts(a), got = q.phase === "marked" ? q.got : null;
   const tag = a.cue === "note" ? "Name" : a.cue ? "" : KIND_NAME[a.kind];
-  const head = el("div", { class: "tdhead" }, tag ? el("span", { class: "qkind", id: "tqKind", text: tag }) : null, rootTag(n),
-    el("span", { class: "muted grow tqpath", text: pathOf(n) }),
+  const head = el("div", { class: "tdhead" }, q.practise ? el("b", { class: "tqscope", id: "prScope", text: q.practise.name }) : null, tag ? el("span", { class: "qkind", id: "tqKind", text: tag }) : null, rootTag(n),
+    el("span", { class: "muted grow tqpath", text: q.practise && pathOf(n) === q.practise.name ? "" : pathOf(n) }),
     el("button", { class: "ib keyed", id: "tqMenu", type: "button", title: "Question menu (Alt+M)", "aria-label": "Question menu", onclick: (e) => tqMenu(e.currentTarget) }, icon(ICON.more), key("Alt+M")),
     el("span", { class: "muted", id: "tqCount", text: `${q.i + 1}/${q.ids.length}` }), closeBtn("tqStop", "Stop", "Esc", tqEnd));
   let ask;
@@ -2021,6 +2029,7 @@ function todayPickDay(key) { S.tdSel = key; const [y, m] = monthOf(key); if (S.t
 function todayKey(k, stop, e) {
   const go = (fn) => { stop(); fn(); return true; };
   const q = S.tq;
+  if (!q && S.pr) return practiseKey(k, stop);
   if (q) {
     if (q.phase === "ask" && k === " ") return go(tqShow);
     if (q.phase === "ask" && k === "Enter") return go(() => (q.claude && $("#tqAnswer") ? (q.answer.trim() ? tqSend() : $("#tqAnswer").focus()) : tqShow()));
@@ -2054,8 +2063,9 @@ function renderToday() {
   if (!blur) { blur = el("div", { class: "tdblur", id: "todayBlur", onclick: () => { if (!S.tq) todayClose(); } }); $("#app").append(blur); }
   if (!box) { box = el("section", { class: "tdview", id: "today", "aria-label": "Today", role: "dialog" }); $("#app").append(box); }
   box.hidden = false; blur.hidden = false;
-  box.classList.toggle("round", !!S.tq);
+  box.classList.toggle("round", !!S.tq || !!S.pr);
   if (S.tq) return renderRound(box);
+  if (S.pr) return practiseSummary(box);
   const day = dayKey(), p = S.todayPick?.day === day ? S.todayPick : null, live = liveIds(), rec = p ? recordOf(p, live) : null;
   const key = (k) => el("kbd", { text: k }), held = new Set(S.sundays.map((r) => r.day));
   // the day's 10: a square each, filled as they're rated; the score once all are
@@ -2098,6 +2108,7 @@ function renderToday() {
       r?.asked ? el("p", { class: "tdlscore", id: "logScore" }, el("b", { class: scoreTier(r), text: String(r.good) }), r.done ? null : el("span", { class: "muted", text: ` · ${r.asked} asked` })) : null,
       L.reviewed.length ? sec("logReviewed", "Reviewed", L.reviewed.length, el("div", {}, list(cut(L.reviewed).map((x) => item(x.title, go(() => jump(x.id)), el("span", { class: "tdrate " + (RATED[x.rating] || ""), text: x.rating ? x.rating[0].toUpperCase() + x.rating.slice(1) : "" })))), more(L.reviewed))) : null,
       keptSec(L),
+      L.practised?.length ? sec("logPractised", "Practised", L.practised.length, el("div", {}, list(cut(L.practised).map((x) => item(x.title, go(() => jump(x.id)), el("span", { class: "tdrate " + (PR_RATED[x.mark] || ""), text: MARK_NAME[x.mark] || "" })))), more(L.practised))) : null,
       L.added.length || L.graphs.length ? sec("logAdded", "Added", L.added.length, el("div", {}, list([...L.graphs.map((t) => item(t.name, go(() => goTree(t.id)), icon(ICON.graph))), ...cut(L.added).map((n) => item(n.title, go(() => jump(n.id))))]), more(L.added))) : null,
       L.notes.length ? sec("logNotes", "Notes", L.notes.length, el("div", {}, list(cut(L.notes).map((pg) => item(pg.title || "Untitled", go(() => { location.hash = notesHash(pg.id); }), icon(pg.kind === "ink" ? ICON.ink : ICON.page)))), more(L.notes))) : null,
       sun ? sec("logSunday", "Sunday", null, el("p", { class: "muted", text: [k.links && `${k.links} link${k.links === 1 ? "" : "s"}`, k.notes && `${k.notes} note${k.notes === 1 ? "" : "s"}`, k.questions && `${k.questions} question${k.questions === 1 ? "" : "s"}`, k.fuzzy && `${k.fuzzy} sooner`].filter(Boolean).join(" · ") || (sun.undone ? "Undone" : "Held") })) : null,
@@ -2109,6 +2120,96 @@ function renderToday() {
   put(box,
     el("div", { class: "tdhead" }, top, el("span", { class: "grow" }), closeBtn("todayClose", "Close", "Esc", () => todayClose())),
     el("div", { class: "tdmain" }, ten, el("section", { class: "tdmonth" }, nav, cal)), log);
+}
+
+// ---------- practise ----------
+// Practise anything, any time (card, his ask 2026-11-21; practise.js): a round of up to 10 from a graph, a topic, an
+// island or a hub, due or not, run as the Today box's round (S.tq with `practise`: Claude's marks with key points and
+// a nudge in Bonsai Desktop, Got it or Missed elsewhere, the ⋯ menu). Not a review: Today's pick, score, streak and
+// `days` never see it, and an answer only moves that idea's due date (store.practiseNode; the numbers are in
+// practise.js). P starts one on what's picked or in view; Practise P is in the menus and panels of graphs, topics and
+// islands. At the end: how many right, coloured as Today's, then Another 10 (↵) while there are more, or Done (Esc).
+// S.pr = { scope, name, done: ids asked this sitting, last: { ids, results } } while the box shows a practice.
+const PR_RATED = { right: "ok", partly: "hard", missed: "miss", void: "void" };
+// A graph's id, or a topic, island or hub (scopeOf); nothing: the whole garden.
+function practiseScope(id) {
+  const t = id && treeOf(id); if (t) return { id, kind: "graph", name: t.name, trees: new Set([id]) };
+  return scopeOf(id) || { id: null, kind: "all", name: "Garden" };
+}
+// What's picked or in view: the graph open or picked, else the topic, island or hub (undefined: P means nothing here).
+function practiseHere() {
+  if (S.view === "tree") return S.tree?.id;
+  if (S.view === "notes") return graphPage(S.npage)?.id;
+  if (S.view === "isles") { const isl = S.model?.[S.isle], t = isl?.topics[S.topic]; return t?.id || isl?.id || (S.hub >= 0 ? S.hubs[S.hub]?.id : null) || null; }
+  if (S.view === "forest" || S.view === "meaning") return treeOf(S.fsel)?.id || S.fscope?.id || null;
+  return null;
+}
+// Every idea in the scope that can be asked (as Today's: no greyed ones, none with nothing to recall).
+function practisePool(sc) {
+  const trees = new Map(S.trees.map((t) => [t.id, t])), by = sc.kind === "graph" ? null : sc.kind === "topic" ? "tree" : "zone", out = [];
+  for (const n of S.nodes) {
+    const t = trees.get(n.treeId); if (!t) continue;
+    if (sc.trees ? !sc.trees.has(t.id) : sc.zones && !sc.zones.has(t.zoneId)) continue;
+    if (!srs.reviewable(n, kidsOf(n.id).length)) continue;
+    const seen = Math.max(Date.parse(n.reviewedAt || "") || 0, Date.parse(n.practisedAt || "") || 0) || Date.parse(n.createdAt) || 0;
+    out.push({ id: n.id, group: by === "tree" ? t.id : by === "zone" ? t.zoneId : "", seen, reviewed: !!n.srs, ease: n.srs?.ease, lapses: n.srs?.lapses || 0,
+      kinds: [...new Set(usableQs(n, qctx(n)).map((q) => q.kind))] });
+  }
+  return out;
+}
+const practiseLeft = (p = S.pr) => (p ? practisePool(p.scope).filter((x) => !p.done.has(x.id)).length : 0);
+async function practise(id) {
+  if (S.review || S.sun || S.oral || S.pick || S.tq) return;
+  const sc = practiseScope(id);
+  if (!practisePool(sc).length) return toast("Nothing to practise");
+  closeAll(); if (S.todayOpen) todayClose(true);
+  S.todayOpen = true; S.pr = { scope: sc, name: sc.name, done: new Set(), last: null };
+  if (S.view === "isles") isles?.setActive(false);
+  await practiseRound();
+}
+async function practiseRound() {
+  const p = S.pr; if (!p || S.tq) return;
+  const now = clockNow(), picked = pickPractise(practisePool(p.scope), { now, skip: p.done });
+  if (!picked.length) return;
+  for (const x of picked) p.done.add(x.id);
+  bankStop();
+  const claude = desktop && !liveProblem(await liveStatus());
+  if (S.pr !== p || S.tq) return;
+  S.tq = { ids: picked.map((x) => x.id), i: 0, ...TQ_FRESH, claude, nudgeOn: nudgeOn(), asks: {}, prefer: assignKinds(picked, dayKey()), day: dayNumber(now), practise: { name: p.name, results: {} } };
+  renderTop();
+}
+// An answer: the due date moves (or not) as practise.js says. mark: what moves it (right after a nudge moves nothing,
+// as it's reviewed hard in Today); shown: the mark he got, for the score.
+async function practiseRated(q, id, mark, a, shown) {
+  const n = S.byId.get(id); if (!n) return;
+  await safely(() => store.practiseNode(id, mark, { mult: focus.multOf(levelOfNode(n)), asked: a && !a.fallback ? a.kind : "", at: clockNow() }));
+  q.practise.results[id] = shown;
+}
+// The round over or stopped: the score, or straight out when nothing was answered.
+async function practiseEnd(q) {
+  const p = S.pr; if (!p) return;
+  if (!q.ids.some((id) => q.practise.results[id])) return todayClose();
+  p.last = { ids: q.ids, results: q.practise.results };
+  if (S.todayOpen) renderToday();
+  await refresh({ animate: true }); if (S.todayOpen && S.pr === p && !S.tq) renderToday();
+  setTimeout(bankAuto, 0);
+}
+function practiseSummary(box) {
+  const p = S.pr, L = p.last, key = (k) => el("kbd", { text: k });
+  if (!L) return put(box);
+  const rec = practiseRecord(L.ids, L.results), left = practiseLeft(p);
+  const squares = el("div", { class: "tdqs", id: "prQs" }, L.ids.filter((id) => L.results[id]).map((id) => el("span", { class: "tdq " + (PR_RATED[L.results[id]] || ""), dataset: { id, mark: L.results[id] }, title: S.byId.get(id)?.title || "" })));
+  put(box, el("div", { class: "tqcard prend", id: "prEnd" },
+    el("div", { class: "tdhead" }, el("b", { class: "tqscope", id: "prScope", text: p.name }), el("span", { class: "grow" }), closeBtn("prClose", "Done", "Esc", () => todayClose())),
+    el("div", { class: "row" }, el("b", { class: "tdscore " + scoreTier(rec), id: "prScore", text: String(rec.good) }), el("span", { class: "grow" }), squares),
+    el("div", { class: "row" }, left ? el("button", { class: "btn primary", id: "prMore", type: "button", onclick: practiseRound }, `Another ${Math.min(PR_ROUND, left)}`, key("↵")) : null,
+      el("button", { class: "btn" + (left ? "" : " primary"), id: "prDone", type: "button", onclick: () => todayClose() }, "Done", key(left ? "Esc" : "↵")))));
+}
+function practiseKey(k, stop) {
+  stop();
+  if (k === "Enter") return practiseLeft() ? practiseRound() : todayClose();
+  if (k === "y") return todayClose();
+  return true;
 }
 
 // ---------- timelapse ----------
@@ -2465,7 +2566,7 @@ function renderGarden() {
   if (t) {
     const o = (S.garden.zone[t.id] ||= {});
     put(box, head(() => pickTopic(-1), name(t.name, async (v) => { if (await safely(() => store.updateZone(t.id, { name: v }))) refresh(); }), ib("topicMore", "Move to island", ICON.more, (e) => topicMenu(t, e.currentTarget))),
-      el("div", { class: "gtop" }, ctl, el("div", { class: "gacts" }, act("newGraph", "New knowledge graph", "N", () => newGraph(t.id), true), act("scopeGraphs", "Knowledge graphs", "⇧Tab", () => openScope(t.id)), act("topicMap", "Meaning map", "M", () => goMeaning(t.id)), act("techBtn", "Tech tree", "K", openTech), t.growth >= 2 ? act("splitTopic", "Split", "S", () => splitTopic(t)) : null)),
+      el("div", { class: "gtop" }, ctl, el("div", { class: "gacts" }, act("newGraph", "New knowledge graph", "N", () => newGraph(t.id), true), act("scopeGraphs", "Knowledge graphs", "⇧Tab", () => openScope(t.id)), act("topicMap", "Meaning map", "M", () => goMeaning(t.id)), act("techBtn", "Tech tree", "K", openTech), act("practiseBtn", "Practise", "P", () => practise(t.id)), t.growth >= 2 ? act("splitTopic", "Split", "S", () => splitTopic(t)) : null)),
       el("div", { class: "stats" }, el("span", {}, el("b", { text: String(t.ideas) }), ` idea${t.ideas === 1 ? "" : "s"}`), el("span", {}, el("b", { text: pct(t.growth) }), " grown"), el("span", {}, el("b", { text: pct(t.health) }), " healthy")),
       el("h3", { text: "Knowledge graphs" }),
       t.trees.length ? el("div", { class: "rows" }, t.trees.map((tr, k) => { const n = (S.byTree.get(tr.id) || []).length; return row(k < 9 ? String(k + 1) : "", tr.name, `${n} idea${n === 1 ? "" : "s"}`, 0, () => goTree(tr.id)); })) : el("p", { class: "muted", text: "None yet." }),
@@ -2473,7 +2574,7 @@ function renderGarden() {
   } else if (isl) {
     const rec = S.garden.islands[S.isle], items = isleItems(S.isle);
     put(box, head(() => pickIsle(-1), name(isl.name, rec.mapId ? null : (v) => { rec.name = v; saveGarden(); }), items.length ? ib("isleMore", "Island menu", ICON.more, (e) => isleMenu(S.isle, e.currentTarget)) : null),
-      el("div", { class: "gtop" }, ctl, el("div", { class: "gacts" }, act("newTopic", "New topic", "Z", newZone, true), act("scopeGraphs", "Knowledge graphs", "⇧Tab", () => openScope(isl.id)), act("isleTech", "Tech tree", "K", openTech))),
+      el("div", { class: "gtop" }, ctl, el("div", { class: "gacts" }, act("newTopic", "New topic", "Z", newZone, true), act("scopeGraphs", "Knowledge graphs", "⇧Tab", () => openScope(isl.id)), act("isleTech", "Tech tree", "K", openTech), act("practiseBtn", "Practise", "P", () => practise(isl.id)))),
       el("h3", { text: "Topics" }),
       isl.topics[0].id ? el("div", { class: "rows" }, isl.topics.map((q, k) => row(String(k + 1), q.name, pct(q.growth), 0, () => pickTopic(k)))) : el("p", { class: "muted", text: "No topics here yet." }),
       el("div", { class: "gset" }, levelRow(rec, null),
@@ -2483,7 +2584,7 @@ function renderGarden() {
   } else if (S.hub >= 0) {
     const hub = S.hubs[S.hub];
     put(box, head(() => pickHub(-1), name(hub.name, null)),
-      el("div", { class: "gtop" }, ctl, el("div", { class: "gacts" }, act("newTopic", "New topic", "Z", newZone, true), act("scopeGraphs", "Knowledge graphs", "⇧Tab", () => openScope(hub.id)), act("techBtn", "Tech tree", "K", openTech))),
+      el("div", { class: "gtop" }, ctl, el("div", { class: "gacts" }, act("newTopic", "New topic", "Z", newZone, true), act("scopeGraphs", "Knowledge graphs", "⇧Tab", () => openScope(hub.id)), act("techBtn", "Tech tree", "K", openTech), act("practiseBtn", "Practise", "P", () => practise(hub.id)))),
       el("h3", { text: "Islands" }),
       hub.isles.length ? el("div", { class: "rows" }, hub.isles.map((i, k) => { const q = S.model[i], n = q.topics.filter((x) => x.id).length; return row(k < 9 ? String(k + 1) : "", q.name, `${n} topic${n === 1 ? "" : "s"}`, 0, () => pickIsle(i)); })) : el("p", { class: "muted", text: "No islands yet." }));
   } else {
@@ -2825,6 +2926,7 @@ function onMenu(hit, e) {
 function graphItems(t) {
   return [
     { label: "Open", key: "↵", run: () => openTree(t.id) }, { label: "On the board", run: () => { location.hash = notesHash(GP + t.id); } },
+    { label: "Practise", key: "P", run: () => practise(t.id) },
     desktop && { label: "Oral", key: "E", run: () => startOral(t.id) },
     desktop && { label: "Write questions", run: () => writeQuestions(t.id) },
     "-", { label: "Rename", run: () => renameThing(t, store.updateTree, "Knowledge graph") }, { label: "Colour", run: () => colourThing(t, store.updateTree) },
@@ -2902,6 +3004,7 @@ function onKey(e) {
   if (k === "o") { stop(); return openNotes(); }
   if (k === "u") { stop(); return startSunday(); }
   if (k === "y") { stop(); return todayToggle(); }
+  if (k === "p" && !e.shiftKey && S.view !== "tech" && (S.view !== "notes" || graphPage(S.npage))) { stop(); return practise(practiseHere()); }   // practise what's picked or in view
   if (k === "[" || k === "]") { stop(); return sideKey(k === "["); }
   if (S.view === "tech") return techKey(k, stop);
   if (S.view === "notes") return notesKey(k, stop, e);
@@ -3671,10 +3774,10 @@ function shelfMenu(key, e) {
   e.preventDefault(); const k = key.replace(/^w/, ""), id = k.slice(2);
   if (k.startsWith("t:")) {
     const z = S.zones.find((x) => x.id === id);
-    return menu(atPointer(e), [{ label: "New knowledge graph here", key: "N", run: () => newGraph(id) },
+    return menu(atPointer(e), [{ label: "New knowledge graph here", key: "N", run: () => newGraph(id) }, { label: "Practise", run: () => practise(id) },
       { label: "Show in the garden", run: () => toGarden({ topic: id }) }, { label: "Knowledge graphs", run: () => openScope(id) }, z && { label: "Tech tree", key: "K", run: () => { location.hash = "#/techtree/" + id; } }]);
   }
-  if (k.startsWith("i:") && id !== "_loose") menu(atPointer(e), [{ label: "Show in the garden", run: () => toGarden({ isle: id }) }, { label: "Knowledge graphs", run: () => openScope(id) }]);
+  if (k.startsWith("i:") && id !== "_loose") menu(atPointer(e), [{ label: "Show in the garden", run: () => toGarden({ isle: id }) }, { label: "Practise", run: () => practise(id) }, { label: "Knowledge graphs", run: () => openScope(id) }]);
 }
 function pageMenu(p, anchor) {
   menu(anchor, [
@@ -4323,6 +4426,7 @@ async function init() {
     timelapse: { set secs(v) { tlSecs = v; }, get state() { return S.tl; } },
     sunday: { list: () => store.listSundays(), start: startSunday, setClock: (t) => { sunClock = t == null ? null : +new Date(t); renderTop(); }, get due() { return sundayDue(); } },
     bank: { run: bankRun, count: bankCount, short: () => bankPool().filter((n) => haveQs(n) < BANK_PER).length, redo: () => bankPool().reduce((a, n) => a + bankWork(n).redo.length, 0), next: () => { const b = bankNext(); return b && { zone: b.zone?.id, ids: b.nodes.map((n) => n.id), tiers: [...b.work.values()].map((w) => w.tier) }; }, get on() { return bank.on; } },
+    practise: { start: practise, pool: (id) => practisePool(practiseScope(id)).map((x) => x.id), get state() { return S.pr; } },
     today: { pick: () => S.todayPick, days: () => S.days, pool: () => todayPool(), show: todayShow, close: todayClose, get open() { return !!S.todayOpen; }, get left() { return todayLeft(); },
       setClock: (t) => { sunClock = t == null ? null : +new Date(t); renderTop(); } } };
   await go();

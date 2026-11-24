@@ -118,21 +118,23 @@ export function monthGrid(y, m) {
 }
 
 // What happened on a day, from what's kept: ideas and graphs added, notes changed, what was reviewed and how it
-// went (the last rating of the day for each idea), and the Sunday session held that day.
+// went (the last rating of the day for each idea), what was practised (the last mark), and the Sunday session held that day.
 export function dayLog(day, { events = [], nodes = [], trees = [], pages = [], sundays = [], record = null }) {
   const on = (iso) => !!iso && dayOf(iso) === day, byId = new Map(nodes.map((n) => [n.id, n]));
   const graphs = trees.filter((t) => on(t.createdAt) && !t.archived);
   const fresh = new Set(graphs.map((t) => t.rootId));
   const added = nodes.filter((n) => on(n.createdAt) && !n.ghost && !fresh.has(n.id));
   const notes = pages.filter((p) => p.kind !== "folder" && (on(p.updatedAt) || on(p.createdAt)));
-  const seen = new Map();
+  const seen = new Map(), tried = new Map();   // tried: practised that day (practise.js), the last mark for each idea
   for (const e of [...events].sort((a, b) => String(a.at).localeCompare(String(b.at)))) {
-    if (e.type !== "node.review" || !on(e.at) || !byId.has(e.ref)) continue;
+    if (!on(e.at) || !byId.has(e.ref)) continue;
+    if (e.type === "node.practise") { tried.delete(e.ref); tried.set(e.ref, { id: e.ref, title: byId.get(e.ref).title, mark: e.data?.mark || "" }); continue; }
+    if (e.type !== "node.review") continue;
     seen.delete(e.ref); seen.set(e.ref, { id: e.ref, title: byId.get(e.ref).title, rating: e.data?.rating || "", asked: e.data?.asked || "", by: e.data?.by || "" });
   }
   // foundations kept fresh that day (node.credit events, roots.js), each once
   const kept = new Map();
   for (const e of events) if (e.type === "node.credit" && on(e.at) && byId.has(e.ref) && !kept.has(e.ref)) kept.set(e.ref, { id: e.ref, title: byId.get(e.ref).title, from: e.data?.from || "" });
   const sunday = [...sundays].reverse().find((s) => s.day === day) || null;
-  return { day, added, graphs, notes, reviewed: [...seen.values()], kept: [...kept.values()], sunday, record };
+  return { day, added, graphs, notes, reviewed: [...seen.values()], kept: [...kept.values()], practised: [...tried.values()], sunday, record };
 }

@@ -42,6 +42,7 @@ if (await page.$("#reviewBtn")) t.fail("review button in the knowledge window");
 // The old Patches panel went with the Sunday session (run36-sunday): P opens nothing.
 await key("p"); await page.waitForTimeout(150);
 if (await page.$("#patchText")) t.fail("P still opens the old Patches panel");
+if (await state(page, () => !!bonsai.S.todayOpen)) await key("Escape");   // P is Practise now (run47-practise)
 // old patches are still kept (and backed up)
 await state(page, async (id) => { for (const text of ["Resistors drop voltage", "Capacitors resist change"]) await bonsai.store.addPatch({ treeId: id, text, nodeIds: [] }); }, ids.basic);
 
