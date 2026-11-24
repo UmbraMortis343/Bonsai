@@ -320,7 +320,6 @@ public class MainActivity extends Activity {
     }
 
     @Override
-    @Override
     public void onRequestPermissionsResult(int req, String[] perms, int[] res) {
         if (req != REQ_NOTIFY) return;
         boolean ok = notifyAllowed();
