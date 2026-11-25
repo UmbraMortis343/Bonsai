@@ -1,3 +1,7 @@
+## 0.43.1 — 2026-11-25
+
+- Today: "+N waiting" is gone. A Focus box at the top right lists every topic with ideas to ask; a click turns one Focus or Keep, right-click or F then its number gives Focus, Keep or Settled (with Undo). The day's log sits under it.
+
 # Changelog
 
 Every release of Bonsai, newest first. Versions follow `major.minor.patch`: minor for new features, patch for fixes and tweaks. Each version also has a git tag (`v0.1.0`) and a GitHub release.

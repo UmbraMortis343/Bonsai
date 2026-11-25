@@ -31,7 +31,7 @@ import { TALK_SYSTEM, talkPrompt, pastePrompt, talkId, lastAt, sortTalks } from 
 import * as focus from "./focus.js";
 import { createHistory } from "./history.js";
 import * as monthly from "./month.js";
-import { pickToday, recordOf, streak, monthGrid, dayLog, addDays, scoreTier, VOID, assignKinds, backlog } from "./today.js";
+import { pickToday, recordOf, streak, monthGrid, dayLog, addDays, scoreTier, VOID, assignKinds } from "./today.js";
 import * as strength from "./strength.js";
 import * as roots from "./roots.js";
 import { pickPractise, practiseRecord, ROUND as PR_ROUND } from "./practise.js";
@@ -2040,24 +2040,33 @@ function renderRound(box) {
 }
 function todayMonth(d) { const [y, m] = S.tdMonth; S.tdMonth = monthOf(dayOf(new Date(y, m + d, 1, 12))); renderToday(); }
 function todayPickDay(key) { S.tdSel = key; const [y, m] = monthOf(key); if (S.tdMonth[0] !== y || S.tdMonth[1] !== m) S.tdMonth = [y, m]; renderToday(); }
-// The backlog (today.js `backlog`): more due than Today takes in about a week shows "+N waiting" in Today's head; B (or
-// a click) lists the topics holding most, and a topic can be set to Keep or Settled there (focus levels), with Undo.
-function todayBacklog() { return backlog(todayPool(false), S.todayPick?.day === dayKey() ? S.todayPick : null); }
-function backlogMenu(anchor) {
-  anchor ||= $("#todayBacklog"); if (!anchor) return;
-  const name = (id) => S.zones.find((z) => z.id === id)?.name || "";
-  const rows = todayBacklog().topics.filter((t) => name(t.id)).slice(0, 6);
-  menu(anchor, rows.map((t, i) => ({ label: `${name(t.id)} · ${t.n} · ${focus.NAMES[zoneLevel(t.id)]}`, key: String(i + 1), run: () => backlogLevel(t.id, anchor) })), { keys: true });
+// Focus topics (his ask, 0.43.1; it took the place of "+N waiting"): every topic with ideas to ask, in garden order,
+// at the top of Today's right column, the day's log under it. A click turns a topic Focus or Keep (Settled → Focus);
+// right-click, or F and the topic's number, gives all three levels, with Undo. Settled shows faint.
+function focusTopics() {
+  const has = new Set();
+  for (const n of S.nodes) { const z = treeOf(n.treeId)?.zoneId; if (z && !has.has(z) && srs.reviewable(n, kidsOf(n.id).length)) has.add(z); }
+  return (S.model || []).flatMap((q) => q.topics).filter((t) => t.id && has.has(t.id)).map((t) => ({ id: t.id, name: S.zones.find((z) => z.id === t.id)?.name || t.name || "", level: zoneLevel(t.id) }));
 }
-function backlogLevel(zoneId, anchor) {
-  const now = zoneLevel(zoneId), set = (level) => async () => {
-    const raw = S.garden.zone?.[zoneId]?.level, name = S.zones.find((z) => z.id === zoneId)?.name || "";
-    await setLevel({ zoneId, level }); if (S.todayOpen) renderToday();
-    toast(`${name}: ${focus.NAMES[level]}`, { label: "Undo", run: async () => { const o = (S.garden.zone ||= {})[zoneId] ||= {}; if (raw === undefined) delete o.level; else o.level = raw; await saveGarden(); if (S.todayOpen) renderToday(); } });
-  };
-  menu(anchor, [{ label: S.zones.find((z) => z.id === zoneId)?.name || "", disabled: true }, "-",
-    { label: (now === "keep" ? "✓ " : "") + "Keep", key: "K", disabled: now === "keep", run: set("keep") },
-    { label: (now === "settled" ? "✓ " : "") + "Settled", key: "S", disabled: now === "settled", run: set("settled") }], { keys: true });
+async function topicLevel(zoneId, level, undo = true) {
+  const raw = S.garden.zone?.[zoneId]?.level, name = S.zones.find((z) => z.id === zoneId)?.name || "";
+  await setLevel({ zoneId, level }); if (S.todayOpen) renderToday();
+  if (undo) toast(`${name}: ${focus.NAMES[level]}`, { label: "Undo", run: async () => { const o = (S.garden.zone ||= {})[zoneId] ||= {}; if (raw === undefined) delete o.level; else o.level = raw; await saveGarden(); if (S.todayOpen) renderToday(); } });
+}
+function levelMenu(zoneId, anchor) {
+  const now = zoneLevel(zoneId), it = (level, k) => ({ label: (now === level ? "✓ " : "") + focus.NAMES[level], key: k, disabled: now === level, run: () => topicLevel(zoneId, level) });
+  menu(anchor, [{ label: S.zones.find((z) => z.id === zoneId)?.name || "", disabled: true }, "-", it("focus", "F"), it("keep", "K"), it("settled", "S")], { keys: true });
+}
+function focusMenu() {
+  const anchor = $("#todayFocus h3") || $("#todayFocus"); if (!anchor) return;
+  menu(anchor, focusTopics().map((t, i) => ({ label: `${t.name} · ${focus.NAMES[t.level]}`, key: i < 9 ? String(i + 1) : "", run: () => levelMenu(t.id, $(`#todayFocus [data-id="${t.id}"]`) || anchor) })), { keys: true });
+}
+function focusBox() {
+  const ts = focusTopics(); if (!ts.length) return null;
+  return el("section", { class: "tdfocus", id: "todayFocus" },
+    el("div", { class: "tdnav" }, el("h3", { text: "Focus" }), el("span", { class: "grow" }), el("kbd", { text: "F" })),
+    el("div", { class: "tdfz" }, ts.map((t) => el("button", { type: "button", class: "fz " + t.level, dataset: { id: t.id, level: t.level }, "aria-pressed": String(t.level === "focus"), title: focus.NAMES[t.level],
+      onclick: () => topicLevel(t.id, t.level === "focus" ? "keep" : "focus", false), oncontextmenu: (e) => { e.preventDefault(); levelMenu(t.id, e.currentTarget); } }, t.name))));
 }
 function todayKey(k, stop, e) {
   const go = (fn) => { stop(); fn(); return true; };
@@ -2079,7 +2088,7 @@ function todayKey(k, stop, e) {
   if (k === "ArrowLeft" || k === "ArrowRight") return go(() => todayMonth(k === "ArrowRight" ? 1 : -1));
   if (k === "ArrowUp" || k === "ArrowDown") return go(() => todayPickDay(addDays(S.tdSel, k === "ArrowDown" ? 1 : -1)));
   if (k === "0") return go(() => todayPickDay(dayKey()));
-  if (k === "b" && $("#todayBacklog")) return go(() => backlogMenu());
+  if (k === "f" && !e?.shiftKey && $("#todayFocus")) return go(focusMenu);
   if (k === "u" && sundayDue()) return go(() => { todayClose(); startSunday(); });
   return false;
 }
@@ -2153,11 +2162,9 @@ function renderToday() {
   }
   const log = el("section", { class: "tdlog", id: "todayLog", dataset: { day: S.tdSel } },
     el("div", { class: "tdnav" }, el("h3", { id: "todayLogDay", text: S.tdSel === day ? "Today" : longDate(S.tdSel) }), el("span", { class: "grow" }), key("↑ ↓")), ...logBody);
-  const bl = todayBacklog();
   put(box,
-    el("div", { class: "tdhead" }, top, bl.show ? el("button", { class: "btn small backlog", id: "todayBacklog", type: "button", title: "Waiting beyond today", "aria-haspopup": "menu", onclick: (e) => backlogMenu(e.currentTarget) }, `+${bl.n} waiting`, key("B")) : null,
-      el("span", { class: "grow" }), closeBtn("todayClose", "Close", "Esc", () => todayClose())),
-    el("div", { class: "tdmain" }, ten, el("section", { class: "tdmonth" }, nav, cal)), log);
+    el("div", { class: "tdhead" }, top, el("span", { class: "grow" }), closeBtn("todayClose", "Close", "Esc", () => todayClose())),
+    el("div", { class: "tdmain" }, ten, el("section", { class: "tdmonth" }, nav, cal)), el("div", { class: "tdside" }, focusBox(), log));
 }
 
 // ---------- month in review (month.js) ----------
@@ -4891,7 +4898,7 @@ async function init() {
     practise: { start: practise, pool: (id) => practisePool(practiseScope(id)).map((x) => x.id), get state() { return S.pr; } },
     strength: { get answers() { return S.answers; }, model: (past = null) => gardenModel(past), shaky: (id) => shaky(S.byId.get(id)),
       marked: (treeId) => { const tr = treeOf(treeId), nodes = S.byTree.get(treeId) || [], m = tr ? looksFor(tr, nodes, false) : new Map(); return nodes.filter((n) => m.get(n.id)?.color === T.link).map((n) => n.id); } },
-    today: { backlog: () => todayBacklog(), pick: () => S.todayPick, days: () => S.days, pool: () => todayPool(), show: todayShow, close: todayClose, get open() { return !!S.todayOpen; }, get left() { return todayLeft(); },
+    today: { focus: () => focusTopics(), pick: () => S.todayPick, days: () => S.days, pool: () => todayPool(), show: todayShow, close: todayClose, get open() { return !!S.todayOpen; }, get left() { return todayLeft(); },
       setClock: (t) => { sunClock = t == null ? null : +new Date(t); renderTop(); } } };
   await go();
   if (android) { droidToday(); droidPoll(); }

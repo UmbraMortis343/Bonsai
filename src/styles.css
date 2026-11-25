@@ -980,6 +980,12 @@ input.bask::placeholder{color:var(--muted)}
 .tdday.pick{background:var(--well)}
 .tdday.today{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
 .tdday.held .d{text-decoration:underline;text-decoration-color:var(--accent);text-decoration-thickness:2px;text-underline-offset:3px}
+.tdside{display:grid;gap:18px;align-content:start}
+.tdfz{display:flex;flex-wrap:wrap;gap:4px}
+.tdfz .fz{font:inherit;font-size:13px;padding:3px 8px;border:1px solid var(--line);border-radius:4px;background:var(--card);color:var(--ink);cursor:pointer}
+.tdfz .fz:hover{border-color:var(--muted)}
+.tdfz .fz.focus{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.tdfz .fz.settled{color:var(--muted);border-style:dashed}
 .tdlog{display:grid;gap:12px;align-content:start}
 .tdlog section{display:grid;gap:4px}
 .tdlog ul{list-style:none;margin:0;padding:0;display:grid;gap:1px}
@@ -1117,9 +1123,8 @@ body[data-talk="1"][data-nbar="off"] .notes{grid-template-columns:minmax(0,1fr) 
 /* Shaky (H): an idea he keeps missing, and the backlog in Today; the earth ochre */
 .examrow.shakyrow{align-items:center}
 .examrow.shakyrow .chip{border-color:var(--sap);color:var(--sap)}
-.btn.backlog{color:var(--sap);border-color:var(--sap);font-variant-numeric:tabular-nums}
 .mvtag.shaky{color:var(--sap);border-color:var(--sap);display:inline-flex;gap:6px;align-items:center}
 .mvtag.shaky b{font-weight:600;font-variant-numeric:tabular-nums}
 .mvshaky{display:flex;flex-direction:column;gap:4px;align-items:flex-start}
 .mvshaky .row{gap:6px;align-items:center}
-.mvshaky .btn,.shakyrow .btn,.btn.backlog{padding:2px 8px;font-size:13px;min-height:0}
+.mvshaky .btn,.shakyrow .btn{padding:2px 8px;font-size:13px;min-height:0}
